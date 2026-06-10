@@ -14,7 +14,7 @@ try {
     roles: [
       {
         role: 'readWrite',
-        db: 'tradingagents'
+        db: 'tradingagentscn'
       }
     ]
   });
@@ -24,7 +24,7 @@ try {
 }
 
 // 切换到应用数据库
-db = db.getSiblingDB('tradingagents');
+db = db.getSiblingDB('tradingagentscn');
 
 // ===== 创建集合 =====
 
@@ -186,6 +186,41 @@ db.system_config.insertMany([
 
 print('✓ 初始数据插入完成');
 
+// ===== 创建默认管理员用户 =====
+print('\n创建默认管理员用户...');
+
+// 使用 SHA-256 哈希密码 (与 user_service hash_password 一致)
+// 默认账号: admin / admin123
+// admin123 的 SHA-256 = 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
+var adminPasswordHash = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9';
+
+db.users.insertOne({
+  username: 'admin',
+  email: 'admin@tradingagents.cn',
+  hashed_password: adminPasswordHash,
+  is_active: true,
+  is_verified: true,
+  is_admin: true,
+  created_at: new Date(),
+  updated_at: new Date(),
+  last_login: null,
+  preferences: {
+    default_market: 'A股',
+    default_depth: '深度',
+    ui_theme: 'light',
+    language: 'zh-CN',
+    notifications_enabled: true,
+    email_notifications: false
+  },
+  daily_quota: 10000,
+  concurrent_limit: 10,
+  total_analyses: 0,
+  successful_analyses: 0,
+  failed_analyses: 0,
+  favorite_stocks: []
+});
+print('✓ 默认管理员用户创建成功 (admin / admin123)');
+
 // ===== 验证 =====
 
 print('\n验证数据库初始化...');
@@ -202,10 +237,10 @@ print('✓ 索引数量: ' + indexes);
 var configCount = db.system_config.count();
 print('✓ 系统配置数量: ' + configCount);
 
-print('\n========================================');
+print('========================================');
 print('TradingAgents数据库初始化完成！');
 print('========================================');
-print('数据库: tradingagents');
+print('数据库: tradingagentscn');
 print('用户: tradingagents');
 print('密码: tradingagents123');
 print('集合数: ' + collections.length);

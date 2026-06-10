@@ -5,8 +5,30 @@
 
 // 暗色主题下的全局样式优化
 html.dark {
-  // 全局背景设为纯黑
-  background-color: #000000 !important;
+  // 全局背景设为深灰色（避免纯黑，减少眼睛疲劳）
+  background-color: #1a1a2e !important;
+  --el-bg-color: #1e1e32;
+  --el-bg-color-page: #1a1a2e;
+  --el-bg-color-overlay: #252540;
+  --el-text-color-primary: #e0e0e6;
+  --el-text-color-regular: #b0b0be;
+  --el-text-color-secondary: #8888a0;
+  --el-text-color-placeholder: #666680;
+  --el-border-color: #3a3a52;
+  --el-border-color-light: #2e2e44;
+  --el-border-color-lighter: #262638;
+  --el-fill-color-blank: #252540;
+  --el-fill-color-light: #2a2a42;
+  --el-fill-color-lighter: #32324a;
+  --el-fill-color-extra-light: #3a3a55;
+  --el-fill-color-dark: #1a1a2e;
+  --el-color-primary: #6366f1;
+  --el-color-primary-light-3: #818cf8;
+  --el-color-primary-light-5: #a5b4fc;
+  --el-color-primary-light-7: #c7d2fe;
+  --el-color-primary-light-8: #ddd6fe;
+  --el-color-primary-light-9: #ede9fe;
+  --el-color-primary-dark-2: #4f46e5;
 
   // 优化标题文字
   h1, h2, h3, h4, h5, h6 {
