@@ -1083,8 +1083,10 @@ class DataSourceManager:
 
             # 记录详细的输出结果
             duration = time.time() - start_time
-            result_length = len(result) if result else 0
-            is_success = result and "❌" not in result and "错误" not in result
+            # 🔥 修复：当 result 是 tuple 时（来自 _get_mongodb_data），需要检查第一个元素
+            result_str = result[0] if isinstance(result, tuple) else result
+            result_length = len(result_str) if result_str else 0
+            is_success = result_str and "❌" not in result_str and "错误" not in result_str
 
             # 使用实际数据源名称，如果没有则使用 current_source
             display_source = actual_source or self.current_source.value
@@ -1118,7 +1120,7 @@ class DataSourceManager:
                               })
 
                 # 数据质量异常时也尝试降级到其他数据源
-                fallback_result = self._try_fallback_sources(symbol, start_date, end_date)
+                fallback_result, fallback_source = self._try_fallback_sources(symbol, start_date, end_date)
                 if fallback_result and "❌" not in fallback_result and "错误" not in fallback_result:
                     logger.info(f"✅ [数据来源: 备用数据源] 降级成功获取数据: {symbol}")
                     return fallback_result
@@ -1138,7 +1140,8 @@ class DataSourceManager:
                             'error': str(e),
                             'event_type': 'data_fetch_exception'
                         }, exc_info=True)
-            return self._try_fallback_sources(symbol, start_date, end_date)
+            fallback_result, fallback_source = self._try_fallback_sources(symbol, start_date, end_date)
+            return fallback_result
 
     def _get_mongodb_data(self, symbol: str, start_date: str, end_date: str, period: str = "daily") -> tuple[str, str | None]:
         """
@@ -1197,21 +1200,15 @@ class DataSourceManager:
             cached_data = self._get_cached_data(symbol, start_date, end_date, max_age_hours=24)
             if cached_data is not None and not cached_data.empty:
                 logger.info(f"✅ [缓存命中] 从缓存获取{symbol}数据")
-                # 获取股票基本信息
+                # 获取股票基本信息 - 使用线程池
                 provider = self._get_tushare_adapter()
                 if provider:
-                    import asyncio
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_closed():
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                    except RuntimeError:
-                        # 在线程池中没有事件循环，创建新的
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-
-                    stock_info = loop.run_until_complete(provider.get_stock_basic_info(symbol))
+                    from concurrent.futures import ThreadPoolExecutor
+                    import asyncio as _asyncio
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        stock_info = executor.submit(
+                            lambda: _asyncio.run(provider.get_stock_basic_info(symbol))
+                        ).result()
                     stock_name = stock_info.get('name', f'股票{symbol}') if stock_info else f'股票{symbol}'
                 else:
                     stock_name = f'股票{symbol}'
@@ -1227,26 +1224,23 @@ class DataSourceManager:
             if not provider:
                 return f"❌ Tushare提供器不可用"
 
-            # 使用异步方法获取历史数据
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_closed():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-            except RuntimeError:
-                # 在线程池中没有事件循环，创建新的
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            data = loop.run_until_complete(provider.get_historical_data(symbol, start_date, end_date))
+            # 使用线程池执行异步方法，避免事件循环冲突
+            from concurrent.futures import ThreadPoolExecutor
+            import asyncio as _asyncio
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                data = executor.submit(
+                    lambda: _asyncio.run(provider.get_historical_data(symbol, start_date, end_date))
+                ).result()
 
             if data is not None and not data.empty:
                 # 保存到缓存
                 self._save_to_cache(symbol, data, start_date, end_date)
 
-                # 获取股票基本信息（异步）
-                stock_info = loop.run_until_complete(provider.get_stock_basic_info(symbol))
+                # 获取股票基本信息 - 使用线程池
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    stock_info = executor.submit(
+                        lambda: _asyncio.run(provider.get_stock_basic_info(symbol))
+                    ).result()
                 stock_name = stock_info.get('name', f'股票{symbol}') if stock_info else f'股票{symbol}'
 
                 # 格式化返回
@@ -1282,26 +1276,23 @@ class DataSourceManager:
             from .providers.china.akshare import get_akshare_provider
             provider = get_akshare_provider()
 
-            # 使用异步方法获取历史数据
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_closed():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-            except RuntimeError:
-                # 在线程池中没有事件循环，创建新的
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            data = loop.run_until_complete(provider.get_historical_data(symbol, start_date, end_date, period))
+            # 使用线程池执行异步方法，避免事件循环冲突
+            from concurrent.futures import ThreadPoolExecutor
+            import asyncio as _asyncio
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                data = executor.submit(
+                    lambda: _asyncio.run(provider.get_historical_data(symbol, start_date, end_date, period))
+                ).result()
 
             duration = time.time() - start_time
 
             if data is not None and not data.empty:
                 # 🔧 修复：使用统一的格式化方法，包含技术指标计算
                 # 获取股票基本信息
-                stock_info = loop.run_until_complete(provider.get_stock_basic_info(symbol))
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    stock_info = executor.submit(
+                        lambda: _asyncio.run(provider.get_stock_basic_info(symbol))
+                    ).result()
                 stock_name = stock_info.get('name', f'股票{symbol}') if stock_info else f'股票{symbol}'
 
                 # 调用统一的格式化方法（包含技术指标计算）

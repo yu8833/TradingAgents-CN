@@ -28,6 +28,7 @@ dependencies = [
     # 任务调度和异步
     "apscheduler>=3.10.0",
     "aiofiles>=0.8.0",
+    "nest_asyncio>=1.6.0",
 
     # HTTP客户端和SSE
     "httpx>=0.24.0",
