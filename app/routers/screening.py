@@ -289,7 +289,7 @@ async def get_industries(user: dict = Depends(get_current_user)):
         sources_with_data = []
         try:
             source_pipeline = [
-                {"$match": {"industry": {"$exists": True, "$ne": None, "$ne": "", "$ne": "未知"}}},
+                {"$match": {"industry": {"$exists": True, "$nin": [None, "", "未知"]}}},
                 {"$group": {"_id": "$source", "count": {"$sum": 1}}},
                 {"$sort": {"count": -1}}
             ]
@@ -304,7 +304,7 @@ async def get_industries(user: dict = Depends(get_current_user)):
         pipeline = [
             {
                 "$match": {
-                    "industry": {"$exists": True, "$ne": None, "$ne": "", "$ne": "未知"}
+                    "industry": {"$exists": True, "$nin": [None, "", "未知"]}
                 }
             },
             {

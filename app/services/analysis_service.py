@@ -107,6 +107,14 @@ class AnalysisService:
             thread_logger.info(f"🔄 [线程池] 开始执行分析任务: {task.task_id} - {task.symbol}")
             logger.info(f"🔄 [线程池] 开始执行分析任务: {task.task_id} - {task.symbol}")
 
+            # 设置全局强制刷新标志（确保分析使用最新数据）
+            try:
+                from tradingagents.dataflows.optimized_china_data import set_force_refresh_global
+                set_force_refresh_global(True)
+                logger.info(f"✅ 已设置全局强制刷新标志")
+            except Exception as e:
+                logger.warning(f"⚠️ 设置全局强制刷新标志失败: {e}")
+
             # 环境检查
             progress_tracker.update_progress("🔧 检查环境配置")
 
@@ -229,9 +237,25 @@ class AnalysisService:
             )
 
             logger.info(f"✅ [线程池] 分析任务完成: {task.task_id} - 耗时{execution_time:.2f}秒")
+            
+            # 重置全局强制刷新标志
+            try:
+                from tradingagents.dataflows.optimized_china_data import set_force_refresh_global
+                set_force_refresh_global(False)
+                logger.info(f"✅ 已重置全局强制刷新标志")
+            except Exception as e:
+                logger.warning(f"⚠️ 重置全局强制刷新标志失败: {e}")
+            
             return result
 
         except Exception as e:
+            # 重置全局强制刷新标志
+            try:
+                from tradingagents.dataflows.optimized_china_data import set_force_refresh_global
+                set_force_refresh_global(False)
+            except Exception:
+                pass
+            
             logger.error(f"❌ [线程池] 执行分析任务失败: {task.task_id} - {e}")
             raise
 
@@ -343,9 +367,25 @@ class AnalysisService:
             )
 
             logger.info(f"✅ [线程池] 分析任务完成: {task.task_id} - 耗时{execution_time:.2f}秒")
+            
+            # 重置全局强制刷新标志
+            try:
+                from tradingagents.dataflows.optimized_china_data import set_force_refresh_global
+                set_force_refresh_global(False)
+                logger.info(f"✅ 已重置全局强制刷新标志")
+            except Exception as e:
+                logger.warning(f"⚠️ 重置全局强制刷新标志失败: {e}")
+            
             return result
 
         except Exception as e:
+            # 重置全局强制刷新标志
+            try:
+                from tradingagents.dataflows.optimized_china_data import set_force_refresh_global
+                set_force_refresh_global(False)
+            except Exception:
+                pass
+            
             logger.error(f"❌ [线程池] 执行分析任务失败: {task.task_id} - {e}")
             raise
 

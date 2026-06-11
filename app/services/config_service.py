@@ -526,6 +526,9 @@ class ConfigService:
                 "ta_hk_max_retries": 3,
                 "ta_hk_rate_limit_wait_seconds": 60,
                 "ta_hk_cache_ttl_seconds": 86400,
+                # A股缓存配置
+                "ta_china_cache_ttl_seconds": 3600,  # A股数据缓存过期时间（1小时）
+                "ta_china_realtime_cache_ttl_seconds": 300,  # A股实时行情缓存过期时间（5分钟）
                 # 新增：TradingAgents 数据来源策略
                 # 是否优先从 app 缓存(Mongo 集合 stock_basic_info / market_quotes) 读取
                 "ta_use_app_cache": False,

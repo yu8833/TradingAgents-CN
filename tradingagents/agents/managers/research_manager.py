@@ -1,9 +1,17 @@
 import time
 import json
 
-# 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
 from tradingagents.agents.utils.instrument_utils import build_instrument_context
+from tradingagents.agents.schemas import PortfolioDecision, render_pm_decision
+from tradingagents.agents.utils.structured import get_structured_llm, parse_structured_output
+from tradingagents.agents.utils.data_quality import (
+    assess_report_quality,
+    format_quality_report,
+    DataQualityGrade,
+    get_quality_weight,
+)
+
 logger = get_logger("default")
 
 
@@ -21,7 +29,6 @@ def create_research_manager(llm, memory):
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
 
-        # 安全检查：确保memory不为None
         if memory is not None:
             past_memories = memory.get_memories(curr_situation, n_matches=2)
         else:
@@ -32,25 +39,43 @@ def create_research_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""作为投资组合经理和辩论主持人，您的职责是批判性地评估这轮辩论并做出明确决策：支持看跌分析师、看涨分析师，或者仅在基于所提出论点有强有力理由时选择持有。
+        # 数据质量评估
+        market_quality = assess_report_quality(market_research_report, report_type="market")
+        fundamentals_quality = assess_report_quality(fundamentals_report, report_type="fundamentals")
+        
+        logger.info(f"📊 [Research Manager] 数据质量评估:")
+        logger.info(f"   - 市场报告: {market_quality.grade} ({market_quality.confidence_score:.1%})")
+        logger.info(f"   - 基本面报告: {fundamentals_quality.grade} ({fundamentals_quality.confidence_score:.1%})")
 
-简洁地总结双方的关键观点，重点关注最有说服力的证据或推理。您的建议——买入、卖出或持有——必须明确且可操作。避免仅仅因为双方都有有效观点就默认选择持有；要基于辩论中最强有力的论点做出承诺。
+        quality_warnings = []
+        if market_quality.grade in [DataQualityGrade.D, DataQualityGrade.F]:
+            quality_warnings.append(f"市场报告质量较低({market_quality.grade})，请减少依赖")
+        if fundamentals_quality.grade in [DataQualityGrade.D, DataQualityGrade.F]:
+            quality_warnings.append(f"基本面报告质量较低({fundamentals_quality.grade})，请减少依赖")
 
-此外，为交易员制定详细的投资计划。这应该包括：
+        if quality_warnings:
+            quality_hint = "\n".join([f"⚠️ {warning}" for warning in quality_warnings])
+        else:
+            quality_hint = "✅ 所有报告数据质量良好"
 
-您的建议：基于最有说服力论点的明确立场。
-理由：解释为什么这些论点导致您的结论。
-战略行动：实施建议的具体步骤。
-📊 目标价格分析：基于所有可用报告（基本面、新闻、情绪），提供全面的目标价格区间和具体价格目标。考虑：
-- 基本面报告中的基本估值
-- 新闻对价格预期的影响
-- 情绪驱动的价格调整
-- 技术支撑/阻力位
-- 风险调整价格情景（保守、基准、乐观）
-- 价格目标的时间范围（1个月、3个月、6个月）
-💰 您必须提供具体的目标价格 - 不要回复"无法确定"或"需要更多信息"。
+        prompt = f"""作为投资组合经理和辩论主持人，您的职责是综合评估辩论双方的观点，并结合市场分析师的技术分析报告，给出客观、平衡的投资建议。
 
-考虑您在类似情况下的过去错误。利用这些见解来完善您的决策制定，确保您在学习和改进。以对话方式呈现您的分析，就像自然说话一样，不使用特殊格式。
+**重要原则**：
+- **市场分析师的建议应作为重要参考**，而非被辩论双方的观点覆盖
+- **持有是中性建议**，不需要比买入/卖出更强的理由
+- **警惕辩论中的极端观点和主观臆测**（如"历史教训表明..."、"类似标的上..."等无数据支撑的说法）
+- **综合权衡**，而非简单地选择辩论中最"响亮"的一方
+
+**数据质量提示**：
+{quality_hint}
+
+**A股市场特别考虑**：
+- T+1交易制度的影响
+- 涨跌停板限制
+- 北向资金流动作为聪明钱指标
+- 估值区间方法
+- 限售股解禁时间
+- 行业轮动意识
 
 以下是您对错误的过去反思：
 \"{past_memory_str}\"
@@ -73,7 +98,6 @@ def create_research_manager(llm, memory):
 
 请用中文撰写所有分析内容和建议。"""
 
-        # 📊 统计 prompt 大小
         prompt_length = len(prompt)
         estimated_tokens = int(prompt_length / 1.8)
 
@@ -82,33 +106,46 @@ def create_research_manager(llm, memory):
         logger.info(f"   - 总 Prompt 长度: {prompt_length} 字符")
         logger.info(f"   - 估算输入 Token: ~{estimated_tokens} tokens")
 
-        # ⏱️ 记录开始时间
         start_time = time.time()
 
-        response = llm.invoke(prompt)
+        structured_llm = get_structured_llm(llm, PortfolioDecision)
+        
+        try:
+            response = structured_llm.invoke(prompt)
+            decision = parse_structured_output(response, PortfolioDecision)
+            logger.info(f"✅ [Research Manager] 结构化输出解析成功: {decision.rating}")
+        except Exception as e:
+            logger.warning(f"⚠️ [Research Manager] 结构化输出失败，回退到文本模式: {e}")
+            response = llm.invoke(prompt)
+            decision = parse_structured_output(response.content if hasattr(response, 'content') else str(response), PortfolioDecision)
 
-        # ⏱️ 记录结束时间
         elapsed_time = time.time() - start_time
 
-        # 📊 统计响应信息
-        response_length = len(response.content) if response and hasattr(response, 'content') else 0
+        response_content = render_pm_decision(decision)
+        response_length = len(response_content)
         estimated_output_tokens = int(response_length / 1.8)
 
         logger.info(f"⏱️ [Research Manager] LLM调用耗时: {elapsed_time:.2f}秒")
         logger.info(f"📊 [Research Manager] 响应统计: {response_length} 字符, 估算~{estimated_output_tokens} tokens")
 
         new_investment_debate_state = {
-            "judge_decision": response.content,
+            "judge_decision": response_content,
             "history": investment_debate_state.get("history", ""),
             "bear_history": investment_debate_state.get("bear_history", ""),
             "bull_history": investment_debate_state.get("bull_history", ""),
-            "current_response": response.content,
+            "current_response": response_content,
             "count": investment_debate_state["count"],
+            "rating": decision.rating.value,
+            "price_target": decision.price_target,
+            "data_quality": {
+                "market": market_quality.grade.value,
+                "fundamentals": fundamentals_quality.grade.value,
+            },
         }
 
         return {
             "investment_debate_state": new_investment_debate_state,
-            "investment_plan": response.content,
+            "investment_plan": response_content,
         }
 
     return research_manager_node

@@ -23,6 +23,16 @@ logger = get_logger('agents')
 from .cache.mongodb_cache_adapter import get_mongodb_cache_adapter, get_stock_data_with_fallback, get_financial_data_with_fallback
 
 
+# 全局强制刷新标志
+_FORCE_REFRESH_ALL_DATA = False
+
+def set_force_refresh_global(enable: bool):
+    """设置全局强制刷新标志"""
+    global _FORCE_REFRESH_ALL_DATA
+    _FORCE_REFRESH_ALL_DATA = enable
+    logger.info(f"🔄 全局强制刷新标志已设置为: {_FORCE_REFRESH_ALL_DATA}")
+
+
 class OptimizedChinaDataProvider:
     """优化的A股数据提供器 - 集成缓存和Tushare数据接口"""
 
@@ -31,8 +41,13 @@ class OptimizedChinaDataProvider:
         self.config = config_manager.load_settings()
         self.last_api_call = 0
         self.min_api_interval = get_float("TA_CHINA_MIN_API_INTERVAL_SECONDS", "ta_china_min_api_interval_seconds", 0.5)
+        # 缓存过期时间配置
+        self.cache_ttl_seconds = get_float("TA_CHINA_CACHE_TTL_SECONDS", "ta_china_cache_ttl_seconds", 3600)  # 默认1小时
+        self.realtime_cache_ttl_seconds = get_float("TA_CHINA_REALTIME_CACHE_TTL_SECONDS", "ta_china_realtime_cache_ttl_seconds", 300)  # 默认5分钟
 
         logger.info(f"📊 优化A股数据提供器初始化完成")
+        logger.info(f"   缓存TTL: {self.cache_ttl_seconds}秒 (历史数据)")
+        logger.info(f"   实时缓存TTL: {self.realtime_cache_ttl_seconds}秒 (行情数据)")
 
     def _wait_for_rate_limit(self):
         """等待API限制"""
@@ -101,10 +116,41 @@ class OptimizedChinaDataProvider:
             logger.warning(f"⚠️ 格式化财务数据失败: {e}")
             return f"# {symbol} 基本面数据\n\n❌ 数据格式化失败: {str(e)}"
 
+    def _is_today(self, date_str: str) -> bool:
+        """判断日期是否为今天"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        return date_str == today
+
+    def _is_cache_expired(self, cache_key: str, is_realtime: bool = False) -> bool:
+        """
+        检查缓存是否过期
+        
+        Args:
+            cache_key: 缓存键
+            is_realtime: 是否为实时数据（需要更短的TTL）
+        
+        Returns:
+            bool: 缓存是否过期
+        """
+        try:
+            # 将TTL秒转换为小时
+            ttl_hours = (self.realtime_cache_ttl_seconds if is_realtime else self.cache_ttl_seconds) / 3600
+            
+            # 使用文件缓存模块的is_cache_valid方法
+            is_valid = self.cache.is_cache_valid(cache_key, max_age_hours=ttl_hours)
+            
+            if not is_valid:
+                logger.info(f"⚠️ 缓存已过期: {cache_key}, TTL: {ttl_hours:.2f}小时")
+                return True
+            return False
+        except Exception as e:
+            logger.debug(f"检查缓存过期时出错: {e}")
+            return False
+
     def get_stock_data(self, symbol: str, start_date: str, end_date: str,
                       force_refresh: bool = False) -> str:
         """
-        获取A股数据 - 优先使用缓存
+        获取A股数据 - 优先使用缓存，但支持缓存过期检查和强制刷新
 
         Args:
             symbol: 股票代码（6位数字）
@@ -117,17 +163,29 @@ class OptimizedChinaDataProvider:
         """
         logger.info(f"📈 获取A股数据: {symbol} ({start_date} 到 {end_date})")
 
+        # 检查全局强制刷新标志
+        effective_force_refresh = force_refresh or _FORCE_REFRESH_ALL_DATA
+        if _FORCE_REFRESH_ALL_DATA:
+            logger.info(f"🔄 [强制刷新] 全局强制刷新标志已启用")
+
+        # 判断是否需要实时数据（结束日期为今天）
+        need_realtime = self._is_today(end_date)
+        
         # 1. 优先尝试从MongoDB获取（如果启用了TA_USE_APP_CACHE）
-        if not force_refresh:
+        if not effective_force_refresh:
             adapter = get_mongodb_cache_adapter()
             if adapter.use_app_cache:
                 df = adapter.get_historical_data(symbol, start_date, end_date)
                 if df is not None and not df.empty:
-                    logger.info(f"📊 [数据来源: MongoDB] 使用MongoDB历史数据: {symbol} ({len(df)}条记录)")
-                    return df.to_string()
+                    # 如果需要实时数据，跳过缓存
+                    if need_realtime:
+                        logger.info(f"⚠️ [数据来源: MongoDB] 需要实时数据，跳过缓存")
+                    else:
+                        logger.info(f"📊 [数据来源: MongoDB] 使用MongoDB历史数据: {symbol} ({len(df)}条记录)")
+                        return df.to_string()
 
         # 2. 检查文件缓存（除非强制刷新）
-        if not force_refresh:
+        if not effective_force_refresh:
             cache_key = self.cache.find_cached_stock_data(
                 symbol=symbol,
                 start_date=start_date,
@@ -136,10 +194,14 @@ class OptimizedChinaDataProvider:
             )
 
             if cache_key:
-                cached_data = self.cache.load_stock_data(cache_key)
-                if cached_data:
-                    logger.info(f"⚡ [数据来源: 文件缓存] 从缓存加载A股数据: {symbol}")
-                    return cached_data
+                # 检查缓存是否过期
+                if self._is_cache_expired(cache_key, need_realtime):
+                    logger.info(f"⚠️ [数据来源: 文件缓存] 缓存已过期，重新获取: {symbol}")
+                else:
+                    cached_data = self.cache.load_stock_data(cache_key)
+                    if cached_data:
+                        logger.info(f"⚡ [数据来源: 文件缓存] 从缓存加载A股数据: {symbol}")
+                        return cached_data
 
         # 缓存未命中，从统一数据源接口获取
         logger.info(f"🌐 [数据来源: API调用] 从统一数据源接口获取数据: {symbol}")
