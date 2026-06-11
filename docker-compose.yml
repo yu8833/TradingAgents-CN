@@ -31,7 +31,7 @@ services:
       TRADINGAGENTS_LOG_DIR: "/app/logs"
       TRADINGAGENTS_LOG_FILE: "/app/logs/tradingagents.log"
       # Docker专用数据库配置
-      TRADINGAGENTS_MONGODB_URL: mongodb://admin:tradingagents123@mongodb:27017/tradingagents?authSource=admin
+      TRADINGAGENTS_MONGODB_URL: mongodb://admin:tradingagents123@mongodb:27017/tradingagentscn?authSource=admin
       TRADINGAGENTS_REDIS_URL: redis://:tradingagents123@redis:6379
       TRADINGAGENTS_CACHE_TYPE: redis
       # Docker环境标识
@@ -102,7 +102,7 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: tradingagents123
-      MONGO_INITDB_DATABASE: tradingagents
+      MONGO_INITDB_DATABASE: tradingagentscn
       TZ: "Asia/Shanghai"
     volumes:
       - mongodb_data:/data/db
@@ -192,6 +192,8 @@ services:
       - management
 
 # 数据卷定义
+# ⚠️ 注意：执行 `docker compose down -v` 会删除这些卷，导致所有数据丢失！
+# 日常重启请使用 `docker compose down`（不加 -v）
 volumes:
   mongodb_data:
     driver: local

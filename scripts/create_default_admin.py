@@ -25,9 +25,17 @@ sys.path.insert(0, str(project_root))
 from pymongo import MongoClient
 
 
-# 配置
-MONGO_URI = "mongodb://admin:tradingagents123@localhost:27017/tradingagentscn?authSource=admin"
-DB_NAME = "tradingagentscn"
+# 配置（从环境变量或默认值读取）
+import os
+_mongo_host = os.environ.get("MONGODB_HOST", os.environ.get("MONGO_HOST", "mongodb"))
+_mongo_port = int(os.environ.get("MONGODB_PORT", "27017"))
+_mongo_user = os.environ.get("MONGODB_USERNAME", "admin")
+_mongo_pass = os.environ.get("MONGODB_PASSWORD", "tradingagents123")
+_mongo_db = os.environ.get("MONGO_DB", os.environ.get("MONGODB_DATABASE", "tradingagentscn"))
+_mongo_auth = os.environ.get("MONGODB_AUTH_SOURCE", "admin")
+
+MONGO_URI = f"mongodb://{_mongo_user}:{_mongo_pass}@{_mongo_host}:{_mongo_port}/{_mongo_db}?authSource={_mongo_auth}"
+DB_NAME = _mongo_db
 
 
 def hash_password(password: str) -> str:

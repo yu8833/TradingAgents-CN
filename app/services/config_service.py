@@ -3638,13 +3638,27 @@ class ConfigService:
             if response.status_code == 200:
                 result = response.json()
                 if "choices" in result and len(result["choices"]) > 0:
-                    content = result["choices"][0]["message"]["content"]
-                    if content and len(content.strip()) > 0:
+                    message = result["choices"][0]["message"]
+                    content = message.get("content", "")
+                    # 🔥 DeepSeek V4 系列模型：content 可能为空，实际回答在 reasoning_content 中
+                    reasoning_content = message.get("reasoning_content", "")
+
+                    # 判断有效响应：content 非空 或 reasoning_content 非空
+                    has_content = content and len(str(content).strip()) > 0
+                    has_reasoning = reasoning_content and len(str(reasoning_content).strip()) > 0
+
+                    if has_content or has_reasoning:
                         return {
                             "success": True,
                             "message": f"{display_name} API连接测试成功"
                         }
                     else:
+                        finish_reason = result["choices"][0].get("finish_reason", "")
+                        if finish_reason == "length":
+                            return {
+                                "success": True,
+                                "message": f"{display_name} API连接测试成功（输出被截断）"
+                            }
                         return {
                             "success": False,
                             "message": f"{display_name} API响应为空"
@@ -3655,9 +3669,14 @@ class ConfigService:
                         "message": f"{display_name} API响应格式异常"
                     }
             else:
+                error_detail = ""
+                try:
+                    error_detail = response.json().get("error", {}).get("message", "")
+                except:
+                    pass
                 return {
                     "success": False,
-                    "message": f"{display_name} API测试失败: HTTP {response.status_code}"
+                    "message": f"{display_name} API测试失败: HTTP {response.status_code}" + (f" - {error_detail}" if error_detail else "")
                 }
 
         except Exception as e:

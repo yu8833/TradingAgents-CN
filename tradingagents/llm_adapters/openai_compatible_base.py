@@ -435,7 +435,11 @@ OPENAI_COMPATIBLE_PROVIDERS = {
         "api_key_env": "DEEPSEEK_API_KEY",
         "models": {
             "deepseek-chat": {"context_length": 32768, "supports_function_calling": True},
-            "deepseek-coder": {"context_length": 16384, "supports_function_calling": True}
+            "deepseek-coder": {"context_length": 16384, "supports_function_calling": True},
+            "deepseek-v4-flash": {"context_length": 131072, "supports_function_calling": True},
+            "deepseek-v4": {"context_length": 131072, "supports_function_calling": True},
+            "deepseek-v4-pro": {"context_length": 131072, "supports_function_calling": True},
+            "deepseek-reasoner": {"context_length": 32768, "supports_function_calling": False}
         }
     },
     "dashscope": {

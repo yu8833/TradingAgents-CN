@@ -45,10 +45,10 @@ def load_env_config(script_dir: Path) -> dict:
 
     config = {
         'mongodb_port': 27017,  # 默认端口
-        'mongodb_host': 'localhost',
+        'mongodb_host': 'mongodb',  # Docker 环境默认主机名
         'mongodb_username': 'admin',
         'mongodb_password': 'tradingagents123',
-        'mongodb_database': 'tradingagents',
+        'mongodb_database': 'tradingagentscn',  # 与 docker-compose 和 app/config.py 保持一致
         'mongodb_auth_source': 'admin',
         'mongodb_connection_string': None,
     }

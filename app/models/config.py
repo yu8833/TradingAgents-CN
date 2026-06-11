@@ -5,7 +5,7 @@
 from datetime import datetime, timezone
 from app.utils.timezone import now_tz
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field, ConfigDict, field_serializer
+from pydantic import BaseModel, Field, model_validator, ConfigDict, field_serializer
 from enum import Enum
 from bson import ObjectId
 from .user import PyObjectId
@@ -245,6 +245,8 @@ class DataSourceConfig(BaseModel):
     name: str = Field(..., description="数据源名称")
     type: DataSourceType = Field(..., description="数据源类型")
     api_key: Optional[str] = Field(None, description="API密钥")
+    # 🔥 支持前端发送的 token 字段（部分前端可能使用 token 作为 api_key 的别名）
+    token: Optional[str] = Field(None, description="Token（api_key的别名）")
     api_secret: Optional[str] = Field(None, description="API密钥")
     endpoint: Optional[str] = Field(None, description="API端点")
     timeout: int = Field(default=30, description="请求超时时间(秒)")
@@ -259,6 +261,19 @@ class DataSourceConfig(BaseModel):
     provider: Optional[str] = Field(None, description="数据提供商")
     created_at: Optional[datetime] = Field(default_factory=now_tz, description="创建时间")
     updated_at: Optional[datetime] = Field(default_factory=now_tz, description="更新时间")
+
+    @model_validator(mode='before')
+    @classmethod
+    def handle_token_field(cls, data):
+        """处理前端可能发送的 token 字段，将其映射到 api_key"""
+        if isinstance(data, dict):
+            # 如果发送了 token 且有效，但 api_key 为空或 None，则使用 token
+            has_token = 'token' in data and data['token']
+            has_api_key = 'api_key' in data and data['api_key']
+            
+            if has_token and not has_api_key:
+                data['api_key'] = data['token']
+        return data
 
 
 class DatabaseConfig(BaseModel):
@@ -396,7 +411,9 @@ class DataSourceConfigRequest(BaseModel):
     """数据源配置请求"""
     name: str
     type: DataSourceType
-    api_key: Optional[str] = None
+    api_key: Optional[str] = Field(default=None, validation_alias="api_key")
+    # 🔥 支持前端发送的 token 字段（部分前端可能使用 token 作为 api_key 的别名）
+    token: Optional[str] = Field(default=None, validation_alias="token")
     api_secret: Optional[str] = None
     endpoint: Optional[str] = None
     timeout: int = 30
@@ -409,6 +426,23 @@ class DataSourceConfigRequest(BaseModel):
     market_categories: Optional[List[str]] = Field(default_factory=list)
     display_name: Optional[str] = None
     provider: Optional[str] = None
+
+    model_config = {
+        "populate_by_name": True,  # 🔥 允许通过字段名或别名填充
+    }
+
+    @model_validator(mode='before')
+    @classmethod
+    def handle_token_field(cls, data):
+        """处理前端可能发送的 token 字段，将其映射到 api_key"""
+        if isinstance(data, dict):
+            # 如果发送了 token 且有效，但 api_key 为空或 None，则使用 token
+            has_token = 'token' in data and data['token']
+            has_api_key = 'api_key' in data and data['api_key']
+            
+            if has_token and not has_api_key:
+                data['api_key'] = data['token']
+        return data
 
 
 class MarketCategoryRequest(BaseModel):

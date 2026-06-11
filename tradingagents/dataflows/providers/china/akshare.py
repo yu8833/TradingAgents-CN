@@ -370,14 +370,32 @@ class AKShareProvider(BaseStockDataProvider):
                 logger.warning(f"⚠️ 未找到{code}的基础信息")
                 return None
             
+            # 🔥 提取并校验核心字段（清洗空值/None/空字符串/特殊占位符）
+            def _sanitize(val, default):
+                if val is None:
+                    return default
+                if isinstance(val, float):
+                    import math
+                    if math.isnan(val) or math.isinf(val):
+                        return default
+                s = str(val).strip()
+                if not s or s.lower() in ("none", "nan", "null", "未知", "unknown", "-"):
+                    return default
+                return val
+
+            clean_name = _sanitize(stock_info.get("name"), f"股票{code}")
+            clean_area = _sanitize(stock_info.get("area"), "未知")
+            clean_industry = _sanitize(stock_info.get("industry"), "未知")
+            clean_list_date = _sanitize(stock_info.get("list_date"), "")
+
             # 转换为标准化字典
             basic_info = {
                 "code": code,
-                "name": stock_info.get("name", f"股票{code}"),
-                "area": stock_info.get("area", "未知"),
-                "industry": stock_info.get("industry", "未知"),
+                "name": clean_name,
+                "area": clean_area,
+                "industry": clean_industry,
                 "market": self._determine_market(code),
-                "list_date": stock_info.get("list_date", ""),
+                "list_date": clean_list_date,
                 # 扩展字段
                 "full_symbol": self._get_full_symbol(code),
                 "market_info": self._get_market_info(code),
@@ -440,23 +458,68 @@ class AKShareProvider(BaseStockDataProvider):
                     # 提取行业信息
                     industry_row = stock_info[stock_info['item'] == '所属行业']
                     if not industry_row.empty:
-                        info['industry'] = str(industry_row['value'].iloc[0])
+                        industry_val = str(industry_row['value'].iloc[0]).strip()
+                        if industry_val and industry_val != 'nan':
+                            info['industry'] = industry_val
 
                     # 提取地区信息
                     area_row = stock_info[stock_info['item'] == '所属地区']
                     if not area_row.empty:
-                        info['area'] = str(area_row['value'].iloc[0])
+                        area_val = str(area_row['value'].iloc[0]).strip()
+                        if area_val and area_val != 'nan':
+                            info['area'] = area_val
 
                     # 提取上市日期
                     list_date_row = stock_info[stock_info['item'] == '上市时间']
                     if not list_date_row.empty:
-                        info['list_date'] = str(list_date_row['value'].iloc[0])
+                        list_val = str(list_date_row['value'].iloc[0]).strip()
+                        if list_val and list_val != 'nan':
+                            info['list_date'] = list_val
 
-                    return info
+                    # 如果方法1已经获取到了有效的行业信息，直接返回
+                    if info.get('industry'):
+                        return info
             except Exception as e:
                 logger.debug(f"获取{code}个股详细信息失败: {e}")
 
-            # 方法2: 从缓存的股票列表中获取基本信息（只有代码和名称）
+            # 方法2: 尝试从深交所股票列表获取行业信息（仅对00/30开头的深市股票）
+            if code.startswith(('00', '30', '15', '16', '18', '39')):
+                try:
+                    def fetch_szse_info():
+                        sz_df = self.ak.stock_info_sz_name_code(symbol="A股列表")
+                        if sz_df is None or sz_df.empty:
+                            return None
+                        # 建立代码->行业映射
+                        for _, row in sz_df.iterrows():
+                            row_code = str(row.get('A股代码', ''))
+                            if row_code == code:
+                                industry = str(row.get('所属行业', '')).strip()
+                                if industry and ' ' in industry:
+                                    industry = industry.split(' ', 1)[1]
+                                name = str(row.get('A股简称', '')).strip()
+                                result = {
+                                    "code": code,
+                                    "name": name if name else f"股票{code}",
+                                    "industry": industry if industry else "未知",
+                                    "area": "未知"
+                                }
+                                return result
+                        return None
+                    szse_info = await asyncio.to_thread(fetch_szse_info)
+                    if szse_info and szse_info.get('industry') and szse_info.get('industry') != "未知":
+                        # 保留已有的name/area信息
+                        if not szse_info.get('name') or szse_info.get('name') == f"股票{code}":
+                            # 尝试从缓存股票列表获取名称
+                            stock_list = await self._get_stock_list_cached()
+                            if stock_list is not None and not stock_list.empty:
+                                stock_row = stock_list[stock_list['code'] == code]
+                                if not stock_row.empty:
+                                    szse_info['name'] = str(stock_row['name'].iloc[0])
+                        return szse_info
+                except Exception as e:
+                    logger.debug(f"从深交所接口获取{code}行业信息失败: {e}")
+
+            # 方法3: 从缓存的股票列表中获取基本信息（只有代码和名称）
             try:
                 stock_list = await self._get_stock_list_cached()
                 if stock_list is not None and not stock_list.empty:

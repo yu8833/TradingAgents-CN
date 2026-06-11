@@ -54,11 +54,15 @@ MODEL_OPTIONS: ProviderModeOptions = {
     "deepseek": {
         "quick": [
             ("DeepSeek Chat", "deepseek-chat"),
+            ("DeepSeek V4 Flash - Fast reasoning", "deepseek-v4-flash"),
             ("Custom model ID", "custom"),
         ],
         "deep": [
+            ("DeepSeek V4 Pro - Strong reasoning", "deepseek-v4-pro"),
+            ("DeepSeek V4 - Balanced reasoning", "deepseek-v4"),
+            ("DeepSeek V4 Flash - Fast reasoning", "deepseek-v4-flash"),
+            ("DeepSeek Reasoner R1", "deepseek-reasoner"),
             ("DeepSeek Chat", "deepseek-chat"),
-            ("DeepSeek Reasoner", "deepseek-reasoner"),
             ("Custom model ID", "custom"),
         ],
     },

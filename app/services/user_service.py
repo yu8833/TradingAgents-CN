@@ -204,7 +204,7 @@ class UserService:
                 update_data["email"] = user_data.email
             
             if user_data.preferences:
-                update_data["preferences"] = user_data.preferences.model_dump()
+                update_data["preferences"] = user_data.preferences.model_dump() if hasattr(user_data.preferences, 'model_dump') else dict(user_data.preferences)
             
             if user_data.daily_quota is not None:
                 update_data["daily_quota"] = user_data.daily_quota

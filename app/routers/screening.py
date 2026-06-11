@@ -276,41 +276,35 @@ async def validate_conditions(conditions: List[ScreeningCondition], user: dict =
 async def get_industries(user: dict = Depends(get_current_user)):
     """
     获取数据库中所有可用的行业列表
-    根据系统配置的数据源优先级，从优先级最高的数据源获取行业分类数据
-    返回按股票数量排序的行业列表
+    从所有数据源中聚合行业分类数据，返回按股票数量排序的行业列表
     """
     try:
         from app.core.database import get_mongo_db
-        from app.core.unified_config import UnifiedConfigManager
 
         db = get_mongo_db()
         collection = db["stock_basic_info"]
 
-        # 🔥 获取数据源优先级配置（使用统一配置管理器的异步方法）
-        config = UnifiedConfigManager()
-        data_source_configs = await config.get_data_source_configs_async()
+        # 🔥 从所有有行业数据的数据源中聚合行业信息
+        # 先查询有哪些数据源有非空的 industry 字段
+        sources_with_data = []
+        try:
+            source_pipeline = [
+                {"$match": {"industry": {"$exists": True, "$ne": None, "$ne": "", "$ne": "未知"}}},
+                {"$group": {"_id": "$source", "count": {"$sum": 1}}},
+                {"$sort": {"count": -1}}
+            ]
+            async for doc in collection.aggregate(source_pipeline):
+                sources_with_data.append({"source": doc.get("_id"), "count": doc.get("count", 0)})
+        except Exception as e:
+            logger.warning(f"[get_industries] 查询数据源分布失败: {e}")
 
-        # 提取启用的数据源，按优先级排序（已排序）
-        enabled_sources = [
-            ds.type.lower() for ds in data_source_configs
-            if ds.enabled and ds.type.lower() in ['tushare', 'akshare', 'baostock']
-        ]
+        logger.info(f"[get_industries] 有行业数据的数据源: {sources_with_data}")
 
-        if not enabled_sources:
-            # 如果没有配置，使用默认顺序
-            enabled_sources = ['tushare', 'akshare', 'baostock']
-
-        logger.info(f"[get_industries] 数据源优先级: {enabled_sources}")
-
-        # 🔥 按优先级查询：优先使用优先级最高的数据源
-        preferred_source = enabled_sources[0] if enabled_sources else 'tushare'
-
-        # 聚合查询：按行业分组并统计股票数量（只查询指定数据源）
+        # 聚合查询：按行业分组并统计股票数量（从所有数据源查询）
         pipeline = [
             {
                 "$match": {
-                    "source": preferred_source,  # 🔥 只查询优先级最高的数据源
-                    "industry": {"$ne": None, "$ne": ""}  # 过滤空行业
+                    "industry": {"$exists": True, "$ne": None, "$ne": "", "$ne": "未知"}
                 }
             },
             {
@@ -331,7 +325,6 @@ async def get_industries(user: dict = Depends(get_current_user)):
 
         industries = []
         async for doc in collection.aggregate(pipeline):
-            # 清洗字段，避免 NaN/Inf 导致 JSON 序列化失败
             raw_industry = doc.get("industry")
             safe_industry = ""
             try:
@@ -360,18 +353,23 @@ async def get_industries(user: dict = Depends(get_current_user)):
             except Exception:
                 safe_count = 0
 
-            industries.append({
-                "value": safe_industry,
-                "label": safe_industry,
-                "count": safe_count,
-            })
+            if safe_industry and safe_count > 0:
+                industries.append({
+                    "value": safe_industry,
+                    "label": safe_industry,
+                    "count": safe_count,
+                })
 
-        logger.info(f"[get_industries] 从数据源 {preferred_source} 返回 {len(industries)} 个行业")
+        # 确定主要数据源
+        primary_source = sources_with_data[0]["source"] if sources_with_data else "unknown"
+
+        logger.info(f"[get_industries] 返回 {len(industries)} 个行业，主要数据源: {primary_source}")
 
         return {
             "industries": industries,
             "total": len(industries),
-            "source": preferred_source  # 🔥 返回数据来源
+            "source": primary_source,
+            "sources": sources_with_data
         }
 
     except Exception as e:

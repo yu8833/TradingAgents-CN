@@ -113,6 +113,7 @@ class ChatDeepSeek(ChatOpenAI):
     ) -> ChatResult:
         """
         生成聊天响应，并记录token使用量
+        支持 DeepSeek V4/R1 等思考模型的 reasoning_content 字段
         """
 
         # 记录开始时间
@@ -122,9 +123,83 @@ class ChatDeepSeek(ChatOpenAI):
         session_id = kwargs.pop('session_id', None)
         analysis_type = kwargs.pop('analysis_type', None)
 
+        # 🔧 DeepSeek V4 兼容：确保 messages 中 assistant 消息的 reasoning_content 被正确处理
+        # 对于 DeepSeek V4/R1 系列模型，多轮对话需要将模型输出的 reasoning_content 原样回传
+        # LangChain >= 0.1.20 已在 AIMessage 中支持 reasoning_content 字段
+        normalized_messages = []
+        for msg in messages:
+            if isinstance(msg, AIMessage):
+                # 提取底层响应中可能存在的 reasoning_content
+                rc = None
+                if hasattr(msg, 'reasoning_content') and getattr(msg, 'reasoning_content', None):
+                    rc = getattr(msg, 'reasoning_content')
+                elif isinstance(msg.content, list):
+                    # 内容是数组的情况（少见），跳过
+                    pass
+
+                # 如果 msg.additional_kwargs 中有 reasoning，同步到 reasoning_content
+                additional = getattr(msg, 'additional_kwargs', {}) or {}
+                if rc is None and 'reasoning_content' in additional:
+                    rc = additional.get('reasoning_content')
+
+                if rc:
+                    # 确保推理内容字段被正确传递到下一轮
+                    msg.additional_kwargs = msg.additional_kwargs or {}
+                    msg.additional_kwargs['reasoning_content'] = rc
+                normalized_messages.append(msg)
+            else:
+                normalized_messages.append(msg)
+
         try:
-            # 调用父类方法生成响应
-            result = super()._generate(messages, stop, run_manager, **kwargs)
+            # 调用父类方法生成响应（使用规范化后的消息列表）
+            result = super()._generate(normalized_messages, stop, run_manager, **kwargs)
+
+            # 🔧 处理 DeepSeek V4 的 reasoning_content：从响应中提取 reasoning 内容
+            # 并写入到 AIMessage 的 reasoning_content 字段，方便多轮对话回传
+            try:
+                if result.generations:
+                    for gen in result.generations:
+                        ai_msg = getattr(gen, 'message', None)
+                        if ai_msg is None:
+                            continue
+
+                        # 尝试从底层响应对象获取 reasoning_content
+                        additional_kwargs = getattr(ai_msg, 'additional_kwargs', {}) or {}
+                        reasoning = None
+
+                        # 1) 从 additional_kwargs 中直接提取
+                        if 'reasoning_content' in additional_kwargs and additional_kwargs['reasoning_content']:
+                            reasoning = additional_kwargs['reasoning_content']
+
+                        # 2) 从 response_metadata 中提取（新版本 langchain）
+                        if not reasoning:
+                            response_meta = getattr(ai_msg, 'response_metadata', {}) or {}
+                            if isinstance(response_meta, dict):
+                                if 'reasoning_content' in response_meta and response_meta['reasoning_content']:
+                                    reasoning = response_meta['reasoning_content']
+
+                        # 3) 从 llm_output 中提取（兜底）
+                        if not reasoning and hasattr(result, 'llm_output') and result.llm_output:
+                            llm_output = result.llm_output or {}
+                            if 'reasoning_content' in llm_output and llm_output['reasoning_content']:
+                                reasoning = llm_output['reasoning_content']
+
+                        # 设置 reasoning_content 到 AIMessage，确保下一轮对话可以回传
+                        if reasoning:
+                            if hasattr(ai_msg, 'reasoning_content'):
+                                try:
+                                    ai_msg.reasoning_content = reasoning
+                                except Exception:
+                                    pass
+                            # 同时在 additional_kwargs 中保留一份副本
+                            if not ai_msg.additional_kwargs:
+                                ai_msg.additional_kwargs = {}
+                            ai_msg.additional_kwargs['reasoning_content'] = reasoning
+
+                            logger.info(f"🤔 [DeepSeek] 检测到 reasoning_content: {len(str(reasoning))} 字符")
+            except Exception as reasoning_error:
+                # reasoning_content 提取失败不影响主流程
+                logger.debug(f"⚠️ [DeepSeek] reasoning_content 处理失败: {reasoning_error}")
             
             # 提取token使用量
             input_tokens = 0
@@ -139,7 +214,7 @@ class ChatDeepSeek(ChatOpenAI):
             
             # 如果没有获取到token使用量，进行估算
             if input_tokens == 0 and output_tokens == 0:
-                input_tokens = self._estimate_input_tokens(messages)
+                input_tokens = self._estimate_input_tokens(normalized_messages)
                 output_tokens = self._estimate_output_tokens(result)
                 logger.debug(f"🔍 [DeepSeek] 使用估算token: 输入={input_tokens}, 输出={output_tokens}")
             else:
@@ -150,7 +225,7 @@ class ChatDeepSeek(ChatOpenAI):
                 try:
                     # 使用提取的参数或生成默认值
                     if session_id is None:
-                        session_id = f"deepseek_{hash(str(messages))%10000}"
+                        session_id = f"deepseek_{hash(str(normalized_messages))%10000}"
                     if analysis_type is None:
                         analysis_type = 'stock_analysis'
 
