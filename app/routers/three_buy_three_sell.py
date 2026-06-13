@@ -2,6 +2,7 @@
 三买三卖交易系统 API 路由
 """
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from app.routers.auth_db import get_current_user
@@ -280,6 +281,40 @@ async def scan_all_stocks_classified(
         "success": True,
         "data": result,
         "message": f"扫描完成，共扫描 {result.total_scanned} 只股票，发现 {result.total_with_signals} 只有信号"
+    }
+
+
+# === screening 页面集成：按信号类型+可配置参数筛选股票 ===
+class SignalScreeningRequest(BaseModel):
+    signal_type: str
+    params: Dict[str, Any] = {}
+
+
+@router.post("/screen/signal")
+async def screen_by_signal(
+    request: SignalScreeningRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    根据信号类型和可配置参数筛选股票（用于 screening 页面）
+    
+    Args:
+        signal_type: B1 | B2 | B3 | S1 | S2 | S3
+        params: 各信号的可调参数
+    """
+    if request.signal_type not in ["B1", "B2", "B3", "S1", "S2", "S3"]:
+        raise HTTPException(status_code=400, detail="无效的信号类型，必须是 B1/B2/B3/S1/S2/S3")
+    
+    results = await signal_service.screen_by_signal_params(
+        signal_type=request.signal_type,
+        params=request.params
+    )
+    
+    return {
+        "success": True,
+        "data": results,
+        "total": len(results),
+        "message": f"按 {request.signal_type} 信号筛选，共找到 {len(results)} 只股票"
     }
 
 

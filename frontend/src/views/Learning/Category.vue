@@ -230,7 +230,7 @@ const openArticle = (articleId: string) => {
   // 外链文章在列表点击时直接新标签页打开，不进入详情页
   const externalMap: Record<string, string> = {
     'getting-started': 'https://mp.weixin.qq.com/s/uAk4RevdJHMuMvlqpdGUEw',
-    'usage-guide-preview': 'https://mp.weixin.qq.com/s/ppsYiBncynxlsfKFG8uEbw'
+    'usage-guide-preview': 'https://github.com/yu8833/TradingAgents-CN'
   }
   const external = externalMap[articleId]
   if (external) {

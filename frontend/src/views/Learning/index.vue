@@ -160,7 +160,7 @@ const openArticle = (articleId: string) => {
   // 外链文章直接在新标签打开
   const externalMap: Record<string, string> = {
     'getting-started': 'https://mp.weixin.qq.com/s/uAk4RevdJHMuMvlqpdGUEw',
-    'usage-guide-preview': 'https://mp.weixin.qq.com/s/ppsYiBncynxlsfKFG8uEbw'
+    'usage-guide-preview': 'https://github.com/yu8833/TradingAgents-CN'
   }
   const external = externalMap[articleId]
   if (external) {

@@ -695,7 +695,7 @@ docker-compose up -d
 安装完成后，建议阅读：
 
 - [快速开始指南](./quick-start-guide.md)
-- [使用指南](https://mp.weixin.qq.com/s/ppsYiBncynxlsfKFG8uEbw)
+- [使用指南](https://github.com/yu8833/TradingAgents-CN)
 - [配置管理指南](./config-management-guide.md)
 - [API 文档](http://localhost:8000/docs)
 

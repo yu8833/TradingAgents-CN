@@ -65,7 +65,7 @@
       </el-card>
 
       <div class="login-footer">
-        <p>&copy; 2025 股票分析系统. All rights reserved.</p>
+        <p>&copy; 2026 股票分析系统. All rights reserved.</p>
       </div>
     </div>
   </div>

@@ -1,7 +1,7 @@
 <template>
   <div class="app-footer">
     <div class="footer-content">
-      <p class="copyright">© 2025 股票分析系统. All rights reserved.</p>
+      <p class="copyright">© 2026 股票分析系统. All rights reserved.</p>
     </div>
   </div>
 </template>

@@ -92,7 +92,7 @@ const registry: Record<string, ArticleInfo> = {
   // 快速入门改为外链，点击后直接跳转到微信文章
   'getting-started': { title: '快速入门教程（外链）', externalUrl: 'https://mp.weixin.qq.com/s/uAk4RevdJHMuMvlqpdGUEw', category: '实战教程', categoryType: 'success', readTime: '10分钟' },
   // 使用指南（试用版）外链
-  'usage-guide-preview': { title: '使用指南（试用版）', externalUrl: 'https://mp.weixin.qq.com/s/ppsYiBncynxlsfKFG8uEbw', category: '实战教程', categoryType: 'success', readTime: '15分钟' },
+  'usage-guide-preview': { title: '使用指南（试用版）', externalUrl: 'https://github.com/yu8833/TradingAgents-CN', category: '实战教程', categoryType: 'success', readTime: '15分钟' },
   'general-questions': { title: '常见问题解答', loader: () => import('../../../../docs/learning/08-faq/general-questions.md?raw'), category: '常见问题', categoryType: 'info', readTime: '15分钟' }
 }
 

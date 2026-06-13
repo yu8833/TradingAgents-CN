@@ -366,63 +366,10 @@
       </div>
     </div>
 
-    <!-- 联系我们 -->
-    <div class="contact-section">
-      <div class="section-header">
-        <h2 class="section-title">联系我们</h2>
-        <p class="section-subtitle">获取支持、反馈问题或加入社区讨论</p>
-      </div>
-
-      <div class="contact-grid">
-        <div class="contact-card">
-          <div class="contact-icon email">
-            <el-icon><Message /></el-icon>
-          </div>
-          <h4>邮箱联系</h4>
-          <p>hsliup@163.com</p>
-          <span class="contact-desc">技术支持和商务合作</span>
-        </div>
-
-        <div class="contact-card">
-          <div class="contact-icon qq">
-            <el-icon><ChatDotRound /></el-icon>
-          </div>
-          <h4>QQ交流群</h4>
-          <p>187537480</p>
-          <span class="contact-desc">用户交流和问题讨论</span>
-        </div>
-
-        <div class="contact-card">
-          <div class="contact-icon wechat">
-            <el-icon><ChatDotRound /></el-icon>
-          </div>
-          <h4>微信公众号</h4>
-          <p>股票分析系统</p>
-          <span class="contact-desc">最新动态和使用教程</span>
-        </div>
-
-        <div class="contact-card">
-          <div class="contact-icon docs">
-            <el-icon><Document /></el-icon>
-          </div>
-          <h4>使用文档</h4>
-          <p>
-            <a href="https://mp.weixin.qq.com/s/ppsYiBncynxlsfKFG8uEbw"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="doc-link">
-              查看详细文档
-            </a>
-          </p>
-          <span class="contact-desc">完整的使用指南和API文档</span>
-        </div>
-      </div>
-    </div>
-
     <!-- Footer -->
     <div class="footer-section">
       <div class="footer-content">
-        <p>&copy; 2025 股票分析系统. All rights reserved.</p>
+        <p>&copy; 2026 股票分析系统. All rights reserved.</p>
       </div>
     </div>
   </div>
@@ -438,8 +385,6 @@ import {
   Document,
   Monitor,
   Setting,
-  Message,
-  ChatDotRound,
   Cpu,
   Star,
   Link,
@@ -454,7 +399,7 @@ const goToAnalysis = () => {
 }
 
 const viewDocumentation = () => {
-  window.open('https://mp.weixin.qq.com/s/ppsYiBncynxlsfKFG8uEbw', '_blank')
+  window.open('https://github.com/yu8833/TradingAgents-CN', '_blank')
 }
 </script>
 

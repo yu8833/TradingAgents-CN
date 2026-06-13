@@ -33,16 +33,8 @@
 
     <el-menu-item index="/screening">
       <el-icon><Search /></el-icon>
-      <template #title>筛选</template>
+      <template #title>选股</template>
     </el-menu-item>
-
-    <el-sub-menu index="/strategy">
-      <template #title>
-        <el-icon><TrendCharts /></el-icon>
-        <span>策略</span>
-      </template>
-      <el-menu-item index="/strategy/three-buy-three-sell">三买三卖</el-menu-item>
-    </el-sub-menu>
 
     <el-menu-item index="/favorites">
       <el-icon><Star /></el-icon>

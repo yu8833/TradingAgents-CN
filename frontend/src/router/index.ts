@@ -74,7 +74,7 @@ const routes: RouteRecordRaw[] = [
     name: 'StockScreening',
     component: () => import('@/layouts/BasicLayout.vue'),
     meta: {
-      title: '股票筛选',
+      title: '选股',
       icon: 'Search',
       requiresAuth: true,
       transition: 'slide-up'
@@ -85,36 +85,12 @@ const routes: RouteRecordRaw[] = [
         name: 'StockScreeningHome',
         component: () => import('@/views/Screening/index.vue'),
         meta: {
-          title: '股票筛选',
+          title: '选股',
           requiresAuth: true
         }
       }
     ]
   },
-  {
-    path: '/strategy',
-    name: 'Strategy',
-    component: () => import('@/layouts/BasicLayout.vue'),
-    redirect: '/strategy/three-buy-three-sell',
-    meta: {
-      title: '策略',
-      icon: 'Strategy',
-      requiresAuth: true,
-      transition: 'slide-up'
-    },
-    children: [
-      {
-        path: 'three-buy-three-sell',
-        name: 'ThreeBuyThreeSell',
-        component: () => import('@/views/TradingPool/index.vue'),
-        meta: {
-          title: '三买三卖',
-          requiresAuth: true
-        }
-      }
-    ]
-  },
-
   {
     path: '/favorites',
     name: 'Favorites',
