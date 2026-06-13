@@ -34,6 +34,24 @@ export const ANALYSTS: Analyst[] = [
     name: '社媒分析师',
     description: '分析社交媒体情绪、投资者心理和舆论导向',
     icon: 'ChatDotRound'
+  },
+  {
+    id: 'policy',
+    name: '政策分析师',
+    description: '分析监管政策、宏观调控对行业及个股的影响',
+    icon: 'Government'
+  },
+  {
+    id: 'hot_money',
+    name: '游资追踪师',
+    description: '追踪主力资金动向、龙虎榜和热点板块轮动',
+    icon: 'Flame'
+  },
+  {
+    id: 'lockup',
+    name: '解禁监控师',
+    description: '监控限售股解禁、股东增减持和大宗交易',
+    icon: 'Unlock'
   }
 ]
 
@@ -58,12 +76,15 @@ export const isValidAnalyst = (name: string): boolean => {
   return ANALYST_NAMES.includes(name)
 }
 
-// 中文名称到英文ID的映射
+// 中文名称到英文 ID 的映射
 export const ANALYST_NAME_TO_ID_MAP: Record<string, string> = {
   '市场分析师': 'market',
   '基本面分析师': 'fundamentals',
   '新闻分析师': 'news',
-  '社媒分析师': 'social'
+  '社媒分析师': 'social',
+  '政策分析师': 'policy',
+  '游资追踪师': 'hot_money',
+  '解禁监控师': 'lockup'
 }
 
 // 将中文分析师名称转换为英文ID

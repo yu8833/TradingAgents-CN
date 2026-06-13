@@ -222,10 +222,19 @@ class AnalysisService:
             # 从决策中提取模型信息
             model_info = decision.get('model_info', 'Unknown') if isinstance(decision, dict) else 'Unknown'
 
+            # 🔥 修复：前端展示的 summary 应来自 decision 中的 executive_summary 字段
+            # decision 可能包含 executive_summary（来自 render_pm_decision markdown 提取），
+            # 也可能包含 summary 或 reasoning，优先使用更完整的内容
+            summary_text = (
+                decision.get("executive_summary")
+                or decision.get("summary")
+                or decision.get("reasoning", "")
+            )
+
             # 构建结果
             result = AnalysisResult(
                 analysis_id=str(uuid.uuid4()),
-                summary=decision.get("summary", ""),
+                summary=summary_text,
                 recommendation=decision.get("recommendation", ""),
                 confidence_score=decision.get("confidence_score", 0.0),
                 risk_level=decision.get("risk_level", "中等"),
@@ -352,10 +361,18 @@ class AnalysisService:
             # 从决策中提取模型信息
             model_info = decision.get('model_info', 'Unknown') if isinstance(decision, dict) else 'Unknown'
 
+            # 🔥 修复：summary 优先取 executive_summary（来自 render_pm_decision markdown），
+            # 其次取 summary/reasoning
+            summary_text = (
+                decision.get("executive_summary")
+                or decision.get("summary")
+                or decision.get("reasoning", "")
+            )
+
             # 构建结果
             result = AnalysisResult(
                 analysis_id=str(uuid.uuid4()),
-                summary=decision.get("summary", ""),
+                summary=summary_text,
                 recommendation=decision.get("recommendation", ""),
                 confidence_score=decision.get("confidence_score", 0.0),
                 risk_level=decision.get("risk_level", "中等"),
@@ -740,13 +757,18 @@ class AnalysisService:
             if progress_callback:
                 progress_callback(80, "处理分析结果...")
 
-            # 从决策中提取模型信息
-            model_info = decision.get('model_info', 'Unknown') if isinstance(decision, dict) else 'Unknown'
+            # 🔥 修复：summary 优先取 executive_summary（来自 render_pm_decision markdown），
+            # 其次取 summary/reasoning
+            summary_text = (
+                decision.get("executive_summary")
+                or decision.get("summary")
+                or decision.get("reasoning", "")
+            )
 
             # 构建结果
             result = AnalysisResult(
                 analysis_id=str(uuid.uuid4()),
-                summary=decision.get("summary", ""),
+                summary=summary_text,
                 recommendation=decision.get("recommendation", ""),
                 confidence_score=decision.get("confidence_score", 0.0),
                 risk_level=decision.get("risk_level", "中等"),

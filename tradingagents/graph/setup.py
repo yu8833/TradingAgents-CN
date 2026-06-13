@@ -13,6 +13,9 @@ from tradingagents.agents import (
     create_msg_delete,
     create_news_analyst,
     create_neutral_debator,
+    create_policy_analyst,
+    create_hot_money_analyst,
+    create_lockup_analyst,
     create_research_manager,
     create_risk_manager,
     create_risky_debator,
@@ -63,16 +66,19 @@ class GraphSetup:
         self.react_llm = react_llm
 
     def setup_graph(
-        self, selected_analysts=["market", "social", "news", "fundamentals"]
+        self, selected_analysts=["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
     ):
         """Set up and compile the agent workflow graph.
 
         Args:
             selected_analysts (list): List of analyst types to include. Options are:
-                - "market": Market analyst
-                - "social": Social media analyst
-                - "news": News analyst
-                - "fundamentals": Fundamentals analyst
+                - "market": Market analyst (市场分析师)
+                - "social": Social media analyst (社交媒体分析师)
+                - "news": News analyst (新闻分析师)
+                - "fundamentals": Fundamentals analyst (基本面分析师)
+                - "policy": Policy analyst (政策分析师) - A股特有，分析政策影响
+                - "hot_money": Hot Money Tracker (游资追踪师) - A股特有，分析龙虎榜
+                - "lockup": Lockup Monitor (解禁监控师) - A股特有，分析限售股解禁
         """
         if len(selected_analysts) == 0:
             raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
@@ -150,6 +156,30 @@ class GraphSetup:
             delete_nodes["fundamentals"] = create_msg_delete()
             tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
 
+        if "policy" in selected_analysts:
+            logger.debug(f"🏛️ [DEBUG] 创建政策分析师")
+            analyst_nodes["policy"] = create_policy_analyst(
+                self.quick_thinking_llm, self.toolkit
+            )
+            delete_nodes["policy"] = create_msg_delete()
+            tool_nodes["policy"] = self.tool_nodes.get("policy")
+
+        if "hot_money" in selected_analysts:
+            logger.debug(f"🔥 [DEBUG] 创建游资追踪师")
+            analyst_nodes["hot_money"] = create_hot_money_analyst(
+                self.quick_thinking_llm, self.toolkit
+            )
+            delete_nodes["hot_money"] = create_msg_delete()
+            tool_nodes["hot_money"] = self.tool_nodes.get("hot_money")
+
+        if "lockup" in selected_analysts:
+            logger.debug(f"🔓 [DEBUG] 创建解禁监控师")
+            analyst_nodes["lockup"] = create_lockup_analyst(
+                self.quick_thinking_llm, self.toolkit
+            )
+            delete_nodes["lockup"] = create_msg_delete()
+            tool_nodes["lockup"] = self.tool_nodes.get("lockup")
+
         # Create researcher and manager nodes
         bull_researcher_node = create_bull_researcher(
             self.quick_thinking_llm, self.bull_memory
@@ -179,7 +209,9 @@ class GraphSetup:
             workflow.add_node(
                 f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
             )
-            workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+            # 只添加有定义 tool_node 的分析师
+            if tool_nodes.get(analyst_type) is not None:
+                workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
 
         # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
@@ -203,12 +235,21 @@ class GraphSetup:
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
 
             # Add conditional edges for current analyst
-            workflow.add_conditional_edges(
-                current_analyst,
-                getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                [current_tools, current_clear],
-            )
-            workflow.add_edge(current_tools, current_analyst)
+            # 根据是否有 tool_node 决定条件边的目标
+            if tool_nodes.get(analyst_type) is not None:
+                workflow.add_conditional_edges(
+                    current_analyst,
+                    getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
+                    [current_tools, current_clear],
+                )
+                workflow.add_edge(current_tools, current_analyst)
+            else:
+                # 没有 tool_node 的分析师直接连接到 Msg Clear
+                workflow.add_conditional_edges(
+                    current_analyst,
+                    getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
+                    [current_clear],
+                )
 
             # Connect to next analyst or to Bull Researcher if this is the last analyst
             if i < len(selected_analysts) - 1:

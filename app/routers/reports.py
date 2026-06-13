@@ -196,6 +196,38 @@ async def get_reports_list(
             created_at = doc.get("created_at", datetime.utcnow())
             created_at_tz = to_config_tz(created_at)  # 转换为 UTC+8 并添加时区信息
 
+            # 🔥 从 decision 或 state 中提取决策信息
+            decision = doc.get("decision", {}) or doc.get("state", {}) or {}
+            if not isinstance(decision, dict):
+                decision = {}
+
+            # 决策建议
+            action = decision.get("action", "")
+            if action and isinstance(action, str):
+                action = action.upper()
+                action_map = {"BUY": "买入", "SELL": "卖出", "HOLD": "持有", "STRONG_BUY": "强烈买入", "STRONG_SELL": "强烈卖出"}
+                action = action_map.get(action, action)
+
+            # 置信度
+            confidence = decision.get("confidence", 0)
+            try:
+                if isinstance(confidence, (int, float)) and 0 < confidence <= 1:
+                    confidence = round(confidence * 100, 1)
+                elif isinstance(confidence, (int, float)) and confidence > 1:
+                    confidence = round(float(confidence), 1)
+                else:
+                    confidence = 0
+            except (TypeError, ValueError):
+                confidence = 0
+
+            # 目标价 / 止损价
+            target_price = decision.get("target_price", "")
+            stop_loss = decision.get("stop_loss", "")
+            if target_price is None:
+                target_price = ""
+            if stop_loss is None:
+                stop_loss = ""
+
             report = {
                 "id": str(doc["_id"]),
                 "analysis_id": doc.get("analysis_id", ""),
@@ -203,10 +235,12 @@ async def get_reports_list(
                 "stock_code": stock_code,
                 "stock_name": stock_name,
                 "market_type": market_type,  # 🔥 添加市场类型字段
-                "model_info": doc.get("model_info", "Unknown"),  # 🔥 添加模型信息字段
-                "type": "single",  # 目前主要是单股分析
-                "format": "markdown",  # 主要格式
-                "status": doc.get("status", "completed"),
+                # 🔥 决策信息
+                "action": action,
+                "confidence": confidence,
+                "target_price": target_price,
+                "stop_loss": stop_loss,
+                # 基础信息
                 "created_at": created_at_tz.isoformat() if created_at_tz else str(created_at),
                 "analysis_date": doc.get("analysis_date", ""),
                 "analysts": doc.get("analysts", []),

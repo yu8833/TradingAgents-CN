@@ -170,33 +170,53 @@ def _extract_from_text(text: str, schema: Type[T]) -> T:
         
         elif field_name in ["executive_summary", "rationale", "investment_thesis", "reasoning", "strategic_actions"]:
             # Look for these fields in the text (usually after **FieldName**:)
+            # 注意：render_pm_decision 输出 "Executive Summary"（有空格，首字母大写），
+            # 也可能输出 "Executive_Summary"（下划线），两种都要匹配
             patterns = [
+                # 先匹配有空格的大写版本（render_pm_decision 实际输出格式）
+                r"\*\*Executive Summary\*\*:\s*(.+?)(?=\n\*\*|$)",
+                r"\*\*Executive_summary\*\*:\s*(.+?)(?=\n\*\*|$)",
+                # 再匹配 title-case（首字母大写）
                 rf"\*\*{field_name.replace('_', ' ').title()}\*\*:\s*(.+?)(?=\n\*\*|$)",
+                # 最后匹配下划线原名
                 rf"\*\*{field_name}\*\*:\s*(.+?)(?=\n\*\*|$)",
             ]
             for pattern in patterns:
                 match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
                 if match:
-                    data[field_name] = match.group(1).strip()
-                    break
+                    extracted = match.group(1).strip()
+                    # 如果提取内容过短（< 20字符），说明格式不匹配，继续尝试下一个 pattern
+                    if len(extracted) >= 20:
+                        data[field_name] = extracted
+                        break
             
             # If not found, try to extract from section after field name
             if field_name not in data:
-                # Look for text after field keywords
+                # Look for text after field keywords (中文回退匹配)
                 keywords = {
-                    "executive_summary": ["摘要", "总结", "executive"],
-                    "rationale": ["理由", "逻辑", "原因"],
-                    "investment_thesis": ["投资逻辑", "投资理由", "thesis"],
-                    "reasoning": ["推理", "逻辑"],
+                    "executive_summary": [
+                        "执行摘要", "决策摘要", "要点概述", "策略总结",  # 精确中文说法
+                        "Executive", "executive", "SUMMARY", "Summary",   # 英文大小写
+                        "摘要", "总结", "执行总结"                        # 通用中文
+                    ],
+                    "rationale": ["理由", "逻辑", "原因", "依据"],
+                    "investment_thesis": ["投资逻辑", "投资理由", "投资依据", "理由", "分析依据"],
+                    "reasoning": ["推理", "分析", "逻辑"],
                     "strategic_actions": ["策略", "行动", "建议"]
                 }
                 if field_name in keywords:
                     for kw in keywords[field_name]:
-                        pattern = rf"{kw}[：:]\s*(.+?)(?=\n\*\*|\n\n|$)"
-                        match = re.search(pattern, text, re.DOTALL)
-                        if match:
-                            data[field_name] = match.group(1).strip()
-                            break
+                        # 同时匹配 ": " 或 "：" 或 纯冒号后的内容
+                        for sep in ["[：:]\s*", "：\s*"]:
+                            pattern = rf"{kw}{sep}(.+?)(?=\n\*\*|\n\n|\*\*[A-Z]|$)"
+                            match = re.search(pattern, text, re.DOTALL)
+                            if match:
+                                extracted = match.group(1).strip()
+                                if len(extracted) >= 20:
+                                    data[field_name] = extracted
+                                    break
+                    if field_name in data:
+                        break
         
         elif field_name in ["price_target", "entry_price", "stop_loss"]:
             # Look for numbers that could be prices
@@ -250,7 +270,8 @@ def _extract_from_text(text: str, schema: Type[T]) -> T:
                 elif field_name in ["price_target", "entry_price", "stop_loss"]:
                     valid_data[field_name] = None
                 elif field_name in ["executive_summary", "rationale", "investment_thesis", "reasoning", "strategic_actions"]:
-                    valid_data[field_name] = text[:500] if text else "无法从分析中提取详细信息"
+                    # 从完整文本中提取，不截断（将上限从 500 提升到 5000）
+                    valid_data[field_name] = text[:5000] if text else "无法从分析中提取详细信息"
                 elif field_name == "time_horizon":
                     valid_data[field_name] = "1-3个月"
                 elif field_name == "position_sizing":

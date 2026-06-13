@@ -5,6 +5,7 @@
 #              entry_price（入场/出场建议价）、price_target_optimistic/pessimistic（情景目标）
 
 from langchain_openai import ChatOpenAI
+from typing import Optional, Dict, List, Any
 
 # 导入统一日志系统和图处理模块日志装饰器
 from tradingagents.utils.logging_init import get_logger
@@ -154,7 +155,14 @@ class SignalProcessor:
                     entry_price=prices.get('entry_price'),
                     price_target_optimistic=prices.get('price_target_optimistic'),
                     price_target_pessimistic=prices.get('price_target_pessimistic'),
+                    executive_summary=None,  # executive_summary 从 signal_text 中提取（见下方）
                 )
+
+                # 🔥 从 signal_text（render_pm_decision 输出的 markdown）中提取 executive_summary
+                # render_pm_decision 输出格式：**Executive Summary**: <内容>\n\n**Investment Thesis**:
+                exec_summary = self._extract_executive_summary_from_text(signal_text)
+                if exec_summary:
+                    result['executive_summary'] = exec_summary
 
                 # =========================================================================
                 # 🔥 后验验证：防止LLM捏造价格
@@ -483,7 +491,8 @@ class SignalProcessor:
     # =========================================================================
     def _build_decision_dict(self, action, target_price, confidence, risk_score, reasoning,
                            stop_loss_price=None, entry_price=None,
-                           price_target_optimistic=None, price_target_pessimistic=None) -> dict:
+                           price_target_optimistic=None, price_target_pessimistic=None,
+                           executive_summary=None) -> dict:
         """构建标准化的决策字典，包含多维度价格字段"""
         decision = {
             'action': action,
@@ -496,6 +505,7 @@ class SignalProcessor:
             'entry_price': entry_price,
             'price_target_optimistic': price_target_optimistic,
             'price_target_pessimistic': price_target_pessimistic,
+            'executive_summary': executive_summary,  # 🔥 执行摘要（来自 render_pm_decision markdown）
         }
 
         # 清理无效的价格值（None/null），保持简洁
@@ -507,6 +517,48 @@ class SignalProcessor:
                 cleaned[k] = v
 
         return cleaned
+
+    # =========================================================================
+    # 辅助方法：从 render_pm_decision markdown 中提取执行摘要
+    # =========================================================================
+    def _extract_executive_summary_from_text(self, text: str) -> Optional[str]:
+        """
+        从 render_pm_decision 输出的 markdown 文本中提取 Executive Summary。
+
+        render_pm_decision 输出格式：
+        **Rating**: Buy
+        **Executive Summary**: <内容段落>
+        **Investment Thesis**: <内容段落>
+        **Price Target**: ...
+        """
+        import re
+
+        if not text:
+            return None
+
+        # 尝试多种模式匹配 render_pm_decision 的输出格式
+        patterns = [
+            # 精确匹配 "**Executive Summary**:" 后面到下一个 ** 标题之前的内容（有空格版本）
+            r"\*\*Executive Summary\*\*:\s*(.+?)(?=\n\s*\n\s*\*\*|\n\s*\*\*[A-Z]|$)",
+            # 下划线版本
+            r"\*\*Executive_summary\*\*:\s*(.+?)(?=\n\s*\n\s*\*\*|\n\s*\*\*[A-Z]|$)",
+            # 不区分大小写的版本
+            r"\*\*executive summary\*\*:\s*(.+?)(?=\n\s*\n\s*\*\*|\n\s*\*\*[A-Z]|$)",
+            # 宽松匹配：到下一个 ** 或文档结尾
+            r"\*\*Executive Summary\*\*:\s*(.+?)(?=\n\s*\*\*|$)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                extracted = match.group(1).strip()
+                # 提取内容应至少有一定长度（有意义的内容 > 30 字符）
+                if len(extracted) >= 30:
+                    logger.debug(f"✅ [SignalProcessor] 提取 executive_summary 成功，长度={len(extracted)}")
+                    return extracted
+
+        logger.warning(f"⚠️ [SignalProcessor] 无法从文本中提取 executive_summary")
+        return None
 
     # =========================================================================
     # 辅助方法：智能推算目标价（备用方案）
@@ -663,11 +715,15 @@ class SignalProcessor:
             is_china = market_info['is_china']
             target_price = self._smart_price_estimation(text, action, is_china)
 
+        # 🔥 从文本中提取执行摘要
+        exec_summary = self._extract_executive_summary_from_text(text)
+
         result = self._build_decision_dict(
             action, target_price, 0.7, 0.5,
             '基于综合分析的投资建议（备用提取）',
             stop_loss_price=stop_loss_price, entry_price=entry_price,
-            price_target_optimistic=optimistic, price_target_pessimistic=pessimistic
+            price_target_optimistic=optimistic, price_target_pessimistic=pessimistic,
+            executive_summary=exec_summary
         )
 
         logger.info(f"✅ [SignalProcessor] 回退方案提取完成: action={result['action']}, target={result['target_price']}")

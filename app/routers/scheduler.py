@@ -8,7 +8,8 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import logging
 
 from app.routers.auth_db import get_current_user
 from app.services.scheduler_service import get_scheduler_service, SchedulerService
@@ -527,3 +528,250 @@ async def delete_execution(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除执行记录失败: {str(e)}")
+
+
+# ==================== 批量定时任务操作 API ====================
+
+class BatchUpdateRequest(BaseModel):
+    """批量更新任务请求"""
+    job_ids: List[str] = Field(..., description="任务ID列表", min_length=1, max_length=100)
+    enabled: Optional[bool] = Field(None, description="是否启用")
+    cron_expression: Optional[str] = Field(None, description="Cron 表达式")
+    reset_failures: bool = Field(False, description="是否重置失败计数")
+
+
+class BatchDeleteRequest(BaseModel):
+    """批量删除任务请求"""
+    job_ids: List[str] = Field(..., description="任务ID列表", min_length=1, max_length=100)
+
+
+class BatchTriggerRequest(BaseModel):
+    """批量触发任务请求"""
+    job_ids: List[str] = Field(..., description="任务ID列表", min_length=1, max_length=100)
+    force: bool = Field(False, description="是否强制执行")
+
+
+class CreateFromFavoritesRequest(BaseModel):
+    """从自选股创建定时任务请求"""
+    task_type: str = Field("analysis", description="任务类型")
+    cron_expression: str = Field(..., description="Cron 表达式")
+    analysis_type: Optional[str] = Field("comprehensive", description="分析类型")
+    tags: Optional[List[str]] = Field(None, description="自选股标签过滤")
+    include_portfolio_context: bool = Field(True, description="是否包含持仓上下文")
+
+
+@router.patch("/batch")
+async def batch_update_jobs(
+    request: BatchUpdateRequest,
+    user: dict = Depends(get_current_user),
+    service: SchedulerService = Depends(get_scheduler_service)
+):
+    """
+    批量更新定时任务（启用/禁用/修改周期/重置失败计数）
+
+    Args:
+        job_ids: 任务ID列表（最多100个）
+        enabled: 是否启用
+        cron_expression: Cron 表达式
+        reset_failures: 是否重置失败计数
+
+    Returns:
+        批量操作结果统计
+    """
+    # 检查管理员权限
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可以批量更新任务")
+
+    try:
+        # 限制批量操作的任务数量
+        if len(request.job_ids) > 100:
+            raise HTTPException(status_code=400, detail="批量操作最多支持100个任务")
+
+        results = await service.batch_update_jobs(
+            job_ids=request.job_ids,
+            enabled=request.enabled,
+            cron_expression=request.cron_expression,
+            reset_failures=request.reset_failures
+        )
+        return ok(data=results, message=f"批量更新完成: 成功 {results['success']}/{results['total']}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"批量更新任务失败: {str(e)}")
+
+
+@router.post("/batch/delete")
+async def batch_delete_jobs(
+    request: BatchDeleteRequest,
+    user: dict = Depends(get_current_user),
+    service: SchedulerService = Depends(get_scheduler_service)
+):
+    """
+    批量删除定时任务
+
+    Args:
+        job_ids: 任务ID列表（最多100个）
+
+    Returns:
+        批量操作结果统计
+    """
+    # 检查管理员权限
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可以批量删除任务")
+
+    try:
+        # 限制批量操作的任务数量
+        if len(request.job_ids) > 100:
+            raise HTTPException(status_code=400, detail="批量操作最多支持100个任务")
+
+        results = await service.batch_delete_jobs(job_ids=request.job_ids)
+        return ok(data=results, message=f"批量删除完成: 成功 {results['success']}/{results['total']}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"批量删除任务失败: {str(e)}")
+
+
+@router.post("/batch/trigger")
+async def batch_trigger_jobs(
+    request: BatchTriggerRequest,
+    user: dict = Depends(get_current_user),
+    service: SchedulerService = Depends(get_scheduler_service)
+):
+    """
+    手动触发批量定时任务
+
+    Args:
+        job_ids: 任务ID列表（最多100个）
+        force: 是否强制执行
+
+    Returns:
+        批量操作结果统计
+    """
+    # 检查管理员权限
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可以手动触发任务")
+
+    try:
+        # 限制批量操作的任务数量
+        if len(request.job_ids) > 100:
+            raise HTTPException(status_code=400, detail="批量操作最多支持100个任务")
+
+        # 构建 kwargs
+        kwargs = {"force": request.force} if request.force else None
+
+        results = await service.batch_trigger_jobs(
+            job_ids=request.job_ids,
+            kwargs=kwargs
+        )
+        return ok(data=results, message=f"批量触发完成: 成功 {results['success']}/{results['total']}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"批量触发任务失败: {str(e)}")
+
+
+@router.post("/from-favorites")
+async def create_jobs_from_favorites(
+    request: CreateFromFavoritesRequest,
+    user: dict = Depends(get_current_user),
+    service: SchedulerService = Depends(get_scheduler_service)
+):
+    """
+    从自选股批量创建定时任务
+
+    根据用户自选股创建对应的定时分析任务，支持按标签过滤
+
+    Args:
+        task_type: 任务类型（默认 analysis）
+        cron_expression: Cron 表达式（如 "0 9 * * 1-5" 表示工作日9点）
+        analysis_type: 分析类型（默认 comprehensive）
+        tags: 自选股标签过滤（可选）
+        include_portfolio_context: 是否包含持仓上下文
+
+    Returns:
+        创建结果统计
+    """
+    try:
+        logger.info(f"📋 从自选股创建定时任务: user_id={user['id']}, cron={request.cron_expression}, tags={request.tags}")
+
+        results = await service.create_jobs_from_favorites(
+            user_id=user["id"],
+            task_type=request.task_type,
+            cron_expression=request.cron_expression,
+            analysis_type=request.analysis_type,
+            tags=request.tags,
+            include_portfolio_context=request.include_portfolio_context
+        )
+
+        message = f"从自选股创建任务完成: 成功 {results['success']}/{results['total']}"
+        if results.get("errors"):
+            message += f"，失败原因: {results['errors'][:3]}"  # 只显示前3个错误
+
+        return ok(data=results, message=message)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 从自选股创建定时任务失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"从自选股创建定时任务失败: {str(e)}")
+
+
+@router.get("/jobs-with-metadata")
+async def list_jobs_with_metadata(
+    user: dict = Depends(get_current_user),
+    service: SchedulerService = Depends(get_scheduler_service),
+    limit: int = Query(50, ge=1, le=200, description="返回数量限制"),
+    offset: int = Query(0, ge=0, description="偏移量")
+):
+    """
+    获取所有定时任务列表（包含详细元数据）
+
+    返回任务列表及其关联的元数据，包括失败计数、持仓上下文等
+
+    Args:
+        limit: 返回数量限制
+        offset: 偏移量
+
+    Returns:
+        任务列表，包含任务ID、名称、状态、下次执行时间及详细元数据
+    """
+    try:
+        jobs = await service.list_jobs()
+
+        # 为每个任务获取元数据
+        enriched_jobs = []
+        for job in jobs:
+            job_id = job.get("id")
+            if job_id:
+                metadata = await service._get_job_metadata(job_id)
+                if metadata:
+                    job["metadata"] = {
+                        "display_name": metadata.get("display_name"),
+                        "description": metadata.get("description"),
+                        "consecutive_failures": metadata.get("consecutive_failures", 0),
+                        "max_consecutive_failures": metadata.get("max_consecutive_failures", 3),
+                        "last_success_at": metadata.get("last_success_at"),
+                        "last_failure_at": metadata.get("last_failure_at"),
+                        "enabled": metadata.get("enabled", True),
+                        "portfolio_context": metadata.get("portfolio_context"),
+                        "task_type": metadata.get("task_type"),
+                        "symbols": metadata.get("symbols", [])
+                    }
+                else:
+                    job["metadata"] = None
+            enriched_jobs.append(job)
+
+        # 分页
+        paginated_jobs = enriched_jobs[offset:offset + limit]
+
+        return ok(
+            data={
+                "items": paginated_jobs,
+                "total": len(enriched_jobs),
+                "limit": limit,
+                "offset": offset
+            },
+            message=f"获取到 {len(paginated_jobs)} 个定时任务"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")

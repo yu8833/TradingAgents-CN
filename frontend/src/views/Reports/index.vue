@@ -73,7 +73,7 @@
       >
         <el-table-column type="selection" width="55" />
         
-        <el-table-column prop="title" label="报告标题" min-width="200">
+        <el-table-column prop="title" label="报告标题" min-width="220">
           <template #default="{ row }">
             <div class="report-title">
               <el-link type="primary" @click="viewReport(row)">
@@ -85,37 +85,42 @@
             </div>
           </template>
         </el-table-column>
-        
-        <el-table-column prop="type" label="报告类型" width="120">
+
+        <el-table-column label="决策建议" width="110">
           <template #default="{ row }">
-            <el-tag :type="getTypeColor(row.type)">
-              {{ getTypeText(row.type) }}
+            <el-tag v-if="row.action" :type="getActionType(row.action)" effect="dark" size="small">
+              {{ row.action }}
             </el-tag>
-          </template>
-        </el-table-column>
-        
-        <el-table-column prop="format" label="格式" width="100">
-          <template #default="{ row }">
-            <el-tag size="small" effect="plain">
-              {{ row.format.toUpperCase() }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">
-              {{ getStatusText(row.status) }}
-            </el-tag>
+            <span v-else style="color: var(--el-text-color-placeholder); font-size: 13px;">-</span>
           </template>
         </el-table-column>
 
-        <el-table-column prop="model_info" label="分析模型" width="180">
+        <el-table-column label="置信度" width="110">
           <template #default="{ row }">
-            <el-tag v-if="row.model_info && row.model_info !== 'Unknown'" type="info" size="small">
-              {{ row.model_info }}
-            </el-tag>
-            <span v-else class="text-gray">-</span>
+            <el-progress
+              v-if="row.confidence && row.confidence > 0"
+              :percentage="row.confidence"
+              :stroke-width="10"
+              :color="getConfidenceColor(row.confidence)"
+              style="max-width: 90px;"
+            />
+            <span v-else style="color: var(--el-text-color-placeholder); font-size: 13px;">-</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="目标价 / 止损价" width="160">
+          <template #default="{ row }">
+            <div class="price-info">
+              <div v-if="row.target_price" class="price-row">
+                <span class="price-label target">目标:</span>
+                <span class="price-value">{{ formatPrice(row.target_price) }}</span>
+              </div>
+              <div v-if="row.stop_loss" class="price-row">
+                <span class="price-label stop">止损:</span>
+                <span class="price-value">{{ formatPrice(row.stop_loss) }}</span>
+              </div>
+              <span v-if="!row.target_price && !row.stop_loss" style="color: var(--el-text-color-placeholder); font-size: 13px;">-</span>
+            </div>
           </template>
         </el-table-column>
 
@@ -131,7 +136,6 @@
               查看
             </el-button>
             <el-dropdown
-              v-if="row.status === 'completed'"
               trigger="click"
               @command="(format) => downloadReport(row, format)"
             >
@@ -141,16 +145,16 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="markdown">
-                    <el-icon><document /></el-icon> Markdown
+                    <el-icon><Document /></el-icon> Markdown
                   </el-dropdown-item>
                   <el-dropdown-item command="docx">
-                    <el-icon><document /></el-icon> Word 文档
+                    <el-icon><Document /></el-icon> Word 文档
                   </el-dropdown-item>
                   <el-dropdown-item command="pdf">
-                    <el-icon><document /></el-icon> PDF
+                    <el-icon><Document /></el-icon> PDF
                   </el-dropdown-item>
                   <el-dropdown-item command="json" divided>
-                    <el-icon><document /></el-icon> JSON (原始数据)
+                    <el-icon><Document /></el-icon> JSON (原始数据)
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -196,17 +200,15 @@ import {
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
-type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
-
 type ReportListItem = {
   id: string
   title: string
   stock_code: string
   stock_name: string
-  type: string
-  format: string
-  status: string
-  model_info?: string
+  action?: string
+  confidence?: number
+  target_price?: string | number
+  stop_loss?: string | number
   created_at: string
   analysis_date?: string
 }
@@ -430,42 +432,6 @@ const refreshReports = () => {
   fetchReports()
 }
 
-const getTypeColor = (type: string): TagType => {
-  const colorMap: Record<string, TagType> = {
-    single: 'primary',
-    batch: 'success',
-    portfolio: 'warning'
-  }
-  return colorMap[type] || 'info'
-}
-
-const getTypeText = (type: string) => {
-  const textMap: Record<string, string> = {
-    single: '单股分析',
-    batch: '批量分析',
-    portfolio: '投资组合'
-  }
-  return textMap[type] || type
-}
-
-const getStatusType = (status: string): TagType => {
-  const statusMap: Record<string, TagType> = {
-    completed: 'success',
-    processing: 'warning',
-    failed: 'danger'
-  }
-  return statusMap[status] || 'info'
-}
-
-const getStatusText = (status: string) => {
-  const statusMap: Record<string, string> = {
-    completed: '已完成',
-    processing: '生成中',
-    failed: '失败'
-  }
-  return statusMap[status] || status
-}
-
 import { formatDateTime } from '@/utils/datetime'
 
 const formatTime = (time: string) => {
@@ -481,6 +447,34 @@ const handleSizeChange = (size: number) => {
 const handleCurrentChange = (page: number) => {
   currentPage.value = page
   fetchReports()
+}
+
+// 🔥 决策建议标签颜色
+const getActionType = (action: string): string => {
+  const typeMap: Record<string, string> = {
+    '买入': 'success',
+    '强烈买入': 'success',
+    '卖出': 'danger',
+    '强烈卖出': 'danger',
+    '持有': 'warning'
+  }
+  return typeMap[action] || 'info'
+}
+
+// 🔥 置信度颜色
+const getConfidenceColor = (confidence: number): string => {
+  if (confidence >= 80) return '#67c23a'
+  if (confidence >= 60) return '#409eff'
+  if (confidence >= 40) return '#e6a23c'
+  return '#909399'
+}
+
+// 🔥 格式化价格
+const formatPrice = (price: string | number): string => {
+  if (!price) return '-'
+  const num = typeof price === 'number' ? price : parseFloat(String(price).replace(/[^\d.-]/g, ''))
+  if (isNaN(num)) return String(price)
+  return num.toFixed(2)
 }
 
 // 生命周期
@@ -526,6 +520,33 @@ onMounted(() => {
         font-size: 12px;
         color: var(--el-text-color-placeholder);
         margin-top: 2px;
+      }
+    }
+
+    .price-info {
+      font-size: 13px;
+
+      .price-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        line-height: 1.6;
+      }
+
+      .price-label {
+        font-weight: 600;
+        font-size: 12px;
+
+        &.target {
+          color: var(--el-color-success);
+        }
+        &.stop {
+          color: var(--el-color-danger);
+        }
+      }
+
+      .price-value {
+        color: var(--el-text-color-primary);
       }
     }
 

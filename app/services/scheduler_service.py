@@ -6,7 +6,7 @@
 """
 
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.job import Job
@@ -881,6 +881,9 @@ class SchedulerService:
                     elif status == "failed":
                         logger.error(f"❌ [任务执行] {job_name} 执行失败: {error_message}")
 
+                    # 处理连续失败计数和自动停用
+                    await self._handle_job_failure_tracking(job_id, status)
+
                     return
 
             # 如果没有找到 running 记录，或者是 running/missed 状态，插入新记录
@@ -925,8 +928,448 @@ class SchedulerService:
                 trigger_type = "手动触发" if is_manual else "自动触发"
                 logger.info(f"🔄 [任务执行] {job_name} 开始执行 ({trigger_type})，进度: {progress}%")
 
+            # 处理连续失败计数和自动停用
+            if status in ["success", "failed"]:
+                await self._handle_job_failure_tracking(job_id, status)
+
         except Exception as e:
             logger.error(f"❌ 记录任务执行历史失败: {e}")
+
+    async def _handle_job_failure_tracking(self, job_id: str, status: str):
+        """
+        处理任务失败追踪和自动停用逻辑
+
+        Args:
+            job_id: 任务ID
+            status: 执行状态 (success/failed)
+        """
+        try:
+            db = self._get_db()
+
+            # 获取任务的元数据
+            metadata = await self._get_job_metadata(job_id)
+            if not metadata:
+                metadata = {}
+
+            # 获取当前失败计数
+            consecutive_failures = metadata.get("consecutive_failures", 0)
+            max_consecutive_failures = metadata.get("max_consecutive_failures", 3)
+
+            if status == "success":
+                # 成功执行，重置失败计数
+                if consecutive_failures > 0:
+                    await self._update_job_metadata_field(job_id, "consecutive_failures", 0)
+                    await self._update_job_metadata_field(job_id, "last_success_at", get_utc8_now())
+                    logger.info(f"✅ 任务 {job_id} 执行成功，失败计数已重置")
+            elif status == "failed":
+                # 执行失败，增加失败计数
+                consecutive_failures += 1
+                await self._update_job_metadata_field(job_id, "consecutive_failures", consecutive_failures)
+                await self._update_job_metadata_field(job_id, "last_failure_at", get_utc8_now())
+
+                logger.warning(f"⚠️ 任务 {job_id} 执行失败，当前连续失败次数: {consecutive_failures}/{max_consecutive_failures}")
+
+                # 检查是否达到自动停用阈值
+                if consecutive_failures >= max_consecutive_failures:
+                    # 暂停任务
+                    self.scheduler.pause_job(job_id)
+                    await self._record_job_action(job_id, "auto_disable", "success", f"连续失败 {consecutive_failures} 次，自动停用")
+                    await self._update_job_metadata_field(job_id, "enabled", False)
+                    logger.warning(f"⛔ 任务 {job_id} 连续失败 {consecutive_failures} 次，已自动停用")
+
+        except Exception as e:
+            logger.error(f"❌ 处理任务失败追踪失败: {e}")
+
+    async def _update_job_metadata_field(self, job_id: str, field: str, value: Any):
+        """
+        更新任务的元数据字段
+
+        Args:
+            job_id: 任务ID
+            field: 字段名
+            value: 字段值
+        """
+        try:
+            db = self._get_db()
+            await db.scheduler_metadata.update_one(
+                {"job_id": job_id},
+                {"$set": {field: value, "updated_at": get_utc8_now()}},
+                upsert=True
+            )
+        except Exception as e:
+            logger.error(f"❌ 更新任务 {job_id} 元数据字段 {field} 失败: {e}")
+
+    async def get_user_portfolio_context(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        获取用户的持仓上下文
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            持仓上下文字典，包含持仓列表
+        """
+        try:
+            from app.services.portfolio_service import portfolio_service
+
+            positions = await portfolio_service.get_positions(user_id)
+
+            if not positions:
+                return None
+
+            # 转换为持仓上下文格式
+            portfolio_context = {
+                "positions": [
+                    {
+                        "symbol": pos.get("symbol"),
+                        "stock_name": pos.get("stock_name"),
+                        "quantity": pos.get("quantity"),
+                        "cost_price": pos.get("cost_price"),
+                        "position_ratio": pos.get("position_ratio"),
+                        "buy_date": pos.get("buy_date")
+                    }
+                    for pos in positions
+                ],
+                "total_positions": len(positions)
+            }
+
+            logger.info(f"📊 获取用户 {user_id} 持仓上下文: {len(positions)} 只股票")
+            return portfolio_context
+
+        except Exception as e:
+            logger.error(f"❌ 获取用户 {user_id} 持仓上下文失败: {e}")
+            return None
+
+    async def get_job_portfolio_context(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """
+        获取任务的持仓上下文
+
+        Args:
+            job_id: 任务ID
+
+        Returns:
+            持仓上下文字典
+        """
+        try:
+            metadata = await self._get_job_metadata(job_id)
+            if metadata and metadata.get("portfolio_context"):
+                return metadata.get("portfolio_context")
+            return None
+        except Exception as e:
+            logger.error(f"❌ 获取任务 {job_id} 持仓上下文失败: {e}")
+            return None
+
+    async def update_job_portfolio_context(self, job_id: str, portfolio_context: Dict[str, Any]) -> bool:
+        """
+        更新任务的持仓上下文
+
+        Args:
+            job_id: 任务ID
+            portfolio_context: 持仓上下文
+
+        Returns:
+            是否成功
+        """
+        try:
+            db = self._get_db()
+            await db.scheduler_metadata.update_one(
+                {"job_id": job_id},
+                {
+                    "$set": {
+                        "portfolio_context": portfolio_context,
+                        "updated_at": get_utc8_now()
+                    }
+                },
+                upsert=True
+            )
+            logger.info(f"✅ 任务 {job_id} 持仓上下文已更新")
+            return True
+        except Exception as e:
+            logger.error(f"❌ 更新任务 {job_id} 持仓上下文失败: {e}")
+            return False
+
+    async def batch_update_jobs(
+        self,
+        job_ids: List[str],
+        enabled: Optional[bool] = None,
+        cron_expression: Optional[str] = None,
+        reset_failures: bool = False
+    ) -> Dict[str, Any]:
+        """
+        批量更新任务
+
+        Args:
+            job_ids: 任务ID列表
+            enabled: 是否启用
+            cron_expression: Cron 表达式
+            reset_failures: 是否重置失败计数
+
+        Returns:
+            操作结果统计
+        """
+        results = {
+            "total": len(job_ids),
+            "success": 0,
+            "failed": 0,
+            "errors": []
+        }
+
+        for job_id in job_ids:
+            try:
+                job = self.scheduler.get_job(job_id)
+                if not job:
+                    results["failed"] += 1
+                    results["errors"].append({"job_id": job_id, "error": "任务不存在"})
+                    continue
+
+                # 更新启用/禁用状态
+                if enabled is not None:
+                    if enabled:
+                        self.scheduler.resume_job(job_id)
+                    else:
+                        self.scheduler.pause_job(job_id)
+                    await self._update_job_metadata_field(job_id, "enabled", enabled)
+                    await self._record_job_action(job_id, "batch_update", "success", f"设置enabled={enabled}")
+
+                # 重置失败计数
+                if reset_failures:
+                    await self._update_job_metadata_field(job_id, "consecutive_failures", 0)
+                    await self._record_job_action(job_id, "batch_update", "success", "重置失败计数")
+
+                results["success"] += 1
+
+            except Exception as e:
+                results["failed"] += 1
+                results["errors"].append({"job_id": job_id, "error": str(e)})
+                logger.error(f"❌ 批量更新任务 {job_id} 失败: {e}")
+
+        logger.info(f"✅ 批量更新任务完成: 成功 {results['success']}/{results['total']}")
+        return results
+
+    async def batch_delete_jobs(self, job_ids: List[str]) -> Dict[str, Any]:
+        """
+        批量删除任务
+
+        Args:
+            job_ids: 任务ID列表
+
+        Returns:
+            操作结果统计
+        """
+        results = {
+            "total": len(job_ids),
+            "success": 0,
+            "failed": 0,
+            "errors": []
+        }
+
+        for job_id in job_ids:
+            try:
+                job = self.scheduler.get_job(job_id)
+                if not job:
+                    results["failed"] += 1
+                    results["errors"].append({"job_id": job_id, "error": "任务不存在"})
+                    continue
+
+                # 移除任务
+                self.scheduler.remove_job(job_id)
+
+                # 删除元数据
+                db = self._get_db()
+                await db.scheduler_metadata.delete_many({"job_id": job_id})
+
+                results["success"] += 1
+                logger.info(f"✅ 批量删除任务 {job_id} 成功")
+
+            except Exception as e:
+                results["failed"] += 1
+                results["errors"].append({"job_id": job_id, "error": str(e)})
+                logger.error(f"❌ 批量删除任务 {job_id} 失败: {e}")
+
+        logger.info(f"✅ 批量删除任务完成: 成功 {results['success']}/{results['total']}")
+        return results
+
+    async def batch_trigger_jobs(
+        self,
+        job_ids: List[str],
+        kwargs: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        批量触发任务
+
+        Args:
+            job_ids: 任务ID列表
+            kwargs: 传递给任务函数的参数
+
+        Returns:
+            操作结果统计
+        """
+        results = {
+            "total": len(job_ids),
+            "success": 0,
+            "failed": 0,
+            "errors": []
+        }
+
+        for job_id in job_ids:
+            try:
+                success = await self.trigger_job(job_id, kwargs=kwargs)
+                if success:
+                    results["success"] += 1
+                else:
+                    results["failed"] += 1
+                    results["errors"].append({"job_id": job_id, "error": "触发失败"})
+            except Exception as e:
+                results["failed"] += 1
+                results["errors"].append({"job_id": job_id, "error": str(e)})
+                logger.error(f"❌ 批量触发任务 {job_id} 失败: {e}")
+
+        logger.info(f"✅ 批量触发任务完成: 成功 {results['success']}/{results['total']}")
+        return results
+
+    async def create_jobs_from_favorites(
+        self,
+        user_id: str,
+        task_type: str = "analysis",
+        cron_expression: str = "0 9 * * 1-5",
+        analysis_type: str = "comprehensive",
+        tags: Optional[List[str]] = None,
+        include_portfolio_context: bool = True
+    ) -> Dict[str, Any]:
+        """
+        从自选股批量创建定时任务
+
+        Args:
+            user_id: 用户ID
+            task_type: 任务类型
+            cron_expression: Cron 表达式
+            analysis_type: 分析类型
+            tags: 自选股标签过滤
+            include_portfolio_context: 是否包含持仓上下文
+
+        Returns:
+            创建结果统计
+        """
+        try:
+            # 获取用户的自选股
+            from app.services.favorites_service import favorites_service
+            favorites = await favorites_service.get_user_favorites(user_id)
+
+            if not favorites:
+                return {
+                    "total": 0,
+                    "success": 0,
+                    "failed": 0,
+                    "errors": ["用户没有自选股"]
+                }
+
+            # 根据标签过滤
+            if tags:
+                favorites = [f for f in favorites if any(t in f.get("tags", []) for t in tags)]
+
+            if not favorites:
+                return {
+                    "total": 0,
+                    "success": 0,
+                    "failed": 0,
+                    "errors": ["没有匹配标签的自选股"]
+                }
+
+            # 获取持仓上下文
+            portfolio_context = None
+            if include_portfolio_context:
+                portfolio_context = await self.get_user_portfolio_context(user_id)
+
+            results = {
+                "total": len(favorites),
+                "success": 0,
+                "failed": 0,
+                "created_job_ids": [],
+                "errors": []
+            }
+
+            # 为每只自选股创建定时任务
+            for fav in favorites:
+                try:
+                    stock_code = fav.get("stock_code") or fav.get("symbol")
+                    stock_name = fav.get("stock_name")
+
+                    if not stock_code:
+                        results["failed"] += 1
+                        results["errors"].append({"stock": stock_name, "error": "股票代码无效"})
+                        continue
+
+                    # 生成任务ID
+                    job_id = f"fav_analysis_{stock_code}_{int(datetime.now().timestamp())}"
+
+                    # 构建任务参数
+                    job_kwargs = {
+                        "symbols": [stock_code],
+                        "analysis_type": analysis_type,
+                        "user_id": user_id
+                    }
+
+                    # 添加持仓上下文
+                    if portfolio_context and "positions" in portfolio_context:
+                        # 找到该股票对应的持仓
+                        position = next(
+                            (p for p in portfolio_context["positions"] if p.get("symbol") == stock_code),
+                            None
+                        )
+                        if position:
+                            job_kwargs["portfolio_context"] = {
+                                "positions": [position]
+                            }
+
+                    # 创建定时任务
+                    # 注意：这里只是记录任务信息到元数据集合，实际任务创建需要调度器支持
+                    db = self._get_db()
+                    task_metadata = {
+                        "job_id": job_id,
+                        "name": f"自选股分析-{stock_name}",
+                        "task_type": task_type,
+                        "cron_expression": cron_expression,
+                        "symbols": [stock_code],
+                        "params": job_kwargs,
+                        "display_name": f"分析 {stock_name}",
+                        "description": f"自选股 {stock_name} ({stock_code}) 的定期分析任务",
+                        "enabled": True,
+                        "consecutive_failures": 0,
+                        "max_consecutive_failures": 3,
+                        "user_id": user_id,
+                        "created_at": get_utc8_now(),
+                        "updated_at": get_utc8_now()
+                    }
+
+                    if portfolio_context:
+                        task_metadata["portfolio_context"] = portfolio_context
+
+                    await db.scheduler_metadata.update_one(
+                        {"job_id": job_id},
+                        {"$set": task_metadata},
+                        upsert=True
+                    )
+
+                    results["success"] += 1
+                    results["created_job_ids"].append(job_id)
+                    logger.info(f"✅ 从自选股创建任务成功: {stock_name} ({stock_code}) -> {job_id}")
+
+                except Exception as e:
+                    results["failed"] += 1
+                    results["errors"].append({"stock": fav.get("stock_name"), "error": str(e)})
+                    logger.error(f"❌ 从自选股创建任务失败: {fav.get('stock_name')} - {e}")
+
+            logger.info(f"✅ 从自选股批量创建任务完成: 成功 {results['success']}/{results['total']}")
+            return results
+
+        except Exception as e:
+            logger.error(f"❌ 从自选股批量创建任务失败: {e}")
+            return {
+                "total": 0,
+                "success": 0,
+                "failed": 0,
+                "errors": [str(e)]
+            }
 
     async def _record_job_action(
         self,

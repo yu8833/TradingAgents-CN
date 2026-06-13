@@ -269,6 +269,11 @@ class AKShareAdapter(DataSourceAdapter):
                 lo = self._safe_float(row.get(low_col)) if low_col else None
                 pre = self._safe_float(row.get(pre_close_col)) if pre_close_col else None
                 vol = self._safe_float(row.get(volume_col)) if volume_col else None
+                # 🔥 单位统一：东方财富 "成交量" 单位为 手 → 股（×100）；"成交额" 为 元 → 万元（÷10000）
+                if vol is not None:
+                    vol = vol * 100
+                if amt is not None:
+                    amt = amt / 10000.0
 
                 # 🔥 日志：记录AKShare返回的成交量
                 if code in ["300750", "000001", "600000"]:  # 只记录几个示例股票
@@ -314,8 +319,8 @@ class AKShareAdapter(DataSourceAdapter):
                         "high": self._safe_float(row.get('最高') or row.get('high')),
                         "low": self._safe_float(row.get('最低') or row.get('low')),
                         "close": self._safe_float(row.get('收盘') or row.get('close')),
-                        "volume": self._safe_float(row.get('成交量') or row.get('volume')),
-                        "amount": self._safe_float(row.get('成交额') or row.get('amount')),
+                        "volume": (lambda v: v * 100 if v is not None else None)(self._safe_float(row.get('成交量') or row.get('volume'))),
+                        "amount": (lambda a: a / 10000.0 if a is not None else None)(self._safe_float(row.get('成交额') or row.get('amount'))),
                     })
                 return items
             else:
@@ -334,8 +339,8 @@ class AKShareAdapter(DataSourceAdapter):
                         "high": self._safe_float(row.get('最高') or row.get('high')),
                         "low": self._safe_float(row.get('最低') or row.get('low')),
                         "close": self._safe_float(row.get('收盘') or row.get('close')),
-                        "volume": self._safe_float(row.get('成交量') or row.get('volume')),
-                        "amount": self._safe_float(row.get('成交额') or row.get('amount')),
+                        "volume": (lambda v: v * 100 if v is not None else None)(self._safe_float(row.get('成交量') or row.get('volume'))),
+                        "amount": (lambda a: a / 10000.0 if a is not None else None)(self._safe_float(row.get('成交额') or row.get('amount'))),
                     })
                 return items
         except Exception as e:

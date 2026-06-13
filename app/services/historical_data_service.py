@@ -103,19 +103,44 @@ class HistoricalDataService:
 
             # ⏱️ 性能监控：单位转换
             convert_start = datetime.now()
-            # 🔥 在 DataFrame 层面做单位转换（向量化操作，比逐行快得多）
+            # 🔥 统一单位转换（按数据源）—— 目标：amount=万元，volume=股
+            # Tushare 原始单位：amount=千元，volume=手
             if data_source == "tushare":
-                # 成交额：千元 -> 元
+                # 千元 → 万元（×0.1）
                 if 'amount' in data.columns:
-                    data['amount'] = data['amount'] * 1000
+                    data['amount'] = data['amount'] * 0.1
                 elif 'turnover' in data.columns:
-                    data['turnover'] = data['turnover'] * 1000
+                    data['turnover'] = data['turnover'] * 0.1
 
-                # 成交量：手 -> 股
+                # 手 → 股
                 if 'volume' in data.columns:
                     data['volume'] = data['volume'] * 100
                 elif 'vol' in data.columns:
                     data['vol'] = data['vol'] * 100
+
+            # AKShare 原始单位：amount=元，volume=手（stock_zh_a_spot_em / stock_zh_a_hist）
+            elif data_source == "akshare":
+                # 元 → 万元
+                if 'amount' in data.columns:
+                    data['amount'] = data['amount'] / 10000.0
+                elif 'turnover' in data.columns:
+                    data['turnover'] = data['turnover'] / 10000.0
+
+                # 手 → 股
+                if 'volume' in data.columns:
+                    data['volume'] = data['volume'] * 100
+                elif 'vol' in data.columns:
+                    data['vol'] = data['vol'] * 100
+
+            # BaoStock 原始单位：amount=元，volume=股
+            elif data_source == "baostock":
+                # 元 → 万元
+                if 'amount' in data.columns:
+                    data['amount'] = data['amount'] / 10000.0
+                elif 'turnover' in data.columns:
+                    data['turnover'] = data['turnover'] / 10000.0
+
+                # volume 已经是股，无需转换
 
             # 🔥 港股/美股数据：添加 pre_close 字段（从前一天的 close 获取）
             if market in ["HK", "US"] and 'pre_close' not in data.columns and 'close' in data.columns:

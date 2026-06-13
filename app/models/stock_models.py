@@ -243,3 +243,91 @@ class StockListResponse(BaseModel):
     page: int = 1
     page_size: int = 20
     message: str = ""
+
+
+class ScheduledTask(BaseModel):
+    """
+    定时任务数据模型
+    用于存储定时任务的配置和状态信息
+    """
+    # 任务标识
+    job_id: str = Field(..., description="任务ID")
+    
+    # 任务配置
+    name: str = Field(..., description="任务名称")
+    task_type: str = Field(..., description="任务类型，如 analysis, sync, report 等")
+    cron_expression: Optional[str] = Field(None, description="Cron 表达式")
+    
+    # 任务参数
+    symbols: Optional[List[str]] = Field(None, description="股票代码列表")
+    params: Optional[Dict[str, Any]] = Field(None, description="任务参数")
+    
+    # 状态信息
+    enabled: bool = Field(True, description="是否启用")
+    consecutive_failures: int = Field(0, description="连续失败次数")
+    max_consecutive_failures: int = Field(3, description="最大连续失败次数，达到后自动禁用")
+    last_success_at: Optional[datetime] = Field(None, description="上次成功执行时间")
+    last_failure_at: Optional[datetime] = Field(None, description="上次失败执行时间")
+    
+    # 持仓上下文
+    portfolio_context: Optional[Dict[str, Any]] = Field(None, description="持仓上下文（股票、成本价、仓位等）")
+    
+    # 用户关联
+    user_id: Optional[str] = Field(None, description="用户ID")
+    
+    # 元数据
+    display_name: Optional[str] = Field(None, description="显示名称")
+    description: Optional[str] = Field(None, description="任务描述")
+    
+    # 时间戳
+    created_at: Optional[datetime] = Field(None, description="创建时间")
+    updated_at: Optional[datetime] = Field(None, description="更新时间")
+    
+    class Config:
+        from_attributes = True
+        json_schema_extra = {
+            "example": {
+                "job_id": "stock_analysis_000001",
+                "name": "股票分析任务",
+                "task_type": "analysis",
+                "cron_expression": "0 9 * * 1-5",
+                "symbols": ["000001.SZ"],
+                "enabled": True,
+                "consecutive_failures": 0,
+                "max_consecutive_failures": 3,
+                "portfolio_context": {
+                    "positions": [
+                        {"symbol": "000001.SZ", "stock_name": "平安银行", "quantity": 1000, "cost_price": 12.50}
+                    ]
+                },
+                "user_id": "user123"
+            }
+        }
+
+
+class BatchJobUpdateRequest(BaseModel):
+    """批量更新任务请求"""
+    job_ids: List[str] = Field(..., description="任务ID列表", min_length=1)
+    enabled: Optional[bool] = Field(None, description="是否启用")
+    cron_expression: Optional[str] = Field(None, description="Cron 表达式")
+    consecutive_failures: Optional[int] = Field(None, description="重置连续失败计数")
+
+
+class BatchJobDeleteRequest(BaseModel):
+    """批量删除任务请求"""
+    job_ids: List[str] = Field(..., description="任务ID列表", min_length=1)
+
+
+class BatchJobTriggerRequest(BaseModel):
+    """批量触发任务请求"""
+    job_ids: List[str] = Field(..., description="任务ID列表", min_length=1)
+    force: bool = Field(False, description="是否强制执行")
+
+
+class CreateScheduledTaskFromFavoritesRequest(BaseModel):
+    """从自选股创建定时任务请求"""
+    task_type: str = Field("analysis", description="任务类型")
+    cron_expression: str = Field(..., description="Cron 表达式")
+    analysis_type: Optional[str] = Field("comprehensive", description="分析类型")
+    tags: Optional[List[str]] = Field(None, description="自选股标签过滤")
+    include_portfolio_context: bool = Field(True, description="是否包含持仓上下文")

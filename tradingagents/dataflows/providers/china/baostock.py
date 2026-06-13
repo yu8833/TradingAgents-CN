@@ -244,7 +244,7 @@ class BaoStockProvider(BaseStockDataProvider):
                         start_date=start_date,
                         end_date=end_date,
                         frequency="d",
-                        adjustflag="3"  # 不复权
+                        adjustflag="2"  # 前复权（原 3 为不复权，会导致除权后价格跳变）
                     )
 
                     if rs.error_code != '0':
@@ -387,7 +387,7 @@ class BaoStockProvider(BaseStockDataProvider):
                         start_date=start_date,
                         end_date=end_date,
                         frequency="d",
-                        adjustflag="3"
+                        adjustflag="2"  # 前复权（原 3 为不复权）
                     )
                     
                     if rs.error_code != '0':
@@ -402,6 +402,9 @@ class BaoStockProvider(BaseStockDataProvider):
                     
                     # 取最新一条数据
                     latest_row = data_list[-1]
+                    # 🔥 amount 单位转换：BaoStock amount 为 元 → 万元（÷10000）
+                    raw_amount = self._safe_float(latest_row[8])
+                    amount_wan = raw_amount / 10000.0 if raw_amount is not None else None
                     return {
                         "name": f"股票{code}",
                         "open": self._safe_float(latest_row[2]),
@@ -410,7 +413,7 @@ class BaoStockProvider(BaseStockDataProvider):
                         "close": self._safe_float(latest_row[5]),
                         "preclose": self._safe_float(latest_row[6]),
                         "volume": self._safe_int(latest_row[7]),
-                        "amount": self._safe_float(latest_row[8]),
+                        "amount": amount_wan,
                         "change_percent": self._safe_float(latest_row[9]),
                         "change": self._safe_float(latest_row[5]) - self._safe_float(latest_row[6])
                     }

@@ -193,14 +193,21 @@ class TradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "social", "news", "fundamentals"],
+        selected_analysts=["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"],
         debug=False,
         config: Dict[str, Any] = None,
     ):
         """Initialize the trading agents graph and components.
 
         Args:
-            selected_analysts: List of analyst types to include
+            selected_analysts: List of analyst types to include. Options are:
+                - "market": Market analyst (市场分析师)
+                - "social": Social media analyst (社交媒体分析师)
+                - "news": News analyst (新闻分析师)
+                - "fundamentals": Fundamentals analyst (基本面分析师)
+                - "policy": Policy analyst (政策分析师) - A股特有
+                - "hot_money": Hot Money Tracker (游资追踪师) - A股特有
+                - "lockup": Lockup Monitor (解禁监控师) - A股特有
             debug: Whether to run in debug mode
             config: Configuration dictionary. If None, uses default config
         """
@@ -830,6 +837,41 @@ class TradingAgentsGraph:
         decision = self.process_signal(final_state["final_trade_decision"], company_name)
         decision['model_info'] = model_info
 
+        # 🔥 将所有分析师报告整合到 decision 中，供前端展示
+        # 前端使用 reportMappings 从 detailed_analysis 中提取这些报告
+        report_fields = [
+            "market_report", "sentiment_report", "news_report", "fundamentals_report",
+            "policy_report", "hot_money_report", "lockup_report",
+            "trader_investment_plan", "investment_plan", "final_trade_decision"
+        ]
+        for field in report_fields:
+            if field in final_state and final_state[field] is not None:
+                decision[field] = final_state[field]
+
+        # 整合研究员和风险经理的报告
+        if "investment_debate_state" in final_state:
+            debate = final_state["investment_debate_state"]
+            if isinstance(debate, dict):
+                # 提取多空研究员的最后发言
+                if "bull_history" in debate and len(debate["bull_history"]) > 0:
+                    decision["bull_researcher"] = debate["bull_history"][-1]
+                if "bear_history" in debate and len(debate["bear_history"]) > 0:
+                    decision["bear_researcher"] = debate["bear_history"][-1]
+                if "judge_decision" in debate:
+                    decision["research_team_decision"] = debate["judge_decision"]
+
+        if "risk_debate_state" in final_state:
+            risk = final_state["risk_debate_state"]
+            if isinstance(risk, dict):
+                if "risky_history" in risk and len(risk["risky_history"]) > 0:
+                    decision["risky_analyst"] = risk["risky_history"][-1]
+                if "safe_history" in risk and len(risk["safe_history"]) > 0:
+                    decision["safe_analyst"] = risk["safe_history"][-1]
+                if "neutral_history" in risk and len(risk["neutral_history"]) > 0:
+                    decision["neutral_analyst"] = risk["neutral_history"][-1]
+                if "judge_decision" in risk:
+                    decision["risk_management_decision"] = risk["judge_decision"]
+
         # Return decision and processed signal
         return final_state, decision
 
@@ -875,6 +917,9 @@ class TradingAgentsGraph:
                 'Fundamentals Analyst': "💼 基本面分析师",
                 'News Analyst': "📰 新闻分析师",
                 'Social Analyst': "💬 社交媒体分析师",
+                'Policy Analyst': "🏛️ 政策分析师",
+                'Hot_money Analyst': "🔥 游资追踪师",
+                'Lockup Analyst': "🔓 限售股分析师",
                 # 工具节点（不发送进度更新，避免重复）
                 'tools_market': None,
                 'tools_fundamentals': None,
@@ -885,6 +930,9 @@ class TradingAgentsGraph:
                 'Msg Clear Fundamentals': None,
                 'Msg Clear News': None,
                 'Msg Clear Social': None,
+                'Msg Clear Policy': None,
+                'Msg Clear Hot_money': None,
+                'Msg Clear Lockup': None,
                 # 研究员节点
                 'Bull Researcher': "🐂 看涨研究员",
                 'Bear Researcher': "🐻 看跌研究员",

@@ -127,8 +127,7 @@
                     :key="analyst.id"
                     class="analyst-card"
                     :class="{ 
-                      active: analysisForm.selectedAnalysts.includes(analyst.name),
-                      disabled: analyst.name === '社媒分析师' && analysisForm.market === 'A股'
+                      active: analysisForm.selectedAnalysts.includes(analyst.name)
                     }"
                     @click="toggleAnalyst(analyst.name)"
                   >
@@ -148,18 +147,7 @@
                     </div>
                   </div>
                 </div>
-                
-                <!-- A股提示 -->
-                <el-alert
-                  v-if="analysisForm.market === 'A股'"
-                  title="A股市场暂不支持社媒分析（国内数据源限制）"
-                  type="info"
-                  :closable="false"
-                  style="margin-top: 12px"
-                />
               </div>
-
-
 
               <!-- 操作按钮 -->
               <div class="form-section">
@@ -642,6 +630,10 @@
                     <el-icon><CreditCard /></el-icon>
                     一键模拟下单
                   </el-button>
+                  <el-button type="warning" @click="openDebateDrawer">
+                    <el-icon><ChatDotRound /></el-icon>
+                    查看辩论详情
+                  </el-button>
                   <el-dropdown trigger="click" @command="downloadReport">
                     <el-button type="primary">
                       <el-icon><Download /></el-icon>
@@ -684,6 +676,8 @@
         </el-row>
       </div>
     </div>
+    <!-- 辩论抽屉组件 -->
+    <DebateDrawer v-model:visible="debateDrawerVisible" :debate-data="debateData" />
   </div>
 </template>
 
@@ -704,6 +698,7 @@ import {
   Cpu,
   QuestionFilled,
   ArrowDown,
+  ChatDotRound,
 } from '@element-plus/icons-vue'
 import { analysisApi, type SingleAnalysisRequest } from '@/api/analysis'
 import { paperApi } from '@/api/paper'
@@ -712,6 +707,7 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { configApi } from '@/api/config'
 import DeepModelSelector from '@/components/DeepModelSelector.vue'
+import DebateDrawer from '@/components/DebateDrawer.vue'
 import { ANALYSTS, convertAnalystNamesToIds } from '@/constants/analysts'
 import { marked } from 'marked'
 import { recommendModels } from '@/api/modelCapabilities'
@@ -753,6 +749,8 @@ const analysisStatus = ref('idle') // 'idle', 'running', 'completed', 'failed'
 const showResults = ref(false)
 const analysisResults = ref<any>(null)
 const activeReportTab = ref('') // 当前激活的报告标签页
+const debateDrawerVisible = ref(false)
+const debateData = ref<any>(null)
 const progressInfo = ref({
   progress: 0,
   currentStep: '',
@@ -892,10 +890,6 @@ const fetchStockInfo = () => {
 
 // 切换分析师
 const toggleAnalyst = (analystName: string) => {
-  if (analystName === '社媒分析师' && analysisForm.market === 'A股') {
-    return
-  }
-
   const index = analysisForm.selectedAnalysts.indexOf(analystName)
   if (index > -1) {
     analysisForm.selectedAnalysts.splice(index, 1)
@@ -1261,11 +1255,14 @@ const getAnalysisReports = (data: any) => {
 
   // 定义报告映射（按照完整的分析流程顺序）
   const reportMappings = [
-    // 分析师团队 (4个)
+    // 分析师团队 (7个) - A股特有：政策、游资、解禁
     { key: 'market_report', title: '📈 市场技术分析', category: '分析师团队' },
     { key: 'sentiment_report', title: '💭 市场情绪分析', category: '分析师团队' },
     { key: 'news_report', title: '📰 新闻事件分析', category: '分析师团队' },
     { key: 'fundamentals_report', title: '💰 基本面分析', category: '分析师团队' },
+    { key: 'policy_report', title: '🏛️ 政策分析', category: '分析师团队' },
+    { key: 'hot_money_report', title: '🔥 游资追踪', category: '分析师团队' },
+    { key: 'lockup_report', title: '🔓 解禁监控', category: '分析师团队' },
 
     // 研究团队 (3个)
     { key: 'bull_researcher', title: '🐂 多头研究员', category: '研究团队' },
@@ -1482,6 +1479,86 @@ const getFileExtension = (format: string): string => {
     'json': 'json'
   }
   return extensions[format] || 'txt'
+}
+
+// 辅助函数：将字符串内容转换为 DebateRoundItem 数组
+const convertToDebateRounds = (content: string | string[] | any[] | undefined, index: number = 1): any[] => {
+  if (!content) return []
+  if (Array.isArray(content)) {
+    return content.map((item, i) => {
+      if (typeof item === 'string') {
+        return { round: i + 1, content: item, timestamp: '' }
+      } else if (item && typeof item === 'object') {
+        return { round: item.round || i + 1, content: item.content || JSON.stringify(item), timestamp: item.timestamp || '' }
+      }
+      return { round: i + 1, content: String(item), timestamp: '' }
+    })
+  }
+  if (typeof content === 'string') {
+    // 如果是字符串，尝试按 "Round" 或 "第X轮" 分割为多轮
+    let rounds: string[] = []
+    const roundPatterns = [
+      /\n\s*(第\s*\d+\s*轮|Round\s*\d+)\s*[:：]?\s*\n/gi,
+      /\n\s*(--+\s*\n|==+\s*\n)/g
+    ]
+
+    let splitted = false
+    for (const pattern of roundPatterns) {
+      if (pattern.test(content)) {
+        rounds = content.split(pattern).filter((r: string) => r.trim().length > 10)
+        splitted = true
+        break
+      }
+    }
+
+    if (!splitted) {
+      rounds = [content]
+    }
+
+    return rounds.map((text: string, i: number) => ({
+      round: i + 1,
+      content: text.trim(),
+      timestamp: ''
+    }))
+  }
+  return []
+}
+
+// 打开辩论抽屉
+const openDebateDrawer = () => {
+  // 从 reports 中提取辩论数据
+  const reports = analysisResults.value?.reports || {}
+  const state = analysisResults.value?.state || {}
+
+  debateData.value = {
+    // 多头研究员历史
+    bull_history: convertToDebateRounds(reports.bull_researcher || state.bull_researcher, 1),
+    // 空头研究员历史
+    bear_history: convertToDebateRounds(reports.bear_researcher || state.bear_researcher, 2),
+    // 激进分析师历史
+    risky_history: convertToDebateRounds(reports.risky_analyst || state.risky_analyst, 3),
+    // 保守分析师历史
+    safe_history: convertToDebateRounds(reports.safe_analyst || state.safe_analyst, 4),
+    // 中性分析师历史
+    neutral_history: convertToDebateRounds(reports.neutral_analyst || state.neutral_analyst, 5),
+    // 研究总监裁决
+    judge_decision: reports.research_team_decision || state.research_team_decision || '',
+    // 组合经理最终决策
+    final_decision: reports.risk_management_decision || state.risk_management_decision || ''
+  }
+
+  // 调试信息
+  console.log('🔥 辩论抽屉数据已加载:', {
+    bull_len: debateData.value?.bull_history?.length || 0,
+    bear_len: debateData.value?.bear_history?.length || 0,
+    risky_len: debateData.value?.risky_history?.length || 0,
+    safe_len: debateData.value?.safe_history?.length || 0,
+    neutral_len: debateData.value?.neutral_history?.length || 0,
+    has_judge: !!debateData.value?.judge_decision,
+    has_final: !!debateData.value?.final_decision
+  })
+
+  debateDrawerVisible.value = true
 }
 
 // 解析投资建议
@@ -3150,18 +3227,18 @@ onMounted(async () => {
 .metric-item .value {
   font-size: 16px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--el-text-color-primary);
 }
 
 .decision-reasoning h5 {
   margin: 0 0 8px 0;
-  color: #374151;
+  color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
 .decision-reasoning p {
   margin: 0;
-  color: #6b7280;
+  color: var(--el-text-color-secondary);
   line-height: 1.6;
 }
 
@@ -3170,24 +3247,24 @@ onMounted(async () => {
 }
 
 .reports-section h4 {
-  color: #1f2937;
+  color: var(--el-text-color-primary);
   margin-bottom: 16px;
 }
 
 .report-content {
   line-height: 1.6;
-  color: #374151;
+  color: var(--el-text-color-regular);
 }
 
 .report-content h1,
 .report-content h2,
 .report-content h3 {
-  color: #1f2937;
+  color: var(--el-text-color-primary);
   margin: 16px 0 8px 0;
 }
 
 .report-content strong {
-  color: #1f2937;
+  color: var(--el-text-color-primary);
 }
 
 .result-actions {
@@ -3288,7 +3365,7 @@ onMounted(async () => {
   padding: 20px;
   background: var(--el-fill-color-light);
   border-radius: 15px;
-  border-left: 5px solid #667eea;
+  border-left: 5px solid var(--el-color-primary);
   box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 
   .report-title {
@@ -3304,12 +3381,12 @@ onMounted(async () => {
     .report-name {
       font-size: 20px;
       font-weight: 700;
-      color: #495057;
+      color: var(--el-text-color-primary);
     }
   }
 
   .report-description {
-    color: #6c757d;
+    color: var(--el-text-color-secondary);
     font-size: 16px;
     line-height: 1.5;
     margin-left: 36px; /* 对齐图标后的文字 */
@@ -3328,12 +3405,12 @@ onMounted(async () => {
 /* 报告内容样式增强 */
 .report-content {
   line-height: 1.7;
-  color: #495057;
+  color: var(--el-text-color-regular);
   font-size: 16px;
 
   /* 标题样式 */
   h1, h2, h3, h4, h5, h6 {
-    color: #1f2937 !important;
+    color: var(--el-text-color-primary) !important;
     margin: 20px 0 12px 0 !important;
     font-weight: 600 !important;
   }
@@ -3351,13 +3428,13 @@ onMounted(async () => {
 
   /* 强调文本 */
   strong, b {
-    color: #1f2937 !important;
+    color: var(--el-text-color-primary) !important;
     font-weight: 600 !important;
   }
 
   /* 斜体文本 */
   em, i {
-    color: #4b5563 !important;
+    color: var(--el-text-color-regular) !important;
     font-style: italic !important;
   }
 
@@ -3379,12 +3456,12 @@ onMounted(async () => {
     border-radius: 4px !important;
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
     font-size: 14px !important;
-    color: #e11d48 !important;
+    color: var(--el-color-danger) !important;
   }
 
   /* 引用样式 */
   blockquote {
-    border-left: 4px solid #3b82f6 !important;
+    border-left: 4px solid var(--el-color-primary) !important;
     padding-left: 16px !important;
     margin: 16px 0 !important;
     background: var(--el-fill-color-light) !important;

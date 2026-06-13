@@ -216,6 +216,43 @@ class ConditionalLogic:
         logger.info(f"🔄 [投资辩论控制] 继续辩论 -> {next_speaker}")
         return next_speaker
 
+    def should_continue_policy(self, state: AgentState) -> str:
+        """判断政策分析是否应该继续
+
+        注意：政策分析师是自包含节点，在节点内部自己处理所有工具调用，
+        不需要图级别的 ToolNode，因此这里始终直接返回 Msg Clear。
+        """
+        # 检查是否已有政策报告（用于日志确认）
+        policy_report = state.get("policy_report", "")
+        logger.info(f"🔀 [条件判断] should_continue_policy")
+        logger.info(f"🔀 [条件判断] - 报告长度: {len(policy_report)}")
+        logger.info(f"🔀 [条件判断] ✅ 政策分析师为自包含节点，直接返回: Msg Clear Policy")
+        return "Msg Clear Policy"
+
+    def should_continue_hot_money(self, state: AgentState) -> str:
+        """判断游资分析是否应该继续
+
+        注意：游资追踪师是自包含节点，在节点内部自己处理所有工具调用，
+        不需要图级别的 ToolNode，因此这里始终直接返回 Msg Clear。
+        """
+        hot_money_report = state.get("hot_money_report", "")
+        logger.info(f"🔀 [条件判断] should_continue_hot_money")
+        logger.info(f"🔀 [条件判断] - 报告长度: {len(hot_money_report)}")
+        logger.info(f"🔀 [条件判断] ✅ 游资追踪师为自包含节点，直接返回: Msg Clear Hot_money")
+        return "Msg Clear Hot_money"
+
+    def should_continue_lockup(self, state: AgentState) -> str:
+        """判断限售股分析是否应该继续
+
+        注意：限售股监控师是自包含节点，在节点内部自己处理所有工具调用，
+        不需要图级别的 ToolNode，因此这里始终直接返回 Msg Clear。
+        """
+        lockup_report = state.get("lockup_report", "")
+        logger.info(f"🔀 [条件判断] should_continue_lockup")
+        logger.info(f"🔀 [条件判断] - 报告长度: {len(lockup_report)}")
+        logger.info(f"🔀 [条件判断] ✅ 限售股监控师为自包含节点，直接返回: Msg Clear Lockup")
+        return "Msg Clear Lockup"
+
     def should_continue_risk_analysis(self, state: AgentState) -> str:
         """Determine if risk analysis should continue."""
         current_count = state["risk_debate_state"]["count"]

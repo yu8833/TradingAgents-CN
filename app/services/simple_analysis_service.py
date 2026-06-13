@@ -1665,11 +1665,28 @@ class SimpleAnalysisService:
                     action = decision.get('action', '持有')
                     chinese_action = action_translation.get(action, action)
 
+                    # 处理止损价格（SignalProcessor 使用 stop_loss_price）
+                    stop_loss_raw = decision.get('stop_loss_price', decision.get('stop_loss'))
+                    if stop_loss_raw is not None and stop_loss_raw != 'N/A':
+                        try:
+                            if isinstance(stop_loss_raw, str):
+                                clean_stop = stop_loss_raw.replace('$', '').replace('¥', '').replace('￥', '').strip()
+                                stop_loss_price = float(clean_stop) if clean_stop and clean_stop != 'None' else None
+                            elif isinstance(stop_loss_raw, (int, float)):
+                                stop_loss_price = float(stop_loss_raw)
+                            else:
+                                stop_loss_price = None
+                        except (ValueError, TypeError):
+                            stop_loss_price = None
+                    else:
+                        stop_loss_price = None
+
                     formatted_decision = {
                         'action': chinese_action,
                         'confidence': decision.get('confidence', 0.5),
                         'risk_score': decision.get('risk_score', 0.3),
                         'target_price': target_price,
+                        'stop_loss': stop_loss_price,
                         'reasoning': decision.get('reasoning', '暂无分析推理')
                     }
 
@@ -1681,6 +1698,7 @@ class SimpleAnalysisService:
                         'confidence': 0.5,
                         'risk_score': 0.3,
                         'target_price': None,
+                        'stop_loss': None,
                         'reasoning': '暂无分析推理'
                     }
                     logger.warning(f"⚠️ Decision不是字典类型: {type(decision)}")
@@ -1691,6 +1709,7 @@ class SimpleAnalysisService:
                     'confidence': 0.5,
                     'risk_score': 0.3,
                     'target_price': None,
+                    'stop_loss': None,
                     'reasoning': '暂无分析推理'
                 }
 
@@ -2373,15 +2392,18 @@ class SimpleAnalysisService:
                 try:
                     state = result['state']
 
-                    # 定义所有可能的报告字段
+                    # 定义所有可能的报告字段（分析师团队7个 + 研究员团队 + 风控）
                     report_fields = [
-                        'market_report',
-                        'sentiment_report',
-                        'news_report',
-                        'fundamentals_report',
-                        'investment_plan',
-                        'trader_investment_plan',
-                        'final_trade_decision'
+                        'market_report',           # 市场技术分析
+                        'sentiment_report',        # 市场情绪分析
+                        'news_report',             # 新闻事件分析
+                        'fundamentals_report',     # 基本面分析
+                        'policy_report',           # 政策分析 (A股特有)
+                        'hot_money_report',        # 游资追踪 (A股特有)
+                        'lockup_report',           # 解禁监控 (A股特有)
+                        'investment_plan',         # 研究总监投资计划
+                        'trader_investment_plan', # 交易员投资计划
+                        'final_trade_decision'     # 最终交易决策
                     ]
 
                     # 从state中提取报告内容
