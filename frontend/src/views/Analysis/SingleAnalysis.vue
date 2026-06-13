@@ -1510,11 +1510,17 @@ const parseRecommendation = () => {
   if (!action) return null
 
   // 解析目标价格
+  // 🔥 严格模式：只匹配明确的"目标价"或"目标价格"关键词，不匹配通用的"价格"或"当前价格"
+  // 排除：止损价格、当前价格、参考价格 等
   let targetPrice: number | null = null
-  const priceMatch = allText.match(/目标价[格]?[：:]\s*([0-9.]+)/) ||
-                     allText.match(/价格[：:]\s*([0-9.]+)/)
+  const priceMatch = allText.match(/目标价[格]?[：:]\s*([0-9.]+)/)
   if (priceMatch) {
-    targetPrice = parseFloat(priceMatch[1])
+    const extracted = parseFloat(priceMatch[1])
+    // 验证：只接受合理范围内的价格（中国A股一般在 1-1000 元）
+    // 排除明显不合理的捏造价格（如 15.0 这种不合理的持有目标）
+    if (extracted > 0 && extracted < 10000) {
+      targetPrice = extracted
+    }
   }
 
   // 解析置信度

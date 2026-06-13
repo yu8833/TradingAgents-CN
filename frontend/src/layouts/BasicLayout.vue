@@ -8,9 +8,9 @@
     >
       <div class="sidebar-header">
         <div class="logo">
-          <img src="/logo.svg" alt="TradingAgents-CN" />
+          <img src="/logo.svg" alt="股票分析系统" />
           <span v-show="!appStore.sidebarCollapsed" class="logo-text">
-            TradingAgents-CN
+            股票分析系统
           </span>
         </div>
       </div>
@@ -81,7 +81,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { useWindowSize } from '@vueuse/core'
 import { useAppStore } from '@/stores/app'
 import SidebarMenu from '@/components/Layout/SidebarMenu.vue'
 import UserProfile from '@/components/Layout/UserProfile.vue'
@@ -246,12 +248,7 @@ watch(() => route.fullPath, () => {
 }
 
 .footer {
-  height: 60px;
-  background-color: var(--el-bg-color);
-  border-top: 1px solid var(--el-border-color-light);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: none;
 }
 
 // 响应式设计

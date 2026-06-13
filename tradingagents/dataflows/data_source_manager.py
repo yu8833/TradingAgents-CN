@@ -9,6 +9,7 @@ import time
 from typing import Dict, List, Optional, Any
 from enum import Enum
 import warnings
+import re
 import pandas as pd
 import numpy as np
 
@@ -908,6 +909,57 @@ class DataSourceManager:
             logger.error(f"❌ 格式化数据响应失败: {e}", exc_info=True)
             return f"❌ 格式化{symbol}数据失败: {e}"
 
+    def _convert_to_full_symbol(self, symbol: str) -> str:
+        """
+        将裸6位股票代码转换为带交易所前缀的完整代码
+
+        Args:
+            symbol: 股票代码（如 000521, 600519, 430001）
+
+        Returns:
+            带前缀的完整代码（如 sz000521, sh600519, bj430001）
+        """
+        if not symbol:
+            return symbol
+
+        # 已经是完整代码（包含前缀）
+        if symbol.startswith(('sh', 'sz', 'bj', 'SH', 'SZ', 'BJ')):
+            return symbol
+
+        # 已经是带点的格式（如 000521.SZ）
+        if '.' in symbol:
+            return symbol
+
+        # 标准6位A股代码转换
+        code = str(symbol).strip()
+        if re.match(r'^\d{6}$', code):
+            if code.startswith(('60', '68', '90')):
+                return f"sh{code}"  # 上海
+            elif code.startswith(('00', '30', '20')):
+                return f"sz{code}"  # 深圳
+            elif code.startswith(('4', '8')):
+                return f"bj{code}"  # 北京
+
+        return symbol
+
+    def _call_async_provider_method(self, provider, method_name: str, *args, **kwargs):
+        """
+        同步调用提供者的异步方法
+
+        Args:
+            provider: 数据提供者实例
+            method_name: 方法名
+            *args, **kwargs: 方法参数
+
+        Returns:
+            方法的返回值
+        """
+        import asyncio
+        method = getattr(provider, method_name, None)
+        if method is None:
+            raise AttributeError(f"Provider {provider.__class__.__name__} has no method '{method_name}'")
+        return asyncio.run(method(*args, **kwargs))
+
     def get_stock_dataframe(self, symbol: str, start_date: str = None, end_date: str = None, period: str = "daily") -> pd.DataFrame:
         """
         获取股票数据的 DataFrame 接口，支持多数据源和自动降级
@@ -921,7 +973,12 @@ class DataSourceManager:
         Returns:
             pd.DataFrame: 股票数据 DataFrame，列标准：open, high, low, close, vol, amount, date
         """
-        logger.info(f"📊 [DataFrame接口] 获取股票数据: {symbol} ({start_date} 到 {end_date})")
+        # 转换股票代码格式（裸代码 -> 带前缀代码）
+        full_symbol = self._convert_to_full_symbol(symbol)
+        if full_symbol != symbol:
+            logger.debug(f"🔄 [代码转换] {symbol} -> {full_symbol}")
+
+        logger.info(f"📊 [DataFrame接口] 获取股票数据: {full_symbol} ({start_date} 到 {end_date})")
 
         try:
             # 尝试当前数据源
@@ -929,19 +986,19 @@ class DataSourceManager:
             if self.current_source == ChinaDataSource.MONGODB:
                 from tradingagents.dataflows.cache.mongodb_cache_adapter import get_mongodb_cache_adapter
                 adapter = get_mongodb_cache_adapter()
-                df = adapter.get_historical_data(symbol, start_date, end_date, period=period)
+                df = adapter.get_historical_data(full_symbol, start_date, end_date, period=period)
             elif self.current_source == ChinaDataSource.TUSHARE:
                 from .providers.china.tushare import get_tushare_provider
                 provider = get_tushare_provider()
-                df = provider.get_daily_data(symbol, start_date, end_date)
+                df = self._call_async_provider_method(provider, "get_historical_data", full_symbol, start_date, end_date)
             elif self.current_source == ChinaDataSource.AKSHARE:
                 from .providers.china.akshare import get_akshare_provider
                 provider = get_akshare_provider()
-                df = provider.get_stock_data(symbol, start_date, end_date)
+                df = self._call_async_provider_method(provider, "get_historical_data", full_symbol, start_date, end_date)
             elif self.current_source == ChinaDataSource.BAOSTOCK:
                 from .providers.china.baostock import get_baostock_provider
                 provider = get_baostock_provider()
-                df = provider.get_stock_data(symbol, start_date, end_date)
+                df = self._call_async_provider_method(provider, "get_historical_data", full_symbol, start_date, end_date)
 
             if df is not None and not df.empty:
                 logger.info(f"✅ [DataFrame接口] 从 {self.current_source.value} 获取成功: {len(df)}条")
@@ -956,19 +1013,19 @@ class DataSourceManager:
                     if source == ChinaDataSource.MONGODB:
                         from tradingagents.dataflows.cache.mongodb_cache_adapter import get_mongodb_cache_adapter
                         adapter = get_mongodb_cache_adapter()
-                        df = adapter.get_historical_data(symbol, start_date, end_date, period=period)
+                        df = adapter.get_historical_data(full_symbol, start_date, end_date, period=period)
                     elif source == ChinaDataSource.TUSHARE:
                         from .providers.china.tushare import get_tushare_provider
                         provider = get_tushare_provider()
-                        df = provider.get_daily_data(symbol, start_date, end_date)
+                        df = self._call_async_provider_method(provider, "get_historical_data", full_symbol, start_date, end_date)
                     elif source == ChinaDataSource.AKSHARE:
                         from .providers.china.akshare import get_akshare_provider
                         provider = get_akshare_provider()
-                        df = provider.get_stock_data(symbol, start_date, end_date)
+                        df = self._call_async_provider_method(provider, "get_historical_data", full_symbol, start_date, end_date)
                     elif source == ChinaDataSource.BAOSTOCK:
                         from .providers.china.baostock import get_baostock_provider
                         provider = get_baostock_provider()
-                        df = provider.get_stock_data(symbol, start_date, end_date)
+                        df = self._call_async_provider_method(provider, "get_historical_data", full_symbol, start_date, end_date)
 
                     if df is not None and not df.empty:
                         logger.info(f"✅ [DataFrame接口] 降级到 {source.value} 成功: {len(df)}条")
@@ -977,7 +1034,7 @@ class DataSourceManager:
                     logger.warning(f"⚠️ [DataFrame接口] {source.value} 失败: {e}")
                     continue
 
-            logger.error(f"❌ [DataFrame接口] 所有数据源都失败: {symbol}")
+            logger.error(f"❌ [DataFrame接口] 所有数据源都失败: {full_symbol}")
             return pd.DataFrame()
 
         except Exception as e:

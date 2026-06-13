@@ -64,17 +64,132 @@ class MultiSourceBasicsSyncService:
         self._last_status: Optional[Dict[str, Any]] = None
 
     async def get_status(self) -> Dict[str, Any]:
-        """获取同步状态"""
-        if self._last_status:
-            return self._last_status
+        """获取同步状态
 
+        智能处理逻辑：
+        1. 对 running 状态始终检查数据库实际情况（不盲目信任内存缓存）
+        2. 如果 running 超过30分钟仍未完成，视为过期
+        3. 如果 running 但计数器为0但数据库有数据，用实际数据填充
+        4. 已完成状态（success/error）可以信任缓存
+        """
         db = get_mongo_db()
         doc = await db[STATUS_COLLECTION].find_one({"job": JOB_KEY})
+
         if doc:
-            # 移除MongoDB的_id字段以避免序列化问题
             doc.pop("_id", None)
+
+            # 检查是否为过期的 running 状态
+            # 或者: running 状态但所有计数器都是0（同步还没开始更新计数器）
+            if doc.get("status") == "running":
+                try:
+                    from datetime import datetime as _dt
+
+                    # 获取数据库中的实际数据量
+                    actual_total = await db[COLLECTION_NAME].count_documents({})
+
+                    # 检查 started_at 时间
+                    started = None
+                    elapsed = 0
+                    if doc.get("started_at") and isinstance(doc["started_at"], str):
+                        try:
+                            started = _dt.fromisoformat(doc["started_at"].replace('Z', '+00:00'))
+                            elapsed = (_dt.now() - started).total_seconds()
+                        except Exception:
+                            elapsed = 0
+
+                    STALE_THRESHOLD = 1800  # 30分钟
+                    counters_all_zero = (doc.get("total", 0) == 0 and doc.get("inserted", 0) == 0)
+
+                    # 两种情况需要用实际数据:
+                    # 1. 状态是 running 但超过30分钟还没完成（过期/僵死）
+                    # 2. 状态是 running 且计数器都是0，但数据库有实际数据
+                    should_use_actual = (
+                        (elapsed > STALE_THRESHOLD) or
+                        (counters_all_zero and actual_total > 0)
+                    )
+
+                    if should_use_actual:
+                        reason = "过期任务" if elapsed > STALE_THRESHOLD else "数据库有实际数据"
+                        logger.warning(f"检测到需要使用实际统计数据的同步状态（{reason}），当前计数器: total={doc.get('total', 0)}, 实际数据: {actual_total}")
+
+                        # 获取已使用的数据源
+                        sources_present = []
+                        try:
+                            pipeline = [
+                                {"$group": {"_id": "$source", "count": {"$sum": 1}}}
+                            ]
+                            source_counts = await db[COLLECTION_NAME].aggregate(pipeline).to_list(length=10)
+                            for sc in source_counts:
+                                if sc.get("_id") and sc["_id"] is not None:
+                                    sources_present.append(sc["_id"])
+                        except Exception:
+                            pass
+
+                        # 如果是过期状态，更新为 success；如果是新任务但有旧数据，保持 running 但填充实际总数
+                        if elapsed > STALE_THRESHOLD:
+                            doc["status"] = "success" if actual_total > 0 else "never_run"
+                            if not doc.get("finished_at"):
+                                doc["finished_at"] = _dt.now().isoformat()
+
+                        # 填充实际数据统计
+                        doc["total"] = actual_total
+                        doc["inserted"] = actual_total
+                        doc["data_sources_used"] = sources_present
+                        doc["message"] = f"使用数据库实际统计数据（{reason}）"
+
+                        # 更新数据库中的状态记录
+                        await self._persist_status(db, doc.copy())
+
+                except Exception as e:
+                    logger.warning(f"处理同步状态时出错: {e}")
+
+            # 确保所有必要字段都有默认值
+            default_status = SyncStats().__dict__
+            for key, value in default_status.items():
+                if key not in doc or doc[key] is None:
+                    doc[key] = value
+
+            self._last_status = doc
             return doc
-        return {"job": JOB_KEY, "status": "never_run"}
+
+        # 数据库中没有记录，检查是否有实际数据（说明之前用其他方式同步过）
+        actual_total = await db[COLLECTION_NAME].count_documents({})
+        if actual_total > 0:
+            logger.info(f"检测到 {actual_total} 条已存在的数据，使用现有数据作为基础")
+
+            # 获取已使用的数据源
+            sources_present = []
+            try:
+                pipeline = [
+                    {"$group": {"_id": "$source", "count": {"$sum": 1}}}
+                ]
+                source_counts = await db[COLLECTION_NAME].aggregate(pipeline).to_list(length=10)
+                for sc in source_counts:
+                    if sc.get("_id") and sc["_id"] is not None:
+                        sources_present.append(sc["_id"])
+            except Exception:
+                pass
+
+            # 创建基于现有数据的状态记录
+            existing_status = SyncStats()
+            existing_status.status = "success"
+            existing_status.total = actual_total
+            existing_status.inserted = actual_total
+            existing_status.updated = 0
+            existing_status.errors = 0
+            existing_status.data_sources_used = sources_present
+            existing_status.message = f"已存在 {actual_total} 条股票基础信息（来自数据源: {', '.join(sources_present) if sources_present else 'unknown'}）"
+            existing_status.finished_at = datetime.now().isoformat()
+            existing_status.started_at = existing_status.finished_at
+
+            status_dict = existing_status.__dict__
+            await self._persist_status(db, status_dict.copy())
+            return status_dict
+
+        # 没有数据也没有状态记录，返回默认 never_run
+        default_status = SyncStats()
+        default_status.status = "never_run"
+        return default_status.__dict__
 
     async def _persist_status(self, db: AsyncIOMotorDatabase, stats: Dict[str, Any]) -> None:
         """持久化同步状态"""

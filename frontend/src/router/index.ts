@@ -91,6 +91,29 @@ const routes: RouteRecordRaw[] = [
       }
     ]
   },
+  {
+    path: '/strategy',
+    name: 'Strategy',
+    component: () => import('@/layouts/BasicLayout.vue'),
+    redirect: '/strategy/three-buy-three-sell',
+    meta: {
+      title: '策略',
+      icon: 'Strategy',
+      requiresAuth: true,
+      transition: 'slide-up'
+    },
+    children: [
+      {
+        path: 'three-buy-three-sell',
+        name: 'ThreeBuyThreeSell',
+        component: () => import('@/views/TradingPool/index.vue'),
+        meta: {
+          title: '三买三卖',
+          requiresAuth: true
+        }
+      }
+    ]
+  },
 
   {
     path: '/favorites',
@@ -418,7 +441,7 @@ router.beforeEach(async (to, _from, next) => {
   // 设置页面标题
   const title = to.meta.title as string
   if (title) {
-    document.title = `${title} - TradingAgents-CN`
+    document.title = `${title} - 股票分析系统`
   }
 
   console.log('🚦 路由守卫检查:', {

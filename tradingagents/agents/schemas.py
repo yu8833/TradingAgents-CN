@@ -150,6 +150,16 @@ class PortfolioDecision(BaseModel):
     extraction pass is required. Field descriptions double as the model's
     output instructions, so the prompt body only needs to convey context and
     the rating-scale guidance.
+
+    🔥 价格语义区分（2026-06-12 新增，解决"止损位被当成目标价"问题）:
+    - price_target: 核心目标价（与 rating 方向一致）
+      * Buy / Overweight: 预期上涨目标价
+      * Hold: 合理估值中枢
+      * Underweight / Sell: 下跌目标价（股价可能到达的位置）
+    - stop_loss_price: 止损位（强制离场价格）
+    - entry_price: 建议入场价格区间（买入时使用）
+    - price_target_optimistic: 乐观情景目标价
+    - price_target_pessimistic: 悲观情景目标价
     """
 
     rating: PortfolioRating = Field(
@@ -173,7 +183,23 @@ class PortfolioDecision(BaseModel):
     )
     price_target: Optional[float] = Field(
         default=None,
-        description="Optional target price in the instrument's quote currency.",
+        description="Optional target price in the instrument's quote currency. For Buy/Hold, this is the upside target; for Sell, this is the downside target.",
+    )
+    stop_loss_price: Optional[float] = Field(
+        default=None,
+        description="Optional stop-loss price. The price level at which the position should be exited to limit losses.",
+    )
+    entry_price: Optional[float] = Field(
+        default=None,
+        description="Optional suggested entry price for Buy recommendations, or suggested exit price for Sell recommendations.",
+    )
+    price_target_optimistic: Optional[float] = Field(
+        default=None,
+        description="Optional optimistic-scenario target price.",
+    )
+    price_target_pessimistic: Optional[float] = Field(
+        default=None,
+        description="Optional pessimistic-scenario target price.",
     )
     time_horizon: Optional[str] = Field(
         default=None,
@@ -192,6 +218,14 @@ def render_pm_decision(decision: PortfolioDecision) -> str:
     ]
     if decision.price_target is not None:
         parts.extend(["", f"**Price Target**: {decision.price_target}"])
+    if decision.stop_loss_price is not None:
+        parts.extend(["", f"**Stop Loss**: {decision.stop_loss_price}"])
+    if decision.entry_price is not None:
+        parts.extend(["", f"**Entry/Exit Price**: {decision.entry_price}"])
+    if decision.price_target_optimistic is not None:
+        parts.extend(["", f"**Optimistic Target**: {decision.price_target_optimistic}"])
+    if decision.price_target_pessimistic is not None:
+        parts.extend(["", f"**Pessimistic Target**: {decision.price_target_pessimistic}"])
     if decision.time_horizon:
         parts.extend(["", f"**Time Horizon**: {decision.time_horizon}"])
     return "\n".join(parts)

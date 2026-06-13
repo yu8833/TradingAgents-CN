@@ -5,10 +5,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from app.models.screening import ScreeningCondition, FieldType, BASIC_FIELDS_INFO
+from app.models.screening import FieldType, BASIC_FIELDS_INFO
 
 
-def analyze_conditions(conditions: List[ScreeningCondition]) -> Dict[str, Any]:
+def analyze_conditions(conditions: List[Dict[str, Any]]) -> Dict[str, Any]:
     analysis = {
         "total_conditions": len(conditions),
         "database_supported_conditions": 0,
@@ -21,10 +21,14 @@ def analyze_conditions(conditions: List[ScreeningCondition]) -> Dict[str, Any]:
         "condition_types": [],
     }
 
-    for condition in conditions:
-        field = condition.field
+    supported_fields = set(BASIC_FIELDS_INFO.keys())
 
-        if field in BASIC_FIELDS_INFO:
+    for condition in conditions:
+        if not isinstance(condition, dict):
+            continue
+        field = condition.get("field")
+
+        if field in supported_fields:
             field_info = BASIC_FIELDS_INFO[field]
             field_type = field_info.field_type
 
@@ -36,41 +40,53 @@ def analyze_conditions(conditions: List[ScreeningCondition]) -> Dict[str, Any]:
                 analysis["technical_conditions"] += 1
 
             analysis["condition_types"].append(field_type.value)
-
-            if field in set(BASIC_FIELDS_INFO.keys()):
-                analysis["database_supported_conditions"] += 1
-            else:
-                analysis["can_use_database"] = False
-                analysis["unsupported_fields"].append(field)
+            analysis["database_supported_conditions"] += 1
         else:
             analysis["can_use_database"] = False
             analysis["needs_technical_indicators"] = True
             analysis["unsupported_fields"].append(field)
 
-    if analysis["technical_conditions"] > 0 or analysis["needs_technical_indicators"]:
-        analysis["needs_technical_indicators"] = True
-
     return analysis
 
 
-def convert_conditions_to_traditional_format(conditions: List[ScreeningCondition]) -> Dict[str, Any]:
-    traditional_conditions: Dict[str, Any] = {}
+def convert_conditions_to_traditional_format(conditions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    把 [{field, operator, value}, ...] 列表转为后端可统一评估的
+    {logic, children} 树结构。每个叶子是 {'field':..., 'op':..., 'value':...}。
+    这样 eval_utils.evaluate_conditions 能一致地走"叶子节点"分支，正确处理
+    'between'/'eq' 等运算符以及 macd_golden_fork/ma20_cross 等标志字段。
+    """
+    if not conditions:
+        return {"logic": "AND", "children": []}
 
-    for condition in conditions:
-        field = condition.field
-        operator = condition.operator
-        value = condition.value
-
-        if operator == "between" and isinstance(value, list) and len(value) == 2:
-            traditional_conditions[field] = {"min": value[0], "max": value[1]}
-        elif operator in [">", "<", ">=", "<="]:
-            traditional_conditions[field] = {operator: value}
-        elif operator == "==":
-            traditional_conditions[field] = value
-        elif operator in ["in", "not_in"]:
-            traditional_conditions[field] = {operator: value}
+    children: List[Dict[str, Any]] = []
+    for c in conditions:
+        if not isinstance(c, dict):
+            continue
+        # 规范化操作符
+        op_raw = c.get("operator", "==")
+        if isinstance(op_raw, str):
+            op = op_raw.strip()
+            if op in {"eq", "="}:
+                op = "=="
+            elif op in {"ne", "<>", "neq"}:
+                op = "!="
+            elif op in {"gte", "ge"}:
+                op = ">="
+            elif op in {"lte", "le"}:
+                op = "<="
+            elif op in {"gt"}:
+                op = ">"
+            elif op in {"lt"}:
+                op = "<"
         else:
-            traditional_conditions[field] = {operator: value}
+            op = str(op_raw) if op_raw is not None else "=="
 
-    return traditional_conditions
+        children.append({
+            "field": c.get("field"),
+            "op": op,
+            "value": c.get("value"),
+        })
+
+    return {"logic": "AND", "children": children}
 

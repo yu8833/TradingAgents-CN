@@ -1062,6 +1062,13 @@ class AKShareProvider(BaseStockDataProvider):
         try:
             logger.debug(f"📊 获取{code}历史数据: {start_date} 到 {end_date}")
 
+            # 🔧 防御性检查: 确保日期不为空
+            from datetime import datetime, timedelta
+            if end_date is None:
+                end_date = datetime.now().strftime('%Y-%m-%d')
+            if start_date is None:
+                start_date = (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d')
+
             # 转换周期格式
             period_map = {
                 "daily": "daily",

@@ -26,7 +26,7 @@ COPY frontend/. ./
 COPY assets /app/frontend/public/assets
 COPY docs /app/docs
 
-# 构建生产版本（跳过类型检查以加快构建速度）
+# 构建生产版本（跳过类型检查以加快构建速度，避免依赖问题）
 RUN yarn vite build
 
 # 运行阶段：使用Nginx提供静态文件服务

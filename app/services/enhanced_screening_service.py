@@ -8,7 +8,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
-from app.models.screening import ScreeningCondition, FieldType, BASIC_FIELDS_INFO
+from app.models.screening import FieldType, BASIC_FIELDS_INFO
 from app.services.database_screening_service import get_database_screening_service
 from app.services.screening_service import ScreeningService, ScreeningParams
 
@@ -33,7 +33,7 @@ class EnhancedScreeningService:
 
     async def screen_stocks(
         self,
-        conditions: List[ScreeningCondition],
+        conditions: List[Dict[str, Any]],
         market: str = "CN",
         date: Optional[str] = None,
         adj: str = "qfq",
@@ -148,7 +148,7 @@ class EnhancedScreeningService:
                 "error": str(e)
             }
 
-    def _analyze_conditions(self, conditions: List[ScreeningCondition]) -> Dict[str, Any]:
+    def _analyze_conditions(self, conditions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Delegate condition analysis to utils."""
         analysis = _analyze_conditions_util(conditions)
         logger.info(f"📊 筛选条件分析: {analysis}")
@@ -156,7 +156,7 @@ class EnhancedScreeningService:
 
     async def _screen_with_database(
         self,
-        conditions: List[ScreeningCondition],
+        conditions: List[Dict[str, Any]],
         limit: int,
         offset: int,
         order_by: Optional[List[Dict[str, str]]]
@@ -173,7 +173,7 @@ class EnhancedScreeningService:
 
     async def _screen_with_traditional_method(
         self,
-        conditions: List[ScreeningCondition],
+        conditions: List[Dict[str, Any]],
         market: str,
         date: Optional[str],
         adj: str,
@@ -204,7 +204,7 @@ class EnhancedScreeningService:
 
     def _convert_conditions_to_traditional_format(
         self,
-        conditions: List[ScreeningCondition]
+        conditions: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Delegate condition conversion to utils."""
         return _convert_to_traditional_util(conditions)
@@ -276,7 +276,7 @@ class EnhancedScreeningService:
 
         return fields
 
-    async def validate_conditions(self, conditions: List[ScreeningCondition]) -> Dict[str, Any]:
+    async def validate_conditions(self, conditions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         验证筛选条件
 

@@ -98,6 +98,17 @@ class MultiPeriodSyncService:
         if all_history:
             start_date, end_date = await self._get_full_history_date_range()
             logger.info(f"🔄 启用全历史数据同步模式: {start_date} 到 {end_date}")
+        # 🔧 关键修复: 如果没有指定日期范围，默认使用最近120天
+        # 否则 providers 无法处理 None 日期（Tushare _format_date(None) 返回 "None" 导致空数据
+        else:
+            from datetime import datetime, timedelta
+            if end_date is None:
+                end_date = datetime.now().strftime('%Y-%m-%d')
+            if start_date is None:
+                # 🔧 默认获取最近120天历史数据
+                default_days = 120
+                start_date = (datetime.now() - timedelta(days=default_days)).strftime('%Y-%m-%d')
+            logger.info(f"🔄 使用默认日期范围: {start_date} 到 {end_date} ({default_days}天)")
 
         stats = MultiPeriodSyncStats()
         stats.total_symbols = len(symbols)
@@ -202,6 +213,14 @@ class MultiPeriodSyncService:
     ) -> Dict[str, Any]:
         """同步批次周期数据"""
         stats = {"records": 0, "success": 0, "errors": 0}
+
+        # 🔧 防御性检查: 确保日期不为空
+        from datetime import datetime, timedelta
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        if start_date is None:
+            # 默认获取最近120天
+            start_date = (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d')
         
         for symbol in symbols:
             try:

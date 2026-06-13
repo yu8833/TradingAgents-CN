@@ -51,6 +51,12 @@ class DatabaseScreeningService:
             "amount": "amount",                # 成交额（万元）
             "close": "close",                  # 收盘价
             "volume": "volume",                # 成交量
+
+            # 技术指标标志字段（从技术指标视图获取或计算）
+            "macd_golden_fork": "macd_golden_fork",  # MACD金叉
+            "kdj_golden_fork": "kdj_golden_fork",    # KDJ金叉
+            "ma20_cross": "ma20_cross",              # 站上20日均线
+            "ma5_cross": "ma5_cross",                # 站上5日均线
         }
         
         # 支持的操作符
@@ -118,7 +124,7 @@ class DatabaseScreeningService:
             db = get_mongo_db()
             collection = db[self.collection_name]
 
-            # 🔥 获取数据源优先级配置
+            # 🔥 获取数据源优先级配置 - 按优先级从高到低排序
             if not source:
                 from app.core.unified_config import UnifiedConfigManager
                 config = UnifiedConfigManager()
@@ -128,26 +134,43 @@ class DatabaseScreeningService:
                 for ds in data_source_configs:
                     logger.info(f"   - {ds.name}: type={ds.type}, priority={ds.priority}, enabled={ds.enabled}")
 
-                # 提取启用的数据源，按优先级排序
-                enabled_sources = [
-                    ds.type.lower() for ds in data_source_configs
-                    if ds.enabled and ds.type.lower() in ['tushare', 'akshare', 'baostock']
-                ]
+                # 提取启用的数据源，按优先级从高到低排序（priority数字越大优先级越高）
+                enabled_sources = sorted(
+                    [ds for ds in data_source_configs if ds.enabled and ds.type.lower() in ['tushare', 'akshare', 'baostock']],
+                    key=lambda x: x.priority,
+                    reverse=True
+                )
+                enabled_source_names = [ds.type.lower() for ds in enabled_sources]
 
-                logger.info(f"🔍 [database_screening] 启用的数据源（按优先级）: {enabled_sources}")
+                logger.info(f"🔍 [database_screening] 启用的数据源（按优先级从高到低）: {enabled_source_names}")
 
-                if not enabled_sources:
-                    enabled_sources = ['tushare', 'akshare', 'baostock']
-                    logger.warning(f"⚠️ [database_screening] 没有启用的数据源，使用默认: {enabled_sources}")
+                if not enabled_source_names:
+                    enabled_source_names = ['akshare', 'tushare', 'baostock']
+                    logger.warning(f"⚠️ [database_screening] 没有启用的数据源，使用默认: {enabled_source_names}")
 
-                source = enabled_sources[0] if enabled_sources else 'tushare'
+                # 🔥 按优先级顺序尝试每个数据源，找到第一个有数据的数据源
+                selected_source = None
+                for candidate_source in enabled_source_names:
+                    count = await collection.count_documents({"source": candidate_source})
+                    logger.info(f"   - 检查数据源 {candidate_source}: 数据库中有 {count} 条记录")
+                    if count > 0:
+                        selected_source = candidate_source
+                        break
+
+                if not selected_source:
+                    # 🔥 所有指定数据源都没有数据，不限制 source 字段
+                    logger.warning(f"⚠️ [database_screening] 所有指定数据源都没有数据，不限制 source 字段")
+                    selected_source = None
+
+                source = selected_source
                 logger.info(f"✅ [database_screening] 最终使用的数据源: {source}")
 
             # 构建查询条件（现在视图已包含实时行情数据，可以直接查询所有字段）
             query = await self._build_query(conditions)
 
-            # 🔥 添加数据源筛选
-            query["source"] = source
+            # 🔥 只在找到了有效的数据源时才添加 source 筛选
+            if source:
+                query["source"] = source
 
             logger.info(f"📋 数据库查询条件: {query}")
 

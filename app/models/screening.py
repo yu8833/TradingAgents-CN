@@ -2,7 +2,7 @@
 股票筛选相关的数据模型
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Any, Dict, List, Optional, Union
 from enum import Enum
 
@@ -46,17 +46,40 @@ class ScreeningRequest(BaseModel):
     market: str = Field("CN", description="市场：CN/HK/US")
     date: Optional[str] = Field(None, description="交易日YYYY-MM-DD，缺省为最新")
     adj: str = Field("qfq", description="复权口径：qfq/hfq/none")
-    
+
     # 筛选条件
-    conditions: List[ScreeningCondition] = Field(default_factory=list, description="筛选条件列表")
-    
+    conditions: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="筛选条件列表"
+    )
+
+    # 前端旧格式的顶层字段
+    logic: Optional[str] = Field(default=None)
+    children: Optional[List[Dict[str, Any]]] = Field(default=None)
+
     # 排序和分页
     order_by: Optional[List[Dict[str, str]]] = Field(None, description="排序条件")
     limit: int = Field(50, ge=1, le=500, description="返回数量限制")
     offset: int = Field(0, ge=0, description="偏移量")
-    
+
     # 优化选项
     use_database_optimization: bool = Field(True, description="是否使用数据库优化")
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_legacy_format(cls, data):
+        """
+        前端旧格式将条件写在顶层：{logic:"AND", children:[{field,op,value}]}。
+        在模型验证前，将顶层的 children 合并到 conditions 字段中。
+        """
+        if isinstance(data, dict):
+            # 如果没有 conditions 但有 children（旧/前端格式），把 children 移到 conditions
+            if 'conditions' not in data and 'children' in data:
+                data = dict(data)
+                data['conditions'] = data.get('children') or []
+        return data
+
+    model_config = {"extra": "ignore", "use_enum_values": True}
 
 
 class ScreeningResponse(BaseModel):
@@ -66,6 +89,8 @@ class ScreeningResponse(BaseModel):
     took_ms: Optional[int] = Field(None, description="耗时(毫秒)")
     optimization_used: Optional[str] = Field(None, description="使用的优化方式")
     source: Optional[str] = Field(None, description="数据源")
+
+    model_config = {"use_enum_values": True}
 
 
 class FieldInfo(BaseModel):
@@ -216,7 +241,7 @@ BASIC_FIELDS_INFO = {
     "turnover_rate": FieldInfo(
         name="turnover_rate",
         display_name="换手率",
-        field_type=FieldType.TECHNICAL,
+        field_type=FieldType.FUNDAMENTAL,
         data_type="number",
         description="换手率",
         unit="%",
@@ -225,7 +250,7 @@ BASIC_FIELDS_INFO = {
     "volume_ratio": FieldInfo(
         name="volume_ratio",
         display_name="量比",
-        field_type=FieldType.TECHNICAL,
+        field_type=FieldType.FUNDAMENTAL,
         data_type="number",
         description="量比",
         unit="倍",
@@ -270,11 +295,11 @@ BASIC_FIELDS_INFO = {
         supported_operators=[OperatorType.GT, OperatorType.LT, OperatorType.GTE, OperatorType.LTE, OperatorType.BETWEEN]
     ),
 
-    # 技术指标字段
+    # 技术指标字段（存储在视图中，可直接从数据库查询）
     "ma20": FieldInfo(
         name="ma20",
         display_name="20日均线",
-        field_type=FieldType.TECHNICAL,
+        field_type=FieldType.FUNDAMENTAL,
         data_type="number",
         description="20日移动平均线",
         unit="元",
@@ -283,7 +308,7 @@ BASIC_FIELDS_INFO = {
     "rsi14": FieldInfo(
         name="rsi14",
         display_name="RSI指标",
-        field_type=FieldType.TECHNICAL,
+        field_type=FieldType.FUNDAMENTAL,
         data_type="number",
         description="14日相对强弱指标",
         unit="",
@@ -292,7 +317,7 @@ BASIC_FIELDS_INFO = {
     "kdj_k": FieldInfo(
         name="kdj_k",
         display_name="KDJ-K",
-        field_type=FieldType.TECHNICAL,
+        field_type=FieldType.FUNDAMENTAL,
         data_type="number",
         description="KDJ指标K值",
         unit="",
@@ -301,7 +326,7 @@ BASIC_FIELDS_INFO = {
     "kdj_d": FieldInfo(
         name="kdj_d",
         display_name="KDJ-D",
-        field_type=FieldType.TECHNICAL,
+        field_type=FieldType.FUNDAMENTAL,
         data_type="number",
         description="KDJ指标D值",
         unit="",
@@ -310,7 +335,7 @@ BASIC_FIELDS_INFO = {
     "kdj_j": FieldInfo(
         name="kdj_j",
         display_name="KDJ-J",
-        field_type=FieldType.TECHNICAL,
+        field_type=FieldType.FUNDAMENTAL,
         data_type="number",
         description="KDJ指标J值",
         unit="",
@@ -319,7 +344,7 @@ BASIC_FIELDS_INFO = {
     "dif": FieldInfo(
         name="dif",
         display_name="MACD-DIF",
-        field_type=FieldType.TECHNICAL,
+        field_type=FieldType.FUNDAMENTAL,
         data_type="number",
         description="MACD指标DIF值",
         unit="",
@@ -328,7 +353,7 @@ BASIC_FIELDS_INFO = {
     "dea": FieldInfo(
         name="dea",
         display_name="MACD-DEA",
-        field_type=FieldType.TECHNICAL,
+        field_type=FieldType.FUNDAMENTAL,
         data_type="number",
         description="MACD指标DEA值",
         unit="",
@@ -337,7 +362,7 @@ BASIC_FIELDS_INFO = {
     "macd_hist": FieldInfo(
         name="macd_hist",
         display_name="MACD柱状图",
-        field_type=FieldType.TECHNICAL,
+        field_type=FieldType.FUNDAMENTAL,
         data_type="number",
         description="MACD柱状图值",
         unit="",

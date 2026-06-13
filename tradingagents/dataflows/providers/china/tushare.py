@@ -530,9 +530,14 @@ class TushareProvider(BaseStockDataProvider):
         try:
             ts_code = self._normalize_ts_code(symbol)
 
-            # 格式化日期
+            # 🔧 格式化日期（带默认值防御）
+            # 如果 start_date 是 None，使用 120 天前
+            if start_date is None:
+                start_date = (datetime.now() - timedelta(days=120)).date()
+            if end_date is None:
+                end_date = datetime.now().date()
             start_str = self._format_date(start_date)
-            end_str = self._format_date(end_date) if end_date else datetime.now().strftime('%Y%m%d')
+            end_str = self._format_date(end_date)
 
             # 🔧 使用 pro_bar 接口获取前复权数据（与同花顺一致）
             # 注意：Tushare 的 daily/weekly/monthly 接口不支持复权

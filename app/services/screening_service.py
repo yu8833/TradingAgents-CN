@@ -22,21 +22,33 @@ from app.services.screening.eval_utils import (
 )
 
 # --- DSL 约束 ---
+# 允许用于筛选的所有字段名（覆盖行情、技术指标、基本面、标志信号）
 ALLOWED_FIELDS = {
     # 原始行情（统一为小写列）
     "open", "high", "low", "close", "vol", "amount",
     # 派生
     "pct_chg",  # 当日涨跌幅
-    # 指标（固定参数）
+    # MA（固定参数）
     "ma5", "ma10", "ma20", "ma60",
+    # EMA / MACD
     "ema12", "ema26",
     "dif", "dea", "macd_hist",
+    # 振荡 / 波动率
     "rsi14",
     "boll_mid", "boll_upper", "boll_lower",
     "atr14",
+    # KDJ
     "kdj_k", "kdj_d", "kdj_j",
-    # 预留：基本面（后续实现）
-    "pe", "pb", "roe", "market_cap",
+    # 基本面（基础快照 / 扩展）
+    "pe", "pb", "pe_ttm", "pb_mrq", "roe", "market_cap",
+    "total_mv", "circ_mv",
+    # 交易指标（从股票基础信息 / 视图拿到）
+    "turnover_rate", "volume_ratio",
+    # 板块 / 市场
+    "market", "board", "industry", "area",
+    # 技术信号标志字段（金叉 / 站上均线）
+    "macd_golden_fork", "kdj_golden_fork",
+    "ma5_cross", "ma10_cross", "ma20_cross", "ma60_cross",
 }
 
 # 分类：基础行情字段、技术指标字段、基本面字段
@@ -49,10 +61,16 @@ TECH_FIELDS = {
     "boll_mid", "boll_upper", "boll_lower",
     "atr14",
     "kdj_k", "kdj_d", "kdj_j",
+    # 标志字段
+    "macd_golden_fork", "kdj_golden_fork",
+    "ma5_cross", "ma10_cross", "ma20_cross", "ma60_cross",
 }
-FUND_FIELDS = {"pe", "pb", "roe", "market_cap"}
+FUND_FIELDS = {"pe", "pb", "pe_ttm", "pb_mrq", "roe", "market_cap", "total_mv", "circ_mv",
+               "turnover_rate", "volume_ratio", "market", "board", "industry", "area"}
 
-ALLOWED_OPS = {">", "<", ">=", "<=", "==", "!=", "between", "cross_up", "cross_down"}
+# 允许的操作符（注意：前端可能发送 'eq' 代替 '=='，这里全部接纳，并在评估时归一化）
+ALLOWED_OPS = {">", "<", ">=", "<=", "==", "!=", "eq", "ne",
+                "between", "in", "not_in", "contains", "cross_up", "cross_down"}
 
 
 @dataclass
@@ -206,36 +224,57 @@ class ScreeningService:
     def _get_universe(self) -> List[str]:
         """获取A股代码集合：从 MongoDB stock_basic_info 集合获取所有A股股票代码"""
         try:
-            from app.core.database import get_mongo_db
+            from app.core.database import get_mongo_db_sync, settings as _db_settings
 
-            db = get_mongo_db()
+            # 优先使用同步 MongoDB 客户端查询
+            db = get_mongo_db_sync()
             collection = db.stock_basic_info
 
             # 查询所有A股股票代码（兼容不同的数据结构）
-            cursor = collection.find(
-                {
-                    "$or": [
-                        {"market_info.market": "CN"},  # 新数据结构
-                        {"category": "stock_cn"},      # 旧数据结构
-                        {"market": {"$in": ["主板", "创业板", "科创板", "北交所"]}}  # 按市场类型
-                    ]
-                },
-                {"code": 1, "_id": 0}
-            )
+            query = {
+                "$or": [
+                    {"market_info.market": "CN"},  # 新数据结构
+                    {"category": "stock_cn"},      # 旧数据结构
+                    {"market": {"$in": ["主板", "创业板", "科创板", "北交所"]}}  # 按市场类型
+                ]
+            }
 
-            # 同步获取所有股票代码
-            codes = [doc.get("code") for doc in cursor if doc.get("code")]
+            # 优先尝试同步迭代（pymongo 同步游标）
+            codes: List[str] = []
+            try:
+                cursor = collection.find(query, {"code": 1, "_id": 0})
+                # 使用 list() 显式转换，检测是否是同步游标
+                docs = list(cursor)
+                codes = [doc.get("code") for doc in docs if doc.get("code")]
+            except (TypeError, AttributeError):
+                # 如果是异步游标，改用独立的同步客户端直连查询
+                try:
+                    from pymongo import MongoClient
+                    sync_client = MongoClient(
+                        _db_settings.MONGO_URI,
+                        serverSelectionTimeoutMS=5000,
+                        connectTimeoutMS=5000,
+                    )
+                    sync_db = sync_client[_db_settings.MONGO_DB]
+                    sync_cursor = sync_db.stock_basic_info.find(
+                        query, {"code": 1, "_id": 0}
+                    )
+                    codes = [doc.get("code") for doc in sync_cursor if doc.get("code")]
+                    try:
+                        sync_client.close()
+                    except Exception:
+                        pass
+                except Exception as inner_e:
+                    logger.error(f"❌ 同步直连MongoDB获取股票列表失败: {inner_e}")
 
             if codes:
                 logger.info(f"📊 从 MongoDB 获取到 {len(codes)} 只A股股票")
                 return codes
             else:
-                # 如果数据库为空，返回常见股票代码作为兜底
                 logger.warning("⚠️ MongoDB 中未找到股票数据，使用兜底股票列表")
                 return ["000001", "000002", "000858", "600519", "600036", "601318", "300750"]
 
         except Exception as e:
             logger.error(f"❌ 从 MongoDB 获取股票列表失败: {e}")
-            # 异常时返回常见股票代码作为兜底
             return ["000001", "000002", "000858", "600519", "600036", "601318", "300750"]
 
