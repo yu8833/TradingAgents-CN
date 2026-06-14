@@ -58,7 +58,8 @@ export const useAppStore = defineStore('app', {
     lastApiCheck: 0,
 
     sidebarCollapsed: useStorage('sidebar-collapsed', false).value || false,
-    sidebarWidth: useStorage('sidebar-width', 240).value || 240,
+    // v2 键：使用更紧凑的默认宽度（200px）
+    sidebarWidth: Math.min(Math.max(useStorage('sidebar-width-v2', 200).value || 200, 180), 260),
 
     currentRoute: null,
 
@@ -162,9 +163,9 @@ export const useAppStore = defineStore('app', {
 
     // 设置侧边栏宽度
     setSidebarWidth(width: number) {
-      this.sidebarWidth = Math.max(200, Math.min(400, width))
+      this.sidebarWidth = Math.max(180, Math.min(260, width))
       // 同步到 localStorage
-      localStorage.setItem('sidebar-width', String(this.sidebarWidth))
+      localStorage.setItem('sidebar-width-v2', String(this.sidebarWidth))
     },
     
     // 设置当前路由

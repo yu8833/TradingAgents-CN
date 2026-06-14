@@ -76,142 +76,100 @@
         </div>
       </el-card>
 
-      <!-- 风险提示 -->
-      <div class="risk-disclaimer">
-        <el-alert
-          type="warning"
-          :closable="false"
-          show-icon
-        >
-          <template #title>
-            <div class="disclaimer-content">
-              <el-icon class="disclaimer-icon"><WarningFilled /></el-icon>
-              <div class="disclaimer-text">
-                <p style="margin: 0 0 8px 0;"><strong>⚠️ 重要风险提示与免责声明</strong></p>
-                <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                  <li><strong>工具性质：</strong>本系统为股票分析辅助工具，使用AI技术对公开市场数据进行分析，不具备证券投资咨询资质。</li>
-                  <li><strong>非投资建议：</strong>所有分析结果、评分、建议仅为技术分析参考，不构成任何买卖建议或投资决策依据。</li>
-                  <li><strong>数据局限性：</strong>分析基于历史数据和公开信息，可能存在延迟、不完整或不准确的情况，无法预测未来市场走势。</li>
-                  <li><strong>投资风险：</strong>股票投资存在市场风险、流动性风险、政策风险等多种风险，可能导致本金损失。</li>
-                  <li><strong>独立决策：</strong>投资者应基于自身风险承受能力、投资目标和财务状况独立做出投资决策。</li>
-                  <li><strong>专业咨询：</strong>重大投资决策建议咨询具有合法资质的专业投资顾问或金融机构。</li>
-                  <li><strong>责任声明：</strong>使用本工具产生的任何投资决策及其后果由投资者自行承担，本系统不承担任何责任。</li>
-                </ul>
-              </div>
-            </div>
-          </template>
-        </el-alert>
-      </div>
-
-      <!-- 关键指标 -->
-      <el-card class="metrics-card" shadow="never">
+      <!-- 策略点位 & 价格区间（daily_stock_analysis 风格） -->
+      <el-card class="strategy-card" shadow="never">
         <template #header>
           <div class="card-header">
-            <el-icon><TrendCharts /></el-icon>
-            <span>关键指标</span>
+            <el-icon><Promotion /></el-icon>
+            <span>策略点位</span>
+            <el-tag v-if="pickField(report, ['评级', 'action', '操作建议'])" :type="getDecisionActionTagType(pickField(report, ['评级', 'action', '操作建议']))" size="small" style="margin-left: 12px;">操作建议：{{ pickField(report, ['评级', 'action', '操作建议']) }}</el-tag>
+            <el-tag type="info" size="small" style="margin-left: 12px;">仅供参考</el-tag>
           </div>
         </template>
-        <div class="metrics-content">
-          <el-row :gutter="24">
-            <!-- 分析参考 -->
-            <el-col :span="8">
-              <div class="metric-item">
-                <div class="metric-label">
-                  <el-icon><TrendCharts /></el-icon>
-                  分析参考
-                  <el-tooltip content="基于AI模型的分析倾向，仅供参考，不构成投资建议" placement="top">
-                    <el-icon style="margin-left: 4px; cursor: help; font-size: 14px;"><QuestionFilled /></el-icon>
-                  </el-tooltip>
-                </div>
-                <div class="metric-value recommendation-value markdown-content" v-html="renderMarkdown(report.recommendation || '暂无')"></div>
-                <el-tag type="info" size="small" style="margin-top: 8px;">仅供参考</el-tag>
-              </div>
-            </el-col>
-
-            <!-- 风险评估 -->
-            <el-col :span="8">
-              <div class="metric-item risk-item">
-                <div class="metric-label">
-                  <el-icon><Warning /></el-icon>
-                  风险评估
-                  <el-tooltip content="基于历史数据的风险评估，实际风险可能更高" placement="top">
-                    <el-icon style="margin-left: 4px; cursor: help; font-size: 14px;"><QuestionFilled /></el-icon>
-                  </el-tooltip>
-                </div>
-                <div class="risk-display">
-                  <div class="risk-stars">
-                    <el-icon
-                      v-for="star in 5"
-                      :key="star"
-                      class="star-icon"
-                      :class="{ active: star <= getRiskStars(report.risk_level || '中等') }"
-                    >
-                      <StarFilled />
-                    </el-icon>
-                  </div>
-                  <div class="risk-label" :style="{ color: getRiskColor(report.risk_level || '中等') }">
-                    {{ report.risk_level || '中等' }}风险
-                  </div>
-                </div>
-              </div>
-            </el-col>
-
-            <!-- 模型置信度 -->
-            <el-col :span="8">
-              <div class="metric-item confidence-item">
-                <div class="metric-label">
-                  <el-icon><DataAnalysis /></el-icon>
-                  模型置信度
-                  <el-tooltip content="基于AI模型计算的置信度，不代表实际投资成功率" placement="top">
-                    <el-icon style="margin-left: 4px; cursor: help; font-size: 14px;"><QuestionFilled /></el-icon>
-                  </el-tooltip>
-                </div>
-                <div class="confidence-display">
-                  <el-progress
-                    type="circle"
-                    :percentage="normalizeConfidenceScore(report.confidence_score || 0)"
-                    :width="120"
-                    :stroke-width="10"
-                    :color="getConfidenceColor(normalizeConfidenceScore(report.confidence_score || 0))"
-                  >
-                    <template #default="{ percentage }">
-                      <span class="confidence-text">
-                        <span class="confidence-number">{{ percentage }}</span>
-                        <span class="confidence-unit">分</span>
-                      </span>
-                    </template>
-                  </el-progress>
-                  <div class="confidence-label">{{ getConfidenceLabel(normalizeConfidenceScore(report.confidence_score || 0)) }}</div>
-                </div>
-              </div>
-            </el-col>
-          </el-row>
-
-          <!-- 关键要点 -->
-          <div v-if="report.key_points && report.key_points.length > 0" class="key-points">
-            <h4>
-              <el-icon><List /></el-icon>
-              关键要点
-            </h4>
-            <ul>
-              <li v-for="(point, index) in report.key_points" :key="index">
-                <el-icon class="point-icon"><Check /></el-icon>
-                {{ point }}
-              </li>
-            </ul>
+        <div class="strategy-grid">
+          <div class="price-block buy-block">
+            <div class="price-label">💰 理想买入价</div>
+            <div class="price-value">{{ formatPriceValue(report, ['理想买入', 'ideal_buy', 'target_price']) }}</div>
+            <div class="price-sub">首次建仓参考价</div>
+          </div>
+          <div class="price-block add-block">
+            <div class="price-label">📈 二次买入价</div>
+            <div class="price-value">{{ formatPriceValue(report, ['二次买入', 'second_buy']) }}</div>
+            <div class="price-sub">回调加仓参考</div>
+          </div>
+          <div class="price-block stop-block">
+            <div class="price-label">🛑 止损价格</div>
+            <div class="price-value">{{ formatPriceValue(report, ['止损价格', 'stop_loss', 'stop_loss_price']) }}</div>
+            <div class="price-sub">无条件离场参考</div>
+          </div>
+          <div class="price-block target-block">
+            <div class="price-label">🎯 止盈目标价</div>
+            <div class="price-value">{{ formatPriceValue(report, ['止盈目标', 'target_price', 'price_target']) }}</div>
+            <div class="price-sub">减仓/获利参考</div>
+          </div>
+          <div class="price-block support-block">
+            <div class="price-label">📉 支撑位</div>
+            <div class="price-value">{{ formatPriceValue(report, ['支撑位', 'support_level']) }}</div>
+            <div class="price-sub">下方关键支撑</div>
+          </div>
+          <div class="price-block resistance-block">
+            <div class="price-label">📈 阻力位</div>
+            <div class="price-value">{{ formatPriceValue(report, ['阻力位', 'resistance_level']) }}</div>
+            <div class="price-sub">上方压力参考</div>
           </div>
         </div>
-      </el-card>
 
-      <!-- 报告摘要 -->
-      <el-card v-if="report.summary" class="summary-card" shadow="never">
-        <template #header>
-          <div class="card-header">
-            <el-icon><InfoFilled /></el-icon>
-            <span>执行摘要</span>
+        <!-- 文本洞察 -->
+        <div class="insights-block">
+          <div v-if="pickField(report, ['核心洞察'])" class="insight-row">
+            <span class="insight-title">💡 核心洞察</span>
+            <p class="insight-text">{{ pickField(report, ['核心洞察']) }}</p>
           </div>
-        </template>
-        <div class="summary-content markdown-content" v-html="renderMarkdown(report.summary)"></div>
+          <div v-if="pickField(report, ['投资逻辑'])" class="insight-row">
+            <span class="insight-title">📊 投资逻辑</span>
+            <p class="insight-text">{{ pickField(report, ['投资逻辑']) }}</p>
+          </div>
+          <div v-if="pickField(report, ['趋势预测'])" class="insight-row">
+            <span class="insight-title">🔮 趋势预测</span>
+            <p class="insight-text">{{ pickField(report, ['趋势预测']) }}</p>
+          </div>
+          <div v-if="pickField(report, ['策略点位'])" class="insight-row">
+            <span class="insight-title">🎯 策略点位</span>
+            <p class="insight-text">{{ pickField(report, ['策略点位']) }}</p>
+          </div>
+          <div v-if="pickField(report, ['风险提示'])" class="insight-row">
+            <span class="insight-title">⚠️ 风险提示</span>
+            <p class="insight-text">{{ pickField(report, ['风险提示']) }}</p>
+          </div>
+        </div>
+
+        <!-- 综合评分 -->
+        <div v-if="hasAnyScore(report)" class="scores-block">
+          <div class="score-row" v-if="pickField(report, ['置信度', 'confidence', 'confidence_score']) !== null">
+            <span class="score-label">置信度</span>
+            <span class="score-value">{{ formatPct(pickField(report, ['置信度', 'confidence', 'confidence_score'])) }}%</span>
+          </div>
+          <div class="score-row" v-if="pickField(report, ['技术面评分', 'technical_score']) !== null">
+            <span class="score-label">技术面</span>
+            <span class="score-value">{{ formatPct(pickField(report, ['技术面评分', 'technical_score'])) }}%</span>
+          </div>
+          <div class="score-row" v-if="pickField(report, ['基本面评分', 'fundamental_score']) !== null">
+            <span class="score-label">基本面</span>
+            <span class="score-value">{{ formatPct(pickField(report, ['基本面评分', 'fundamental_score'])) }}%</span>
+          </div>
+          <div class="score-row" v-if="pickField(report, ['情绪面评分', 'sentiment_score']) !== null">
+            <span class="score-label">情绪面</span>
+            <span class="score-value">{{ formatPct(pickField(report, ['情绪面评分', 'sentiment_score'])) }}%</span>
+          </div>
+          <div class="score-row" v-if="pickField(report, ['政策面评分', 'policy_score']) !== null">
+            <span class="score-label">政策面</span>
+            <span class="score-value">{{ formatPct(pickField(report, ['政策面评分', 'policy_score'])) }}%</span>
+          </div>
+          <div class="score-row" v-if="pickField(report, ['风险等级', 'risk_level']) !== null">
+            <span class="score-label">风险等级</span>
+            <span class="score-value">{{ pickField(report, ['风险等级', 'risk_level']) }}</span>
+          </div>
+        </div>
       </el-card>
 
       <!-- 报告模块 -->
@@ -775,7 +733,10 @@ const formatAnalysts = (analysts: string[]) => {
     'news': '新闻分析师',
     'social': '社媒分析师',
     'sentiment': '情绪分析师',
-    'technical': '技术分析师'
+    'technical': '技术分析师',
+    'policy': '政策分析师',
+    'hot_money': '游资追踪师',
+    'lockup': '解禁监控师'
   }
 
   return analysts.map(analyst => analystNameMap[analyst] || analyst).join('、')
@@ -831,33 +792,36 @@ const getModelDescription = (modelInfo: string) => {
 const getModuleDisplayName = (moduleName: string) => {
   // 统一与单股分析的中文标签映射（完整的13个报告）
   const nameMap: Record<string, string> = {
-    // 分析师团队 (4个)
+    // 分析师团队 (7个) - A股特有：政策分析师、游资追踪师、解禁监控师
     market_report: '📈 市场技术分析',
     sentiment_report: '💭 市场情绪分析',
     news_report: '📰 新闻事件分析',
     fundamentals_report: '💰 基本面分析',
+    policy_report: '🏛️ 政策分析师',
+    hot_money_report: '🔥 游资追踪师',
+    lockup_report: '🔒 解禁监控师',
 
     // 研究团队 (3个)
-    bull_researcher: '🐂 多头研究员',
-    bear_researcher: '🐻 空头研究员',
-    research_team_decision: '🔬 研究经理决策',
+    bull_researcher: '🐂 看涨研究员',
+    bear_researcher: '🐻 看跌研究员',
+    research_team_decision: '🔬 研究经理',
 
     // 交易团队 (1个)
     trader_investment_plan: '💼 交易员计划',
 
     // 风险管理团队 (4个)
-    risky_analyst: '⚡ 激进分析师',
-    safe_analyst: '🛡️ 保守分析师',
-    neutral_analyst: '⚖️ 中性分析师',
-    risk_management_decision: '👔 投资组合经理',
+    risky_analyst: '🔥 激进风险评估',
+    safe_analyst: '🛡️ 保守风险评估',
+    neutral_analyst: '⚖️ 中性风险评估',
+    risk_management_decision: '🎯 风险经理',
 
     // 最终决策 (1个)
-    final_trade_decision: '🎯 最终交易决策',
+    final_trade_decision: '🎯 最终投资决策',
 
     // 兼容旧字段
     investment_plan: '📋 投资建议',
-    investment_debate_state: '🔬 研究团队决策（旧）',
-    risk_debate_state: '⚖️ 风险管理团队（旧）',
+    investment_debate_state: '🔬 研究团队（旧）',
+    risk_debate_state: '⚖️ 风险管理（旧）',
     detailed_analysis: '📄 详细分析'
   }
   // 未匹配到时，做一个友好的回退：下划线转空格
@@ -919,6 +883,65 @@ const getRiskColor = (riskLevel: string) => {
     '高': '#F56C6C'       // 深红色
   }
   return colorMap[riskLevel] || '#E6A23C'
+}
+
+// 工具函数：从 report 或其 decision 中按多个候选字段名取值
+const pickField = (report: any, candidates: string[]): any => {
+  if (!report) return null
+  const sources = [report, report.decision || {}, report]
+  for (const src of sources) {
+    if (!src || typeof src !== 'object') continue
+    for (const key of candidates) {
+      const v = src[key]
+      if (v !== null && v !== undefined && v !== '' && v !== 'None') {
+        return v
+      }
+    }
+  }
+  return null
+}
+
+const formatPriceValue = (report: any, candidates: string[]): string => {
+  const val = pickField(report, candidates)
+  if (val === null || val === undefined || val === '') return '--'
+  const num = Number(val)
+  if (!isNaN(num)) return num.toFixed(2)
+  return String(val)
+}
+
+const formatPct = (val: any): string => {
+  if (val === null || val === undefined || val === '') return '0'
+  const num = Number(val)
+  if (isNaN(num)) return String(val)
+  if (num <= 1) return Math.round(num * 100).toString()
+  return Math.round(num).toString()
+}
+
+const hasAnyScore = (report: any): boolean => {
+  const keys = ['置信度', 'confidence', 'confidence_score',
+    '技术面评分', 'technical_score',
+    '基本面评分', 'fundamental_score',
+    '情绪面评分', 'sentiment_score',
+    '政策面评分', 'policy_score',
+    '风险等级', 'risk_level']
+  return keys.some(k => pickField(report, [k]) !== null)
+}
+
+// 根据评级/操作建议决定标签颜色
+const getDecisionActionTagType = (action: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' => {
+  if (!action) return 'info'
+  const map: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
+    '强烈买入': 'success',
+    '买入': 'success',
+    '持有': 'warning',
+    '观望': 'info',
+    '减仓': 'danger',
+    '卖出': 'danger',
+  }
+  for (const k of Object.keys(map)) {
+    if (action.includes(k)) return map[k]
+  }
+  return 'info'
 }
 
 watch(
@@ -1050,6 +1073,7 @@ watch(
     }
 
     .summary-card,
+    .strategy-card,
     .metrics-card,
     .modules-card {
       margin-bottom: 24px;
@@ -1059,6 +1083,120 @@ watch(
         align-items: center;
         gap: 8px;
         font-weight: 600;
+      }
+    }
+
+    /* daily_stock_analysis 风格的策略点位卡片 */
+    .strategy-card {
+      .strategy-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+
+        @media (max-width: 768px) {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      .price-block {
+        padding: 16px;
+        border-radius: 10px;
+        text-align: center;
+        border: 1px solid var(--el-border-color-lighter);
+        background: var(--el-fill-color-light);
+
+        &.buy-block { background: linear-gradient(135deg, rgba(232, 245, 233, 0.6) 0%, rgba(187, 247, 208, 0.3) 100%); border-color: #a5d6a7; }
+        &.add-block { background: linear-gradient(135deg, rgba(225, 245, 254, 0.6) 0%, rgba(186, 230, 253, 0.3) 100%); border-color: #81d4fa; }
+        &.stop-block { background: linear-gradient(135deg, rgba(254, 226, 226, 0.6) 0%, rgba(252, 165, 165, 0.3) 100%); border-color: #ef9a9a; }
+        &.target-block { background: linear-gradient(135deg, rgba(255, 243, 224, 0.6) 0%, rgba(255, 213, 128, 0.3) 100%); border-color: #ffb74d; }
+        &.support-block { background: linear-gradient(135deg, rgba(237, 231, 246, 0.6) 0%, rgba(206, 188, 228, 0.3) 100%); border-color: #b39ddb; }
+        &.resistance-block { background: linear-gradient(135deg, rgba(255, 235, 238, 0.6) 0%, rgba(244, 194, 194, 0.3) 100%); border-color: #e57373; }
+      }
+
+      .price-label {
+        font-size: 13px;
+        color: var(--el-text-color-regular);
+        font-weight: 500;
+        margin-bottom: 8px;
+      }
+
+      .price-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--el-text-color-primary);
+        margin-bottom: 4px;
+        letter-spacing: 0.5px;
+      }
+
+      .price-sub {
+        font-size: 12px;
+        color: var(--el-text-color-secondary);
+      }
+
+      .insights-block {
+        margin: 20px 0;
+        padding: 16px;
+        background: linear-gradient(135deg, rgba(229, 246, 253, 0.35) 0%, rgba(232, 245, 233, 0.3) 100%);
+        border-radius: 10px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .insight-row {
+        padding: 10px 14px;
+        background: rgba(255, 255, 255, 0.85);
+        border-left: 3px solid #409EFF;
+        border-radius: 6px;
+
+        .insight-title {
+          display: inline-block;
+          font-size: 13px;
+          font-weight: 600;
+          color: #374151;
+          margin-bottom: 6px;
+          padding: 2px 8px;
+          background: #e5f2ff;
+          border-radius: 4px;
+        }
+
+        .insight-text {
+          margin: 0;
+          font-size: 13px;
+          color: #4b5563;
+          line-height: 1.7;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+      }
+
+      .scores-block {
+        margin-top: 16px;
+        padding: 12px 16px;
+        background: rgba(255, 251, 235, 0.55);
+        border-radius: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+
+        .score-row {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          min-width: 80px;
+
+          .score-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 4px;
+          }
+
+          .score-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #f59e0b;
+          }
+        }
       }
     }
 

@@ -1,27 +1,12 @@
 from typing import Optional
 
 from .base_client import BaseLLMClient
-from .provider_keys import normalize_provider_key
 
-
-_PROVIDER_ALIASES = {
-    "dashscope": "qwen",
-    "alibaba": "qwen",
-    "zhipu": "glm",
-    "siliconflow": "openai",
-}
-
-_OPENAI_COMPATIBLE = {
-    "openai",
-    "deepseek",
-    "qwen",
-    "glm",
-    "qianfan",
-    "openrouter",
-    "aihubmix",
-    "ollama",
-    "custom_openai",
-}
+# Providers that use the OpenAI-compatible chat completions API
+_OPENAI_COMPATIBLE = (
+    "openai", "xai", "deepseek", "qwen", "glm", "ollama", "openrouter", "minimax",
+    "dashscope", "alibabacloud",
+)
 
 
 def create_llm_client(
@@ -30,22 +15,40 @@ def create_llm_client(
     base_url: Optional[str] = None,
     **kwargs,
 ) -> BaseLLMClient:
-    provider_lower = normalize_provider_key(provider)
-    provider_lower = _PROVIDER_ALIASES.get(provider_lower, provider_lower)
+    """Create an LLM client for the specified provider.
+
+    Provider modules are imported lazily so that simply importing this
+    factory (e.g. during test collection) does not pull in heavy LLM SDKs
+    or fail when their API keys are absent.
+
+    Args:
+        provider: LLM provider name
+        model: Model name/identifier
+        base_url: Optional base URL for API endpoint
+        **kwargs: Additional provider-specific arguments
+
+    Returns:
+        Configured BaseLLMClient instance
+
+    Raises:
+        ValueError: If provider is not supported
+    """
+    provider_lower = provider.lower()
 
     if provider_lower in _OPENAI_COMPATIBLE:
         from .openai_client import OpenAIClient
-
         return OpenAIClient(model, base_url, provider=provider_lower, **kwargs)
-
-    if provider_lower == "google":
-        from .google_client import GoogleClient
-
-        return GoogleClient(model, base_url, **kwargs)
 
     if provider_lower == "anthropic":
         from .anthropic_client import AnthropicClient
-
         return AnthropicClient(model, base_url, **kwargs)
+
+    if provider_lower == "google":
+        from .google_client import GoogleClient
+        return GoogleClient(model, base_url, **kwargs)
+
+    if provider_lower == "azure":
+        from .azure_client import AzureOpenAIClient
+        return AzureOpenAIClient(model, base_url, **kwargs)
 
     raise ValueError(f"Unsupported LLM provider: {provider}")

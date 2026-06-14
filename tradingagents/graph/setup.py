@@ -1,36 +1,13 @@
 # TradingAgents/graph/setup.py
 
-from typing import Dict, Any
-from langchain_openai import ChatOpenAI
-from langgraph.graph import END, StateGraph, START
+from typing import Any, Dict
+from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
-from tradingagents.agents import (
-    create_bear_researcher,
-    create_bull_researcher,
-    create_fundamentals_analyst,
-    create_market_analyst,
-    create_msg_delete,
-    create_news_analyst,
-    create_neutral_debator,
-    create_policy_analyst,
-    create_hot_money_analyst,
-    create_lockup_analyst,
-    create_research_manager,
-    create_risk_manager,
-    create_risky_debator,
-    create_safe_debator,
-    create_social_media_analyst,
-    create_trader,
-)
+from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
-from tradingagents.agents.utils.agent_utils import Toolkit
 
 from .conditional_logic import ConditionalLogic
-
-# 导入统一日志系统
-from tradingagents.utils.logging_init import get_logger
-logger = get_logger("default")
 
 
 class GraphSetup:
@@ -38,32 +15,16 @@ class GraphSetup:
 
     def __init__(
         self,
-        quick_thinking_llm: ChatOpenAI,
-        deep_thinking_llm: ChatOpenAI,
-        toolkit: Toolkit,
+        quick_thinking_llm: Any,
+        deep_thinking_llm: Any,
         tool_nodes: Dict[str, ToolNode],
-        bull_memory,
-        bear_memory,
-        trader_memory,
-        invest_judge_memory,
-        risk_manager_memory,
         conditional_logic: ConditionalLogic,
-        config: Dict[str, Any] = None,
-        react_llm = None,
     ):
         """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
         self.deep_thinking_llm = deep_thinking_llm
-        self.toolkit = toolkit
         self.tool_nodes = tool_nodes
-        self.bull_memory = bull_memory
-        self.bear_memory = bear_memory
-        self.trader_memory = trader_memory
-        self.invest_judge_memory = invest_judge_memory
-        self.risk_manager_memory = risk_manager_memory
         self.conditional_logic = conditional_logic
-        self.config = config or {}
-        self.react_llm = react_llm
 
     def setup_graph(
         self, selected_analysts=["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
@@ -72,13 +33,13 @@ class GraphSetup:
 
         Args:
             selected_analysts (list): List of analyst types to include. Options are:
-                - "market": Market analyst (市场分析师)
-                - "social": Social media analyst (社交媒体分析师)
-                - "news": News analyst (新闻分析师)
-                - "fundamentals": Fundamentals analyst (基本面分析师)
-                - "policy": Policy analyst (政策分析师) - A股特有，分析政策影响
-                - "hot_money": Hot Money Tracker (游资追踪师) - A股特有，分析龙虎榜
-                - "lockup": Lockup Monitor (解禁监控师) - A股特有，分析限售股解禁
+                - "market": Market analyst (technical analysis)
+                - "social": Social media / sentiment analyst
+                - "news": News analyst
+                - "fundamentals": Fundamentals analyst
+                - "policy": Policy analyst (A-stock specific)
+                - "hot_money": Hot money / capital flow tracker (A-stock specific)
+                - "lockup": Lockup expiry / reduction watcher (A-stock specific)
         """
         if len(selected_analysts) == 0:
             raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
@@ -89,116 +50,68 @@ class GraphSetup:
         tool_nodes = {}
 
         if "market" in selected_analysts:
-            # 现在所有LLM都使用标准市场分析师（包括阿里百炼的OpenAI兼容适配器）
-            llm_provider = self.config.get("llm_provider", "").lower()
-
-            # 检查是否使用OpenAI兼容的阿里百炼适配器
-            using_dashscope_openai = (
-                "dashscope" in llm_provider and
-                hasattr(self.quick_thinking_llm, '__class__') and
-                'OpenAI' in self.quick_thinking_llm.__class__.__name__
-            )
-
-            if using_dashscope_openai:
-                logger.debug(f"📈 [DEBUG] 使用标准市场分析师（阿里百炼OpenAI兼容模式）")
-            elif "dashscope" in llm_provider or "阿里百炼" in self.config.get("llm_provider", ""):
-                logger.debug(f"📈 [DEBUG] 使用标准市场分析师（阿里百炼原生模式）")
-            elif "deepseek" in llm_provider:
-                logger.debug(f"📈 [DEBUG] 使用标准市场分析师（DeepSeek）")
-            else:
-                logger.debug(f"📈 [DEBUG] 使用标准市场分析师")
-
-            # 所有LLM都使用标准分析师
             analyst_nodes["market"] = create_market_analyst(
-                self.quick_thinking_llm, self.toolkit
+                self.quick_thinking_llm
             )
             delete_nodes["market"] = create_msg_delete()
             tool_nodes["market"] = self.tool_nodes["market"]
 
         if "social" in selected_analysts:
             analyst_nodes["social"] = create_social_media_analyst(
-                self.quick_thinking_llm, self.toolkit
+                self.quick_thinking_llm
             )
             delete_nodes["social"] = create_msg_delete()
             tool_nodes["social"] = self.tool_nodes["social"]
 
         if "news" in selected_analysts:
             analyst_nodes["news"] = create_news_analyst(
-                self.quick_thinking_llm, self.toolkit
+                self.quick_thinking_llm
             )
             delete_nodes["news"] = create_msg_delete()
             tool_nodes["news"] = self.tool_nodes["news"]
 
         if "fundamentals" in selected_analysts:
-            # 现在所有LLM都使用标准基本面分析师（包括阿里百炼的OpenAI兼容适配器）
-            llm_provider = self.config.get("llm_provider", "").lower()
-
-            # 检查是否使用OpenAI兼容的阿里百炼适配器
-            using_dashscope_openai = (
-                "dashscope" in llm_provider and
-                hasattr(self.quick_thinking_llm, '__class__') and
-                'OpenAI' in self.quick_thinking_llm.__class__.__name__
-            )
-
-            if using_dashscope_openai:
-                logger.debug(f"📊 [DEBUG] 使用标准基本面分析师（阿里百炼OpenAI兼容模式）")
-            elif "dashscope" in llm_provider or "阿里百炼" in self.config.get("llm_provider", ""):
-                logger.debug(f"📊 [DEBUG] 使用标准基本面分析师（阿里百炼原生模式）")
-            elif "deepseek" in llm_provider:
-                logger.debug(f"📊 [DEBUG] 使用标准基本面分析师（DeepSeek）")
-            else:
-                logger.debug(f"📊 [DEBUG] 使用标准基本面分析师")
-
-            # 所有LLM都使用标准分析师（包含强制工具调用机制）
             analyst_nodes["fundamentals"] = create_fundamentals_analyst(
-                self.quick_thinking_llm, self.toolkit
+                self.quick_thinking_llm
             )
             delete_nodes["fundamentals"] = create_msg_delete()
             tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
 
         if "policy" in selected_analysts:
-            logger.debug(f"🏛️ [DEBUG] 创建政策分析师")
             analyst_nodes["policy"] = create_policy_analyst(
-                self.quick_thinking_llm, self.toolkit
+                self.quick_thinking_llm
             )
             delete_nodes["policy"] = create_msg_delete()
-            tool_nodes["policy"] = self.tool_nodes.get("policy")
+            tool_nodes["policy"] = self.tool_nodes["policy"]
 
         if "hot_money" in selected_analysts:
-            logger.debug(f"🔥 [DEBUG] 创建游资追踪师")
-            analyst_nodes["hot_money"] = create_hot_money_analyst(
-                self.quick_thinking_llm, self.toolkit
+            analyst_nodes["hot_money"] = create_hot_money_tracker(
+                self.quick_thinking_llm
             )
             delete_nodes["hot_money"] = create_msg_delete()
-            tool_nodes["hot_money"] = self.tool_nodes.get("hot_money")
+            tool_nodes["hot_money"] = self.tool_nodes["hot_money"]
 
         if "lockup" in selected_analysts:
-            logger.debug(f"🔓 [DEBUG] 创建解禁监控师")
-            analyst_nodes["lockup"] = create_lockup_analyst(
-                self.quick_thinking_llm, self.toolkit
+            analyst_nodes["lockup"] = create_lockup_watcher(
+                self.quick_thinking_llm
             )
             delete_nodes["lockup"] = create_msg_delete()
-            tool_nodes["lockup"] = self.tool_nodes.get("lockup")
+            tool_nodes["lockup"] = self.tool_nodes["lockup"]
+
+        # Create quality gate node
+        quality_gate_node = create_quality_gate(self.quick_thinking_llm)
 
         # Create researcher and manager nodes
-        bull_researcher_node = create_bull_researcher(
-            self.quick_thinking_llm, self.bull_memory
-        )
-        bear_researcher_node = create_bear_researcher(
-            self.quick_thinking_llm, self.bear_memory
-        )
-        research_manager_node = create_research_manager(
-            self.deep_thinking_llm, self.invest_judge_memory
-        )
-        trader_node = create_trader(self.quick_thinking_llm, self.trader_memory)
+        bull_researcher_node = create_bull_researcher(self.quick_thinking_llm)
+        bear_researcher_node = create_bear_researcher(self.quick_thinking_llm)
+        research_manager_node = create_research_manager(self.deep_thinking_llm)
+        trader_node = create_trader(self.quick_thinking_llm)
 
         # Create risk analysis nodes
-        risky_analyst = create_risky_debator(self.quick_thinking_llm)
+        aggressive_analyst = create_aggressive_debator(self.quick_thinking_llm)
         neutral_analyst = create_neutral_debator(self.quick_thinking_llm)
-        safe_analyst = create_safe_debator(self.quick_thinking_llm)
-        risk_manager_node = create_risk_manager(
-            self.deep_thinking_llm, self.risk_manager_memory
-        )
+        conservative_analyst = create_conservative_debator(self.quick_thinking_llm)
+        portfolio_manager_node = create_portfolio_manager(self.deep_thinking_llm)
 
         # Create workflow
         workflow = StateGraph(AgentState)
@@ -209,19 +122,18 @@ class GraphSetup:
             workflow.add_node(
                 f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
             )
-            # 只添加有定义 tool_node 的分析师
-            if tool_nodes.get(analyst_type) is not None:
-                workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+            workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
 
-        # Add other nodes
+        # Add quality gate + other nodes
+        workflow.add_node("Quality Gate", quality_gate_node)
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)
         workflow.add_node("Research Manager", research_manager_node)
         workflow.add_node("Trader", trader_node)
-        workflow.add_node("Risky Analyst", risky_analyst)
+        workflow.add_node("Aggressive Analyst", aggressive_analyst)
         workflow.add_node("Neutral Analyst", neutral_analyst)
-        workflow.add_node("Safe Analyst", safe_analyst)
-        workflow.add_node("Risk Judge", risk_manager_node)
+        workflow.add_node("Conservative Analyst", conservative_analyst)
+        workflow.add_node("Portfolio Manager", portfolio_manager_node)
 
         # Define edges
         # Start with the first analyst
@@ -235,28 +147,21 @@ class GraphSetup:
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
 
             # Add conditional edges for current analyst
-            # 根据是否有 tool_node 决定条件边的目标
-            if tool_nodes.get(analyst_type) is not None:
-                workflow.add_conditional_edges(
-                    current_analyst,
-                    getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                    [current_tools, current_clear],
-                )
-                workflow.add_edge(current_tools, current_analyst)
-            else:
-                # 没有 tool_node 的分析师直接连接到 Msg Clear
-                workflow.add_conditional_edges(
-                    current_analyst,
-                    getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                    [current_clear],
-                )
+            workflow.add_conditional_edges(
+                current_analyst,
+                getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
+                [current_tools, current_clear],
+            )
+            workflow.add_edge(current_tools, current_analyst)
 
             # Connect to next analyst or to Bull Researcher if this is the last analyst
             if i < len(selected_analysts) - 1:
                 next_analyst = f"{selected_analysts[i+1].capitalize()} Analyst"
                 workflow.add_edge(current_clear, next_analyst)
             else:
-                workflow.add_edge(current_clear, "Bull Researcher")
+                workflow.add_edge(current_clear, "Quality Gate")
+
+        workflow.add_edge("Quality Gate", "Bull Researcher")
 
         # Add remaining edges
         workflow.add_conditional_edges(
@@ -276,33 +181,32 @@ class GraphSetup:
             },
         )
         workflow.add_edge("Research Manager", "Trader")
-        workflow.add_edge("Trader", "Risky Analyst")
+        workflow.add_edge("Trader", "Aggressive Analyst")
         workflow.add_conditional_edges(
-            "Risky Analyst",
+            "Aggressive Analyst",
             self.conditional_logic.should_continue_risk_analysis,
             {
-                "Safe Analyst": "Safe Analyst",
-                "Risk Judge": "Risk Judge",
+                "Conservative Analyst": "Conservative Analyst",
+                "Portfolio Manager": "Portfolio Manager",
             },
         )
         workflow.add_conditional_edges(
-            "Safe Analyst",
+            "Conservative Analyst",
             self.conditional_logic.should_continue_risk_analysis,
             {
                 "Neutral Analyst": "Neutral Analyst",
-                "Risk Judge": "Risk Judge",
+                "Portfolio Manager": "Portfolio Manager",
             },
         )
         workflow.add_conditional_edges(
             "Neutral Analyst",
             self.conditional_logic.should_continue_risk_analysis,
             {
-                "Risky Analyst": "Risky Analyst",
-                "Risk Judge": "Risk Judge",
+                "Aggressive Analyst": "Aggressive Analyst",
+                "Portfolio Manager": "Portfolio Manager",
             },
         )
 
-        workflow.add_edge("Risk Judge", END)
+        workflow.add_edge("Portfolio Manager", END)
 
-        # Compile and return
-        return workflow.compile()
+        return workflow

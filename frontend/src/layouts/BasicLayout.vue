@@ -101,7 +101,8 @@ const keepAliveComponents = computed(() => [
   'Dashboard',
   'StockScreening',
   'AnalysisHistory',
-  'QueueManagement'
+  'QueueManagement',
+  'SingleAnalysis'
 ])
 
 // 移动端判断
@@ -159,24 +160,24 @@ watch(() => route.fullPath, () => {
   }
 
   .sidebar-header {
-    height: 60px;
+    height: 56px;
     display: flex;
     align-items: center;
-    padding: 0 16px;
+    padding: 0 12px;
     border-bottom: 1px solid var(--el-border-color-lighter);
 
     .logo {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
 
       img {
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
       }
 
       .logo-text {
-        font-size: 18px;
+        font-size: 16px;
         font-weight: 600;
         color: var(--el-text-color-primary);
         white-space: nowrap;
@@ -187,12 +188,12 @@ watch(() => route.fullPath, () => {
   .sidebar-nav {
     flex: 1;
     overflow-y: auto;
-    padding: 8px 0;
+    padding: 4px 0;
   }
 
   .sidebar-footer {
     border-top: 1px solid var(--el-border-color-lighter);
-    padding: 8px;
+    padding: 6px;
   }
 }
 

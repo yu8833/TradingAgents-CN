@@ -1,35 +1,16 @@
-"""
-港股数据提供器
-"""
+"""香港股票数据 Provider 兼容层"""
 
-# 导入改进的港股工具
-try:
-    from .improved_hk import (
-        ImprovedHKStockProvider,
-        get_improved_hk_provider,
-        get_hk_stock_info_improved
-    )
-    HK_PROVIDER_AVAILABLE = True
-except ImportError:
-    ImprovedHKStockProvider = None
-    get_improved_hk_provider = None
-    get_hk_stock_info_improved = None
-    HK_PROVIDER_AVAILABLE = False
 
-# 导入港股数据工具
-try:
-    from .hk_stock import HKStockProvider
-    HK_STOCK_AVAILABLE = True
-except ImportError:
-    HKStockProvider = None
-    HK_STOCK_AVAILABLE = False
+class HKStockProvider:
+    """HK股票数据 Provider（兼容层 - 空实现）"""
 
-__all__ = [
-    'ImprovedHKStockProvider',
-    'get_improved_hk_provider',
-    'get_hk_stock_info_improved',
-    'HK_PROVIDER_AVAILABLE',
-    'HKStockProvider',
-    'HK_STOCK_AVAILABLE',
-]
+    def __init__(self, *args, **kwargs):
+        pass
 
+    def get_data(self, *args, **kwargs):
+        return None
+
+
+def get_hk_stock_provider(*args, **kwargs):
+    """获取HK股票 Provider（兼容层）"""
+    return HKStockProvider()

@@ -64,6 +64,8 @@ COPY pyproject.toml README.md ./
 # 2. 优先使用预编译的二进制wheel包（--prefer-binary）
 # 3. 避免从源码编译，大幅提升ARM架构构建速度
 # 4. 安装 PDF 导出工具: pdfkit
+# 5. 注意：本地 tradingagents 目录会被 pip install . 安装的 PyPI 版本覆盖，
+#    需要在后面用本地版本覆盖回去
 RUN pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     pip install --prefer-binary . -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     pip install --prefer-binary pdfkit -i https://pypi.tuna.tsinghua.edu.cn/simple
@@ -75,6 +77,13 @@ COPY config ./config
 COPY scripts ./scripts
 COPY docs ./docs
 COPY install ./install
+
+# 重要：用本地 tradingagents 覆盖 PyPI 安装的版本
+# 因为 app/ 代码依赖本地版本的 tradingagents 结构
+RUN cp -r /app/tradingagents /app/tradingagents_pypi_backup && \
+    pip uninstall -y tradingagents 2>/dev/null || true && \
+    cp -r /app/tradingagents_pypi_backup /app/tradingagents && \
+    rm -rf /app/tradingagents_pypi_backup
 
 # 复制Docker环境配置文件
 COPY .env.docker ./.env

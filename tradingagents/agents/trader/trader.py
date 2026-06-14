@@ -1,118 +1,118 @@
+"""Trader：将研究经理的投资计划转化为具体交易建议。
+
+**daily_stock_analysis 风格**：输出完全中文，结构化字段包括
+「操作建议 / 核心理由 / 理想买入 / 二次买入 / 止损价格 / 止盈目标 / 支撑位 / 阻力位 / 建议仓位 / 持仓周期」。
+"""
+
+from __future__ import annotations
+
 import functools
-import time
-import json
 
-# 导入统一日志系统
-from tradingagents.utils.logging_init import get_logger
-from tradingagents.agents.utils.instrument_utils import build_instrument_context
-logger = get_logger("default")
+from langchain_core.messages import AIMessage
+
+from tradingagents.agents.schemas import TraderProposal, render_trader_proposal
+from tradingagents.agents.utils.agent_utils import (
+    build_instrument_context,
+    get_language_instruction,
+)
+from tradingagents.agents.utils.structured import (
+    bind_structured,
+    invoke_structured_or_freetext,
+)
 
 
-def create_trader(llm, memory):
+def create_trader(llm):
+    structured_llm = bind_structured(llm, TraderProposal, "Trader")
+
     def trader_node(state, name):
         company_name = state["company_of_interest"]
         instrument_context = build_instrument_context(company_name)
         investment_plan = state["investment_plan"]
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
 
-        # 使用统一的股票类型检测
-        from tradingagents.utils.stock_utils import StockUtils
-        market_info = StockUtils.get_market_info(company_name)
-        is_china = market_info['is_china']
-        is_hk = market_info['is_hk']
-        is_us = market_info['is_us']
+        # 收集 A 股具体的分析师报告（中文报告名）
+        policy_report = state.get("policy_report", "")
+        hot_money_report = state.get("hot_money_report", "")
+        lockup_report = state.get("lockup_report", "")
+        market_report = state.get("market_report", "")
+        fundamentals_report = state.get("fundamentals_report", "")
+        sentiment_report = state.get("sentiment_report", "")
+        news_report = state.get("news_report", "")
 
-        # 根据股票类型确定货币单位
-        currency = market_info['currency_name']
-        currency_symbol = market_info['currency_symbol']
+        # 构建 A 股上下文块
+        astock_context_parts = []
+        if market_report:
+            astock_context_parts.append(f"技术分析报告:\n{market_report}")
+        if fundamentals_report:
+            astock_context_parts.append(f"基本面分析报告:\n{fundamentals_report}")
+        if sentiment_report:
+            astock_context_parts.append(f"市场情绪报告:\n{sentiment_report}")
+        if news_report:
+            astock_context_parts.append(f"新闻公告报告:\n{news_report}")
+        if policy_report:
+            astock_context_parts.append(f"政策分析报告:\n{policy_report}")
+        if hot_money_report:
+            astock_context_parts.append(f"资金流向报告:\n{hot_money_report}")
+        if lockup_report:
+            astock_context_parts.append(f"限售解禁报告:\n{lockup_report}")
+        astock_context = "\n\n".join(astock_context_parts)
+        lang_instr = get_language_instruction()
+        extra_section = ("参考分析师报告:\n" + astock_context + "\n\n") if astock_context else ""
 
-        logger.debug(f"💰 [DEBUG] ===== 交易员节点开始 =====")
-        logger.debug(f"💰 [DEBUG] 交易员检测股票类型: {company_name} -> {market_info['market_name']}, 货币: {currency}")
-        logger.debug(f"💰 [DEBUG] 货币符号: {currency_symbol}")
-        logger.debug(f"💰 [DEBUG] 市场详情: 中国A股={is_china}, 港股={is_hk}, 美股={is_us}")
-        logger.debug(f"💰 [DEBUG] 基本面报告长度: {len(fundamentals_report)}")
-        logger.debug(f"💰 [DEBUG] 基本面报告前200字符: {fundamentals_report[:200]}...")
+        prompt = f"""你是一位活跃于 A 股市场的交易员（Trader）。
+请基于研究经理的投资计划和各分析师报告，制定具体、可执行的交易建议。
 
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
-
-        # 检查memory是否可用
-        if memory is not None:
-            logger.warning(f"⚠️ [DEBUG] memory可用，获取历史记忆")
-            past_memories = memory.get_memories(curr_situation, n_matches=2)
-            past_memory_str = ""
-            for i, rec in enumerate(past_memories, 1):
-                past_memory_str += rec["recommendation"] + "\n\n"
-        else:
-            logger.warning(f"⚠️ [DEBUG] memory为None，跳过历史记忆检索")
-            past_memories = []
-            past_memory_str = "暂无历史记忆数据可参考。"
-
-        context = {
-            "role": "user",
-            "content": f"Based on a comprehensive analysis by a team of analysts, here is an investment plan tailored for {company_name}. This plan incorporates insights from current technical market trends, macroeconomic indicators, and social media sentiment. Use this plan as a foundation for evaluating your next trading decision.\n\nProposed Investment Plan: {investment_plan}\n\nLeverage these insights to make an informed and strategic decision.",
-        }
-
-        messages = [
-            {
-                "role": "system",
-                "content": f"""您是一位专业的交易员，负责分析市场数据并做出投资决策。基于您的分析，请提供具体的买入、卖出或持有建议。
-
-⚠️ 重要提醒：当前分析的股票代码是 {company_name}，请使用正确的货币单位：{currency}（{currency_symbol}）
+**公司**：{company_name}
 {instrument_context}
 
-🔴 严格要求：
-- 股票代码 {company_name} 的公司名称必须严格按照基本面报告中的真实数据
-- 绝对禁止使用错误的公司名称或混淆不同的股票
-- 所有分析必须基于提供的真实数据，不允许假设或编造
-- **必须提供具体的目标价位，不允许设置为null或空值**
+---
 
-请在您的分析中包含以下关键信息：
-1. **投资建议**: 明确的买入/持有/卖出决策
-2. **目标价位**: 基于分析的合理目标价格({currency}) - 🚨 强制要求提供具体数值
-   - 买入建议：提供目标价位和预期涨幅
-   - 持有建议：提供合理价格区间（如：{currency_symbol}XX-XX）
-   - 卖出建议：提供止损价位和目标卖出价
-3. **置信度**: 对决策的信心程度(0-1之间)
-4. **风险评分**: 投资风险等级(0-1之间，0为低风险，1为高风险)
-5. **详细推理**: 支持决策的具体理由
+**A 股交易特殊规则（必须纳入交易计划考虑）**：
+- T+1 交易：当日买入次日才能卖出，短线策略的灵活性受限
+- 涨跌停：主板 ±10%，科创 / 创业板 ±20%，ST ±5%。触及涨跌停后流动性可能枯竭
+- 最低一手：100 股（主板）或 200 股（科创 / 创业板）
+- 交易时段：09:30-11:30，13:00-15:00 北京时间
+- 资金规则：非所有标的可融资融券，默认按纯现金考虑
 
-🎯 目标价位计算指导：
-- 基于基本面分析中的估值数据（P/E、P/B、DCF等）
-- 参考技术分析的支撑位和阻力位
-- 考虑行业平均估值水平
-- 结合市场情绪和新闻影响
-- 即使市场情绪过热，也要基于合理估值给出目标价
+---
 
-特别注意：
-- 如果是中国A股（6位数字代码），请使用人民币（¥）作为价格单位
-- 如果是美股或港股，请使用美元（$）作为价格单位
-- 目标价位必须与当前股价的货币单位保持一致
-- 必须使用基本面报告中提供的正确公司名称
-- **绝对不允许说"无法确定目标价"或"需要更多信息"**
+**结构化输出要求（严格遵守字段定义，所有内容用中文）**：
+1. **操作建议**：交易方向。严格从「买入 / 持有 / 卖出」选一个
+2. **核心理由**：2-4 句中文理由，锚定在分析师报告和研究计划中的证据
+3. **理想买入**（建议给出）：首次建仓理想价格（标的计价货币，如 CNY）。参考：当前价 × 0.95~1.00
+4. **二次买入**（建议给出）：第二档加仓价格。参考：当前价 × 0.90~0.93
+5. **止损价格**（建议给出）：无条件止损价格。参考：当前价 × 0.88~0.92 或最近支撑位
+6. **止盈目标**（建议给出）：止盈目标价格。参考：当前价 × 1.15~1.25 或最近阻力位
+7. **支撑位**（建议给出）：关键支撑位（近期低点 / 均线支撑）
+8. **阻力位**（建议给出）：关键阻力位（近期高点 / 均线压力）
+9. **建议仓位**（建议给出）：如「轻仓 3%」「半仓参与」
+10. **持仓周期**（建议给出）：如「3-6 个月」「1-2 周」
 
-请用中文撰写分析内容，并始终以'最终交易建议: **买入/持有/卖出**'结束您的回应以确认您的建议。
+**重要提示**：
+- 价格应与标的当前价格合理相关（A 股标的用 CNY）
+- 仓位建议需考虑涨跌停风险和 T+1 限制
+- 所有文字内容必须使用中文
 
-请不要忘记利用过去决策的经验教训来避免重复错误。以下是类似情况下的交易反思和经验教训: {past_memory_str}""",
-            },
-            context,
-        ]
+---
 
-        logger.debug(f"💰 [DEBUG] 准备调用LLM，系统提示包含货币: {currency}")
-        logger.debug(f"💰 [DEBUG] 系统提示中的关键部分: 目标价格({currency})")
+**研究经理的投资计划**：
+{investment_plan}
 
-        result = llm.invoke(messages)
+---
 
-        logger.debug(f"💰 [DEBUG] LLM调用完成")
-        logger.debug(f"💰 [DEBUG] 交易员回复长度: {len(result.content)}")
-        logger.debug(f"💰 [DEBUG] 交易员回复前500字符: {result.content[:500]}...")
-        logger.debug(f"💰 [DEBUG] ===== 交易员节点结束 =====")
+{extra_section}请制定明确、具体、可执行的交易建议。
+{lang_instr}"""
+
+        trader_plan = invoke_structured_or_freetext(
+            structured_llm,
+            llm,
+            prompt,
+            render_trader_proposal,
+            "Trader",
+        )
 
         return {
-            "messages": [result],
-            "trader_investment_plan": result.content,
+            "messages": [AIMessage(content=trader_plan)],
+            "trader_investment_plan": trader_plan,
             "sender": name,
         }
 

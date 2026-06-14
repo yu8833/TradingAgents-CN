@@ -1,151 +1,99 @@
-import time
-import json
+"""Research Manager：将多空辩论合成结构化投资计划。
 
-from tradingagents.utils.logging_init import get_logger
-from tradingagents.agents.utils.instrument_utils import build_instrument_context
-from tradingagents.agents.schemas import PortfolioDecision, render_pm_decision
-from tradingagents.agents.utils.structured import get_structured_llm, parse_structured_output
-from tradingagents.agents.utils.data_quality import (
-    assess_report_quality,
-    format_quality_report,
-    DataQualityGrade,
-    get_quality_weight,
+**daily_stock_analysis 风格**：输出完全中文，结构化字段包括
+「评级 / 核心洞察 / 战略行动 / 置信度 / 风险等级」。
+"""
+
+from __future__ import annotations
+
+from tradingagents.agents.schemas import ResearchPlan, render_research_plan
+from tradingagents.agents.utils.agent_utils import (
+    build_instrument_context,
+    get_language_instruction,
+)
+from tradingagents.agents.utils.structured import (
+    bind_structured,
+    invoke_structured_or_freetext,
 )
 
-logger = get_logger("default")
 
+def create_research_manager(llm):
+    structured_llm = bind_structured(llm, ResearchPlan, "Research Manager")
 
-def create_research_manager(llm, memory):
     def research_manager_node(state) -> dict:
-        ticker = state["company_of_interest"]
-        instrument_context = build_instrument_context(ticker)
+        instrument_context = build_instrument_context(state["company_of_interest"])
         history = state["investment_debate_state"].get("history", "")
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
+        lang_instr = get_language_instruction()
 
         investment_debate_state = state["investment_debate_state"]
 
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
+        prompt = f"""你是一位经验丰富的 A 股研究经理（Research Manager）。
+请基于多空辩论和各分析师报告，做出清晰、可执行的投资计划给交易员参考。
 
-        if memory is not None:
-            past_memories = memory.get_memories(curr_situation, n_matches=2)
-        else:
-            logger.warning(f"⚠️ [DEBUG] memory为None，跳过历史记忆检索")
-            past_memories = []
-
-        past_memory_str = ""
-        for i, rec in enumerate(past_memories, 1):
-            past_memory_str += rec["recommendation"] + "\n\n"
-
-        # 数据质量评估
-        market_quality = assess_report_quality(market_research_report, report_type="market")
-        fundamentals_quality = assess_report_quality(fundamentals_report, report_type="fundamentals")
-        
-        logger.info(f"📊 [Research Manager] 数据质量评估:")
-        logger.info(f"   - 市场报告: {market_quality.grade} ({market_quality.confidence_score:.1%})")
-        logger.info(f"   - 基本面报告: {fundamentals_quality.grade} ({fundamentals_quality.confidence_score:.1%})")
-
-        quality_warnings = []
-        if market_quality.grade in [DataQualityGrade.D, DataQualityGrade.F]:
-            quality_warnings.append(f"市场报告质量较低({market_quality.grade})，请减少依赖")
-        if fundamentals_quality.grade in [DataQualityGrade.D, DataQualityGrade.F]:
-            quality_warnings.append(f"基本面报告质量较低({fundamentals_quality.grade})，请减少依赖")
-
-        if quality_warnings:
-            quality_hint = "\n".join([f"⚠️ {warning}" for warning in quality_warnings])
-        else:
-            quality_hint = "✅ 所有报告数据质量良好"
-
-        prompt = f"""作为投资组合经理和辩论主持人，您的职责是综合评估辩论双方的观点，并结合市场分析师的技术分析报告，给出客观、平衡的投资建议。
-
-**重要原则**：
-- **市场分析师的建议应作为重要参考**，而非被辩论双方的观点覆盖
-- **持有是中性建议**，不需要比买入/卖出更强的理由
-- **警惕辩论中的极端观点和主观臆测**（如"历史教训表明..."、"类似标的上..."等无数据支撑的说法）
-- **综合权衡**，而非简单地选择辩论中最"响亮"的一方
-
-**数据质量提示**：
-{quality_hint}
-
-**A股市场特别考虑**：
-- T+1交易制度的影响
-- 涨跌停板限制
-- 北向资金流动作为聪明钱指标
-- 估值区间方法
-- 限售股解禁时间
-- 行业轮动意识
-
-以下是您对错误的过去反思：
-\"{past_memory_str}\"
-
-标的约束：
 {instrument_context}
 
-以下是综合分析报告：
-市场研究：{market_research_report}
+---
 
-情绪分析：{sentiment_report}
+**A 股市场要点（必须纳入分析考虑）**：
+- 涨跌停制度：主板 ±10%，科创 / 创业板 ±20%，ST ±5%
+- T+1 交易：当天买入次日才能卖
+- 资金流向：北向资金（外资流入 / 流出）是重要市场风向标
+- 政策影响：国家产业政策、监管政策直接影响板块走势
+- 情绪驱动：A 股散户占比高，情绪和题材短期影响力大
+- 限售解禁：重要股东的解禁安排会造成阶段性抛压
 
-新闻分析：{news_report}
+---
 
-基本面分析：{fundamentals_report}
+**评级系统（必须严格选一个）**：
+- **强烈买入**：市场与标的一致看多，且有明确催化因素
+- **买入**：基本面和技术面支持上涨，可逐步建仓
+- **持有**：多空力量相对平衡，保持现有仓位观望
+- **减仓**：估值偏高或出现利空信号，建议逐步降低仓位
+- **卖出**：明确看空信号，建议清仓离场
 
-以下是辩论：
-辩论历史：
+---
+
+**输出字段（严格遵守，所有内容用中文）**：
+1. **rating**：5 档评级之一（强烈买入 / 买入 / 持有 / 减仓 / 卖出）（必填）
+2. **核心洞察**：2-4 句中文总结，描述市场主要矛盾、资金态度、关键催化事件
+3. **战略行动**：给交易员的具体中文操作步骤和仓位管理建议
+
+**可选增强字段**（如果能评估，请给出）：
+- **confidence_score**：0.0-1.0，对建议的信心
+- **risk_level**：低 / 中 / 高
+
+**重要提示**：
+- 当辩论明显偏向一边时（如多头论据压倒性占优），请给出明确方向（强烈买入 / 买入 / 减仓 / 卖出），不要犹豫选持有
+- 只有当两边论据相对平衡、无明显优势时，再选持有
+- 建议应与 A 股特殊规则一致（如考虑 T+1 的短线限制）
+
+---
+
+**多空辩论历史**：
 {history}
 
-请用中文撰写所有分析内容和建议。"""
+{lang_instr}"""
 
-        prompt_length = len(prompt)
-        estimated_tokens = int(prompt_length / 1.8)
-
-        logger.info(f"📊 [Research Manager] Prompt 统计:")
-        logger.info(f"   - 辩论历史长度: {len(history)} 字符")
-        logger.info(f"   - 总 Prompt 长度: {prompt_length} 字符")
-        logger.info(f"   - 估算输入 Token: ~{estimated_tokens} tokens")
-
-        start_time = time.time()
-
-        structured_llm = get_structured_llm(llm, PortfolioDecision)
-        
-        try:
-            response = structured_llm.invoke(prompt)
-            decision = parse_structured_output(response, PortfolioDecision)
-            logger.info(f"✅ [Research Manager] 结构化输出解析成功: {decision.rating}")
-        except Exception as e:
-            logger.warning(f"⚠️ [Research Manager] 结构化输出失败，回退到文本模式: {e}")
-            response = llm.invoke(prompt)
-            decision = parse_structured_output(response.content if hasattr(response, 'content') else str(response), PortfolioDecision)
-
-        elapsed_time = time.time() - start_time
-
-        response_content = render_pm_decision(decision)
-        response_length = len(response_content)
-        estimated_output_tokens = int(response_length / 1.8)
-
-        logger.info(f"⏱️ [Research Manager] LLM调用耗时: {elapsed_time:.2f}秒")
-        logger.info(f"📊 [Research Manager] 响应统计: {response_length} 字符, 估算~{estimated_output_tokens} tokens")
+        investment_plan = invoke_structured_or_freetext(
+            structured_llm,
+            llm,
+            prompt,
+            render_research_plan,
+            "Research Manager",
+        )
 
         new_investment_debate_state = {
-            "judge_decision": response_content,
+            "judge_decision": investment_plan,
             "history": investment_debate_state.get("history", ""),
             "bear_history": investment_debate_state.get("bear_history", ""),
             "bull_history": investment_debate_state.get("bull_history", ""),
-            "current_response": response_content,
+            "current_response": investment_plan,
             "count": investment_debate_state["count"],
-            "rating": decision.rating.value,
-            "price_target": decision.price_target,
-            "data_quality": {
-                "market": market_quality.grade.value,
-                "fundamentals": fundamentals_quality.grade.value,
-            },
         }
 
         return {
             "investment_debate_state": new_investment_debate_state,
-            "investment_plan": response_content,
+            "investment_plan": investment_plan,
         }
 
     return research_manager_node

@@ -603,7 +603,7 @@ async def lifespan(app: FastAPI):
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="TradingAgents-CN API",
+    title="股票分析系统 API",
     description="股票分析与批量队列系统 API",
     version=get_version(),
     docs_url="/docs" if settings.DEBUG else None,
@@ -740,7 +740,7 @@ async def root():
     """根路径，返回API信息"""
     print("🏠 根路径被访问")
     return {
-        "name": "TradingAgents-CN API",
+        "name": "股票分析系统 API",
         "version": get_version(),
         "status": "running",
         "docs_url": "/docs" if settings.DEBUG else None

@@ -33,7 +33,7 @@ const routes: RouteRecordRaw[] = [
     name: 'Dashboard',
     component: () => import('@/layouts/BasicLayout.vue'),
     meta: {
-      title: '仪表板',
+      title: '仪表',
       icon: 'Dashboard',
       requiresAuth: true,
       transition: 'fade'
@@ -44,7 +44,7 @@ const routes: RouteRecordRaw[] = [
         name: 'DashboardHome',
         component: () => import('@/views/Dashboard/index.vue'),
         meta: {
-          title: '仪表板',
+          title: '仪表',
           requiresAuth: true
         }
       }
@@ -55,16 +55,31 @@ const routes: RouteRecordRaw[] = [
     name: 'Analysis',
     component: () => import('@/layouts/BasicLayout.vue'),
     redirect: '/analysis/single',
+    meta: {
+      title: '报告',
+      icon: 'Document',
+      requiresAuth: true
+    },
     children: [
       {
         path: 'single',
         name: 'SingleAnalysis',
-        component: () => import('@/views/Analysis/SingleAnalysis.vue')
+        component: () => import('@/views/Analysis/SingleAnalysis.vue'),
+        meta: {
+          title: '单股报告',
+          parentTitle: '报告',
+          requiresAuth: true
+        }
       },
       {
         path: 'batch',
         name: 'BatchAnalysis',
-        component: () => import('@/views/Analysis/BatchAnalysis.vue')
+        component: () => import('@/views/Analysis/BatchAnalysis.vue'),
+        meta: {
+          title: '批量报告',
+          parentTitle: '报告',
+          requiresAuth: true
+        }
       },
 
     ]
@@ -96,7 +111,7 @@ const routes: RouteRecordRaw[] = [
     name: 'Favorites',
     component: () => import('@/layouts/BasicLayout.vue'),
     meta: {
-      title: '我的自选股',
+      title: '自选',
       icon: 'Star',
       requiresAuth: true,
       transition: 'slide-up'
@@ -107,7 +122,7 @@ const routes: RouteRecordRaw[] = [
         name: 'FavoritesHome',
         component: () => import('@/views/Favorites/index.vue'),
         meta: {
-          title: '我的自选股',
+          title: '自选',
           requiresAuth: true
         }
       }
@@ -118,7 +133,7 @@ const routes: RouteRecordRaw[] = [
     name: 'Learning',
     component: () => import('@/layouts/BasicLayout.vue'),
     meta: {
-      title: '学习中心',
+      title: '资料',
       icon: 'Reading',
       requiresAuth: false,
       transition: 'fade'
@@ -129,7 +144,7 @@ const routes: RouteRecordRaw[] = [
         name: 'LearningHome',
         component: () => import('@/views/Learning/index.vue'),
         meta: {
-          title: '学习中心',
+          title: '资料',
           requiresAuth: false
         }
       },
@@ -138,7 +153,8 @@ const routes: RouteRecordRaw[] = [
         name: 'LearningCategory',
         component: () => import('@/views/Learning/Category.vue'),
         meta: {
-          title: '学习分类',
+          title: '分类详情',
+          parentTitle: '资料',
           requiresAuth: false
         }
       },
@@ -148,6 +164,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Learning/Article.vue'),
         meta: {
           title: '文章详情',
+          parentTitle: '资料',
           requiresAuth: false
         }
       }
@@ -185,7 +202,7 @@ const routes: RouteRecordRaw[] = [
     name: 'TaskCenter',
     component: () => import('@/layouts/BasicLayout.vue'),
     meta: {
-      title: '任务中心',
+      title: '任务',
       icon: 'List',
       requiresAuth: true,
       transition: 'slide-up'
@@ -195,7 +212,7 @@ const routes: RouteRecordRaw[] = [
         path: '',
         name: 'TaskCenterHome',
         component: () => import('@/views/Tasks/TaskCenter.vue'),
-        meta: { title: '任务中心', requiresAuth: true }
+        meta: { title: '任务', requiresAuth: true }
       }
     ]
   },
@@ -206,7 +223,7 @@ const routes: RouteRecordRaw[] = [
     name: 'Reports',
     component: () => import('@/layouts/BasicLayout.vue'),
     meta: {
-      title: '分析报告',
+      title: '历史报告',
       icon: 'Document',
       requiresAuth: true,
       transition: 'fade'
@@ -217,7 +234,8 @@ const routes: RouteRecordRaw[] = [
         name: 'ReportsHome',
         component: () => import('@/views/Reports/index.vue'),
         meta: {
-          title: '分析报告',
+          title: '历史报告',
+          parentTitle: '报告',
           requiresAuth: true
         }
       },
@@ -227,6 +245,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Reports/ReportDetail.vue'),
         meta: {
           title: '报告详情',
+          parentTitle: '报告',
           requiresAuth: true
         }
       },
@@ -257,7 +276,8 @@ const routes: RouteRecordRaw[] = [
         name: 'SettingsHome',
         component: () => import('@/views/Settings/index.vue'),
         meta: {
-          title: '设置',
+          title: '通用设置',
+          parentTitle: '设置',
           requiresAuth: true
         }
       },
@@ -267,6 +287,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Settings/ConfigManagement.vue'),
         meta: {
           title: '配置管理',
+          parentTitle: '设置',
           requiresAuth: true
         }
       },
@@ -276,6 +297,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/System/DatabaseManagement.vue'),
         meta: {
           title: '数据库管理',
+          parentTitle: '设置',
           requiresAuth: true
         }
       },
@@ -285,6 +307,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/System/OperationLogs.vue'),
         meta: {
           title: '操作日志',
+          parentTitle: '设置',
           requiresAuth: true
         }
       },
@@ -294,6 +317,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/System/LogManagement.vue'),
         meta: {
           title: '系统日志',
+          parentTitle: '设置',
           requiresAuth: true
         }
       },
@@ -303,6 +327,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/System/MultiSourceSync.vue'),
         meta: {
           title: '多数据源同步',
+          parentTitle: '设置',
           requiresAuth: true
         }
       },
@@ -312,6 +337,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Settings/CacheManagement.vue'),
         meta: {
           title: '缓存管理',
+          parentTitle: '设置',
           requiresAuth: true
         }
       },
@@ -321,6 +347,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Settings/UsageStatistics.vue'),
         meta: {
           title: '使用统计',
+          parentTitle: '设置',
           requiresAuth: true
         }
       },
@@ -330,6 +357,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/System/SchedulerManagement.vue'),
         meta: {
           title: '定时任务',
+          parentTitle: '设置',
           requiresAuth: true
         }
       }
@@ -350,20 +378,32 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/about',
     name: 'About',
-    component: () => import('@/views/About/index.vue'),
+    component: () => import('@/layouts/BasicLayout.vue'),
     meta: {
       title: '关于',
       icon: 'InfoFilled',
-      requiresAuth: false, // 关于页面不需要认证
+      requiresAuth: false,
       transition: 'fade'
-    }
+    },
+    children: [
+      {
+        path: '',
+        name: 'AboutHome',
+        component: () => import('@/views/About/index.vue'),
+        meta: {
+          title: '关于',
+          requiresAuth: false,
+          transition: 'fade'
+        }
+      }
+    ]
   },
   {
     path: '/paper',
     name: 'PaperTrading',
     component: () => import('@/layouts/BasicLayout.vue'),
     meta: {
-      title: '模拟交易',
+      title: '交易',
       icon: 'CreditCard',
       requiresAuth: true,
       transition: 'slide-up'
@@ -374,7 +414,7 @@ const routes: RouteRecordRaw[] = [
         name: 'PaperTradingHome',
         component: () => import('@/views/PaperTrading/index.vue'),
         meta: {
-          title: '模拟交易',
+          title: '交易',
           requiresAuth: true
         }
       }

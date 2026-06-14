@@ -323,7 +323,12 @@ async def get_fundamentals(
         logger.error(f"获取财务数据失败: {e}")
 
     # 3. 获取实时PE/PB（优先使用实时计算）
-    from tradingagents.dataflows.realtime_metrics import get_pe_pb_with_fallback
+    try:
+        from tradingagents.dataflows.realtime_metrics import get_pe_pb_with_fallback
+    except ImportError:
+        logger.warning("tradingagents.dataflows.realtime_metrics 不可用，跳过实时PE/PB计算")
+        def get_pe_pb_with_fallback(*args, **kwargs):
+            return {}
     import asyncio
 
     # 在线程池中执行同步的实时计算

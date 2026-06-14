@@ -1,37 +1,29 @@
-import importlib
-from typing import Dict, Tuple
+from .utils.agent_utils import create_msg_delete
+from .utils.agent_states import AgentState, InvestDebateState, RiskDebateState
 
-from tradingagents.utils.logging_init import get_logger
+from .analysts.fundamentals_analyst import create_fundamentals_analyst
+from .analysts.hot_money_tracker import create_hot_money_tracker
+from .analysts.lockup_watcher import create_lockup_watcher
+from .analysts.market_analyst import create_market_analyst
+from .analysts.news_analyst import create_news_analyst
+from .analysts.policy_analyst import create_policy_analyst
+from .analysts.social_media_analyst import create_social_media_analyst
 
-logger = get_logger("default")
+from .quality_gate import create_quality_gate
 
-_EXPORTS: Dict[str, Tuple[str, str]] = {
-    "FinancialSituationMemory": ("tradingagents.agents.utils.memory", "FinancialSituationMemory"),
-    "Toolkit": ("tradingagents.agents.utils.agent_utils", "Toolkit"),
-    "create_msg_delete": ("tradingagents.agents.utils.agent_utils", "create_msg_delete"),
-    "AgentState": ("tradingagents.agents.utils.agent_states", "AgentState"),
-    "InvestDebateState": ("tradingagents.agents.utils.agent_states", "InvestDebateState"),
-    "RiskDebateState": ("tradingagents.agents.utils.agent_states", "RiskDebateState"),
-    "create_bear_researcher": ("tradingagents.agents.researchers.bear_researcher", "create_bear_researcher"),
-    "create_bull_researcher": ("tradingagents.agents.researchers.bull_researcher", "create_bull_researcher"),
-    "create_research_manager": ("tradingagents.agents.managers.research_manager", "create_research_manager"),
-    "create_fundamentals_analyst": ("tradingagents.agents.analysts.fundamentals_analyst", "create_fundamentals_analyst"),
-    "create_market_analyst": ("tradingagents.agents.analysts.market_analyst", "create_market_analyst"),
-    "create_news_analyst": ("tradingagents.agents.analysts.news_analyst", "create_news_analyst"),
-    "create_social_media_analyst": ("tradingagents.agents.analysts.social_media_analyst", "create_social_media_analyst"),
-    "create_policy_analyst": ("tradingagents.agents.analysts.policy_analyst", "create_policy_analyst"),
-    "create_hot_money_analyst": ("tradingagents.agents.analysts.hot_money_analyst", "create_hot_money_analyst"),
-    "create_lockup_analyst": ("tradingagents.agents.analysts.lockup_analyst", "create_lockup_analyst"),
-    "create_risky_debator": ("tradingagents.agents.risk_mgmt.aggresive_debator", "create_risky_debator"),
-    "create_safe_debator": ("tradingagents.agents.risk_mgmt.conservative_debator", "create_safe_debator"),
-    "create_neutral_debator": ("tradingagents.agents.risk_mgmt.neutral_debator", "create_neutral_debator"),
-    "create_risk_manager": ("tradingagents.agents.managers.risk_manager", "create_risk_manager"),
-    "create_trader": ("tradingagents.agents.trader.trader", "create_trader"),
-}
+from .researchers.bear_researcher import create_bear_researcher
+from .researchers.bull_researcher import create_bull_researcher
+
+from .risk_mgmt.aggressive_debator import create_aggressive_debator
+from .risk_mgmt.conservative_debator import create_conservative_debator
+from .risk_mgmt.neutral_debator import create_neutral_debator
+
+from .managers.research_manager import create_research_manager
+from .managers.portfolio_manager import create_portfolio_manager
+
+from .trader.trader import create_trader
 
 __all__ = [
-    "FinancialSituationMemory",
-    "Toolkit",
     "AgentState",
     "create_msg_delete",
     "InvestDebateState",
@@ -40,30 +32,16 @@ __all__ = [
     "create_bull_researcher",
     "create_research_manager",
     "create_fundamentals_analyst",
+    "create_hot_money_tracker",
+    "create_lockup_watcher",
     "create_market_analyst",
     "create_neutral_debator",
     "create_news_analyst",
-    "create_risky_debator",
-    "create_risk_manager",
-    "create_safe_debator",
-    "create_social_media_analyst",
+    "create_aggressive_debator",
     "create_policy_analyst",
-    "create_hot_money_analyst",
-    "create_lockup_analyst",
+    "create_quality_gate",
+    "create_portfolio_manager",
+    "create_conservative_debator",
+    "create_social_media_analyst",
     "create_trader",
 ]
-
-
-def __getattr__(name: str):
-    if name not in _EXPORTS:
-        raise AttributeError(name)
-
-    module_name, attr_name = _EXPORTS[name]
-    module = importlib.import_module(module_name)
-    value = getattr(module, attr_name)
-    globals()[name] = value
-    return value
-
-
-def __dir__():
-    return sorted(set(globals().keys()) | set(_EXPORTS.keys()))

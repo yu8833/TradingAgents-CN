@@ -12,6 +12,68 @@ from datetime import datetime
 from app.utils.timezone import now_tz
 from bson import ObjectId
 
+# provider_keys 兼容层：新 tradingagents 可能没有这个模块
+try:
+    from tradingagents.llm_clients.provider_keys import (
+        canonical_aliases,
+        normalize_provider_key,
+        env_key_for_provider,
+        default_backend_url,
+    )
+    _provider_keys_available = True
+except Exception:
+    _provider_keys_available = False
+
+    def _make_normalize_provider_key():
+        """创建 normalize_provider_key 函数的简单实现"""
+        ALIASES = {
+            "gpt-4": "openai", "gpt-3.5": "openai", "chatgpt": "openai",
+            "claude": "anthropic", "claude-3": "anthropic",
+            "gemini": "google", "bard": "google",
+            "zhipu": "zhipu", "glm": "zhipu",
+            "deepseek": "deepseek",
+            "dashscope": "dashscope", "qwen": "dashscope",
+            "qianfan": "qianfan",
+            "azure": "azure",
+            "siliconflow": "siliconflow",
+            "openrouter": "openrouter",
+            "302ai": "302ai", "aihubmix": "aihubmix", "oneapi": "oneapi", "newapi": "newapi",
+        }
+        def normalize_provider_key(provider):
+            if not provider:
+                return "openai"
+            p = provider.lower().strip()
+            return ALIASES.get(p, p)
+        return normalize_provider_key
+
+    def _make_env_key_for_provider():
+        """创建 env_key_for_provider 函数的简单实现"""
+        ENV_KEYS = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "google": "GOOGLE_API_KEY",
+            "zhipu": "ZHIPU_API_KEY",
+            "deepseek": "DEEPSEEK_API_KEY",
+            "dashscope": "DASHSCOPE_API_KEY",
+            "qianfan": "QIANFAN_API_KEY",
+            "azure": "AZURE_OPENAI_API_KEY",
+            "siliconflow": "SILICONFLOW_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+            "302ai": "AI302_API_KEY",
+            "aihubmix": "AIHUBMIX_API_KEY",
+            "oneapi": "ONEAPI_API_KEY",
+            "newapi": "NEWAPI_API_KEY",
+        }
+        def env_key_for_provider(provider: str) -> str:
+            p = _make_normalize_provider_key()(provider)
+            return ENV_KEYS.get(p, f"{p.upper()}_API_KEY")
+        return env_key_for_provider
+
+    normalize_provider_key = _make_normalize_provider_key()
+    env_key_for_provider = _make_env_key_for_provider()
+    canonical_aliases = {}
+    default_backend_url = None
+
 from app.core.database import get_mongo_db
 from app.core.unified_config import unified_config
 from app.models.config import (
@@ -19,7 +81,6 @@ from app.models.config import (
     ModelProvider, DataSourceType, DatabaseType, LLMProvider,
     MarketCategory, DataSourceGrouping, ModelCatalog, ModelInfo
 )
-from tradingagents.llm_clients.provider_keys import canonical_aliases, normalize_provider_key
 
 logger = logging.getLogger(__name__)
 
@@ -2901,8 +2962,8 @@ class ConfigService:
     def _get_env_api_key(self, provider_name: str) -> Optional[str]:
         """从环境变量获取API密钥"""
         import os
-        from tradingagents.llm_clients.provider_keys import env_key_for_provider, normalize_provider_key
 
+        # 使用模块级别定义的兼容函数（已通过 try/except 处理 provider_keys 不存在的情况）
         # 环境变量映射表
         env_key_mapping = {
             "openai": "OPENAI_API_KEY",
@@ -3761,7 +3822,7 @@ class ConfigService:
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
                 "HTTP-Referer": "https://tradingagents.cn",  # OpenRouter要求
-                "X-Title": "TradingAgents-CN"
+                "X-Title": "股票分析系统"
             }
 
             data = {

@@ -8,10 +8,41 @@ import pandas as pd
 import numpy as np
 
 # 统一指标库
-from tradingagents.tools.analysis.indicators import IndicatorSpec, compute_many
+try:
+    from tradingagents.tools.analysis.indicators import IndicatorSpec, compute_many
+except ImportError:
+    import logging as _fallback_logging
+    _fallback_logging.getLogger(__name__).warning(
+        "tradingagents.tools.analysis.indicators 不可用，筛选功能将返回空结果"
+    )
+    from dataclasses import dataclass as _fallback_dataclass, field as _fallback_field
+    @_fallback_dataclass
+    class IndicatorSpec:
+        name: str = "ma"
+        params: dict = None
+    def compute_many(df, specs):
+        return df
+
 # 统一多数据源DF接口（按优先级降级）
-from tradingagents.dataflows.data_source_manager import get_data_source_manager
-from tradingagents.dataflows.providers.china.fundamentals_snapshot import get_cn_fund_snapshot
+try:
+    from tradingagents.dataflows.data_source_manager import get_data_source_manager
+except ImportError:
+    import logging as _fallback_logging
+    _fallback_logging.getLogger(__name__).warning(
+        "tradingagents.dataflows.data_source_manager 不可用，get_data_source_manager 将返回 None"
+    )
+    def get_data_source_manager():
+        return None
+
+try:
+    from tradingagents.dataflows.providers.china.fundamentals_snapshot import get_cn_fund_snapshot
+except ImportError:
+    import logging as _fallback_logging
+    _fallback_logging.getLogger(__name__).warning(
+        "tradingagents.dataflows.providers.china.fundamentals_snapshot 不可用"
+    )
+    def get_cn_fund_snapshot(code):
+        return None
 
 
 from app.services.screening.eval_utils import (
@@ -120,6 +151,8 @@ class ScreeningService:
                 # 如需要基础行情/技术指标才取K线
                 if need_base:
                     manager = get_data_source_manager()
+                    if manager is None:
+                        break
                     df = manager.get_stock_dataframe(code, start_s, end_s)
                     if df is None or df.empty:
                         continue

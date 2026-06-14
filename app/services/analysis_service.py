@@ -10,6 +10,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
 from pathlib import Path
+from app.utils.timezone import now_tz, to_config_tz
 import sys
 
 # 添加项目根目录到路径
@@ -17,8 +18,16 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # 初始化TradingAgents日志系统
-from tradingagents.utils.logging_init import init_logging
-init_logging()
+try:
+    from tradingagents.utils.logging_init import init_logging
+    init_logging()
+except ImportError:
+    import logging as _fallback_logging
+    _fallback_logging.getLogger(__name__).warning(
+        "tradingagents.utils.logging_init 不可用，使用标准 logging"
+    )
+    def init_logging() -> None:
+        pass
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -100,7 +109,14 @@ class AnalysisService:
         """同步执行分析任务（在线程池中运行，带进度跟踪）"""
         try:
             # 在线程中重新初始化日志系统
-            from tradingagents.utils.logging_init import init_logging, get_logger
+            try:
+                from tradingagents.utils.logging_init import init_logging, get_logger
+            except ImportError:
+                import logging as _fallback_logging
+                def init_logging() -> None:
+                    pass
+                def get_logger(name: str):
+                    return _fallback_logging.getLogger(name)
             init_logging()
             thread_logger = get_logger('analysis_thread')
 
@@ -915,8 +931,8 @@ class AnalysisService:
                     "elapsed_time": elapsed_time,
                     "remaining_time": remaining_time,
                     "estimated_total_time": estimated_total_time,
-                    "start_time": task.get("started_at").isoformat() if task.get("started_at") else None,
-                    "updated_at": task.get("updated_at", "").isoformat() if task.get("updated_at") else None,
+                    "start_time": to_config_tz(task.get("started_at")).isoformat() if task.get("started_at") else None,
+                    "updated_at": to_config_tz(task.get("updated_at")).isoformat() if task.get("updated_at") else None,
                     "result_data": task.get("result")
                 }
 

@@ -35,14 +35,42 @@ class FavoritesService:
     def _format_favorite(self, favorite: Dict[str, Any]) -> Dict[str, Any]:
         """格式化收藏条目（仅基础信息，不包含实时行情）。
         行情将在 get_user_favorites 中批量富集。
+        注意：market 字段统一表示「市场类型」（A股/港股/美股），
+        历史数据可能存储了板块信息（如中小板/创业板），此处会规范化。
         """
+        import re
+
         added_at = favorite.get("added_at")
         if isinstance(added_at, datetime):
             added_at = added_at.isoformat()
+
+        raw_market = favorite.get("market", "A股")
+        code = str(favorite.get("stock_code", "")).strip().upper()
+
+        # 规范化 market：如果是板块值或非标准值，按股票代码推断市场类型
+        board_keywords = ("主板", "创业板", "科创板", "中小板", "北交所")
+        exchange_keywords = ("上海", "深圳", "上交所", "深交所", "沪市", "深市")
+        if raw_market in board_keywords or raw_market in exchange_keywords:
+            if re.match(r"^[A-Z]{1,5}$", code):
+                normalized_market = "美股"
+            elif re.match(r"^\d{6}$", code):
+                normalized_market = "A股"
+            else:
+                normalized_market = "港股"
+        elif raw_market not in ("A股", "港股", "美股"):
+            if re.match(r"^[A-Z]{1,5}$", code):
+                normalized_market = "美股"
+            elif re.match(r"^\d{6}$", code):
+                normalized_market = "A股"
+            else:
+                normalized_market = "港股"
+        else:
+            normalized_market = raw_market
+
         return {
             "stock_code": favorite.get("stock_code"),
             "stock_name": favorite.get("stock_name"),
-            "market": favorite.get("market", "A股"),
+            "market": normalized_market,
             "added_at": added_at,
             "tags": favorite.get("tags", []),
             "notes": favorite.get("notes", ""),

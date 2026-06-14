@@ -18,7 +18,12 @@ from apscheduler.events import (
 )
 
 from app.core.database import get_mongo_db
-from tradingagents.utils.logging_manager import get_logger
+try:
+    from tradingagents.utils.logging_manager import get_logger
+except ImportError:
+    import logging
+    def get_logger(name: str) -> logging.Logger:
+        return logging.getLogger(name)
 from app.utils.timezone import now_tz
 
 logger = get_logger(__name__)

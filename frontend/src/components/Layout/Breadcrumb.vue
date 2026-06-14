@@ -18,13 +18,25 @@ const route = useRoute()
 
 const breadcrumbList = computed(() => {
   const matched = route.matched.filter(item => item.meta && item.meta.title)
-  
-  const breadcrumbs = matched.map(item => ({
-    path: item.path,
-    title: item.meta.title as string
-  }))
 
-  return breadcrumbs
+  if (matched.length === 0) {
+    return []
+  }
+
+  // 只取最后一个（最深层）路由记录
+  const last = matched[matched.length - 1]
+  const meta = last.meta
+
+  if (meta.parentTitle) {
+    // 有父级标题，展示 "父标题/当前标题"
+    return [
+      { path: '', title: meta.parentTitle as string },
+      { path: last.path, title: meta.title as string }
+    ]
+  } else {
+    // 没有父级标题，只展示当前标题
+    return [{ path: last.path, title: meta.title as string }]
+  }
 })
 </script>
 

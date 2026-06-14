@@ -8,7 +8,12 @@ from datetime import datetime, timedelta
 
 from app.routers.auth_db import get_current_user
 from app.core.response import ok
-from tradingagents.utils.logging_manager import get_logger
+try:
+    from tradingagents.utils.logging_manager import get_logger
+except ImportError:
+    import logging
+    def get_logger(name: str):
+        return logging.getLogger(name)
 
 logger = get_logger(__name__)
 

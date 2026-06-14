@@ -244,23 +244,8 @@ class ReportExporter:
 
         # 添加团队决策报告部分 - 与CLI端保持一致
         md_content = self._add_team_decision_reports(md_content, state)
-
-        # 添加风险提示
-        md_content += f"""
----
-
-## ⚠️ 重要风险提示
-
-**投资风险提示**:
-- **仅供参考**: 本分析结果仅供参考，不构成投资建议
-- **投资风险**: 股票投资有风险，可能导致本金损失
-- **理性决策**: 请结合多方信息进行理性投资决策
-- **专业咨询**: 重大投资决策建议咨询专业财务顾问
-- **自担风险**: 投资决策及其后果由投资者自行承担
-
----
-*报告生成时间: {timestamp}*
-"""
+        
+        md_content += f"\n---\n*报告生成时间: {timestamp}*\n"
         
         return md_content
 

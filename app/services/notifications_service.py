@@ -11,7 +11,7 @@ from app.core.database import get_mongo_db, get_redis_client
 from app.models.notification import (
     NotificationCreate, NotificationOut, NotificationList
 )
-from app.utils.timezone import now_tz
+from app.utils.timezone import now_tz, to_config_tz
 
 logger = logging.getLogger("webapi.notifications")
 
@@ -103,6 +103,10 @@ class NotificationsService:
         cursor = db[self.collection].find(q).sort("created_at", -1).skip((page-1)*page_size).limit(page_size)
         items: List[NotificationOut] = []
         async for d in cursor:
+            raw_dt = d.get("created_at")
+            # MongoDB 存储 datetime 时会剥离 tzinfo，UTC 时间存储
+            # 读取后需要用 to_config_tz 转为配置时区
+            created_at = to_config_tz(raw_dt) if raw_dt else now_tz()
             items.append(NotificationOut(
                 id=str(d.get("_id")),
                 type=d.get("type"),
@@ -111,7 +115,7 @@ class NotificationsService:
                 link=d.get("link"),
                 source=d.get("source"),
                 status=d.get("status", "unread"),
-                created_at=d.get("created_at") or now_tz(),
+                created_at=created_at,
             ))
         return NotificationList(items=items, total=total, page=page, page_size=page_size)
 

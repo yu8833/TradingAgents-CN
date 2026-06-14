@@ -1,10 +1,6 @@
 # TradingAgents/graph/propagation.py
 
-from typing import Dict, Any
-
-# 导入统一日志系统
-from tradingagents.utils.logging_init import get_logger
-logger = get_logger("default")
+from typing import Dict, Any, List, Optional
 from tradingagents.agents.utils.agent_states import (
     AgentState,
     InvestDebateState,
@@ -20,28 +16,35 @@ class Propagator:
         self.max_recur_limit = max_recur_limit
 
     def create_initial_state(
-        self, company_name: str, trade_date: str
+        self, company_name: str, trade_date: str, past_context: str = ""
     ) -> Dict[str, Any]:
         """Create the initial state for the agent graph."""
-        from langchain_core.messages import HumanMessage
-
-        # 🔥 修复：创建明确的分析请求消息，而不是只传递股票代码
-        # 这样可以确保所有LLM（包括DeepSeek）都能理解任务
-        analysis_request = f"请对股票 {company_name} 进行全面分析，交易日期为 {trade_date}。"
-
         return {
-            "messages": [HumanMessage(content=analysis_request)],
+            "messages": [("human", company_name)],
             "company_of_interest": company_name,
             "trade_date": str(trade_date),
+            "past_context": past_context,
             "investment_debate_state": InvestDebateState(
-                {"history": "", "current_response": "", "count": 0}
+                {
+                    "bull_history": "",
+                    "bear_history": "",
+                    "history": "",
+                    "current_response": "",
+                    "judge_decision": "",
+                    "count": 0,
+                }
             ),
             "risk_debate_state": RiskDebateState(
                 {
+                    "aggressive_history": "",
+                    "conservative_history": "",
+                    "neutral_history": "",
                     "history": "",
-                    "current_risky_response": "",
-                    "current_safe_response": "",
+                    "latest_speaker": "",
+                    "current_aggressive_response": "",
+                    "current_conservative_response": "",
                     "current_neutral_response": "",
+                    "judge_decision": "",
                     "count": 0,
                 }
             ),
@@ -49,20 +52,22 @@ class Propagator:
             "fundamentals_report": "",
             "sentiment_report": "",
             "news_report": "",
+            "policy_report": "",
+            "hot_money_report": "",
+            "lockup_report": "",
         }
 
-    def get_graph_args(self, use_progress_callback: bool = False) -> Dict[str, Any]:
+    def get_graph_args(self, callbacks: Optional[List] = None) -> Dict[str, Any]:
         """Get arguments for the graph invocation.
 
         Args:
-            use_progress_callback: If True, use 'updates' mode for node-level progress tracking.
-                                  If False, use 'values' mode for complete state updates.
+            callbacks: Optional list of callback handlers for tool execution tracking.
+                       Note: LLM callbacks are handled separately via LLM constructor.
         """
-        # 使用 'updates' 模式可以获取节点级别的更新，用于进度跟踪
-        # 使用 'values' 模式可以获取完整的状态更新
-        stream_mode = "updates" if use_progress_callback else "values"
-
+        config = {"recursion_limit": self.max_recur_limit}
+        if callbacks:
+            config["callbacks"] = callbacks
         return {
-            "stream_mode": stream_mode,
-            "config": {"recursion_limit": self.max_recur_limit},
+            "stream_mode": "values",
+            "config": config,
         }

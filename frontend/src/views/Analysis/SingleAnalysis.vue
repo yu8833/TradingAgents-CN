@@ -485,93 +485,124 @@
               </template>
 
               <div class="results-content">
-                <!-- 风险提示 -->
-                <div class="risk-disclaimer">
-                  <el-alert
-                    type="warning"
-                    :closable="false"
-                    show-icon
-                  >
-                    <template #title>
-                      <div class="disclaimer-content">
-                        <el-icon class="disclaimer-icon"><WarningFilled /></el-icon>
-                        <div class="disclaimer-text">
-                          <p style="margin: 0 0 8px 0;"><strong>⚠️ 重要风险提示与免责声明</strong></p>
-                          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                            <li><strong>工具性质：</strong>本系统为股票分析辅助工具，使用AI技术对公开市场数据进行分析，不具备证券投资咨询资质。</li>
-                            <li><strong>非投资建议：</strong>所有分析结果、评分、建议仅为技术分析参考，不构成任何买卖建议或投资决策依据。</li>
-                            <li><strong>数据局限性：</strong>分析基于历史数据和公开信息，可能存在延迟、不完整或不准确的情况，无法预测未来市场走势。</li>
-                            <li><strong>投资风险：</strong>股票投资存在市场风险、流动性风险、政策风险等多种风险，可能导致本金损失。</li>
-                            <li><strong>独立决策：</strong>投资者应基于自身风险承受能力、投资目标和财务状况独立做出投资决策。</li>
-                            <li><strong>专业咨询：</strong>重大投资决策建议咨询具有合法资质的专业投资顾问或金融机构。</li>
-                            <li><strong>责任声明：</strong>使用本工具产生的任何投资决策及其后果由投资者自行承担，本系统不承担任何责任。</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </template>
-                  </el-alert>
-                </div>
-
-                <!-- 最终决策 -->
+                <!-- 最终决策：策略点位 + 核心洞察（8 字段中文格式） -->
                 <div v-if="analysisResults.decision" class="decision-section">
-                  <h4>🎯 分析参考</h4>
+                  <h4>🎯 决策摘要</h4>
                   <div class="decision-card">
                     <div class="decision-main">
                       <div class="decision-action">
-                        <span class="label">分析倾向:</span>
+                        <span class="label">操作建议:</span>
                         <el-tag
-                          :type="getActionTagType(analysisResults.decision.action)"
+                          :type="getActionTagType(analysisResults.decision.评级 || analysisResults.decision.action || analysisResults.decision.操作建议)"
                           size="large"
                         >
-                          {{ analysisResults.decision.action }}
+                          {{ analysisResults.decision.评级 || analysisResults.decision.action || analysisResults.decision.操作建议 }}
                         </el-tag>
                         <el-tag type="info" size="small" style="margin-left: 8px;">仅供参考</el-tag>
                       </div>
 
                       <div class="decision-metrics">
                         <div class="metric-item">
-                          <span class="label">参考价格:</span>
-                          <span class="value">{{ analysisResults.decision.target_price }}</span>
+                          <span class="label">理想买入</span>
+                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['理想买入', 'ideal_buy', 'target_price']) }}</span>
                         </div>
                         <div class="metric-item">
-                          <span class="label">模型置信度:</span>
-                          <span class="value">{{ (analysisResults.decision.confidence * 100).toFixed(1) }}%</span>
-                          <el-tooltip content="基于AI模型计算的置信度，不代表实际投资成功率" placement="top">
-                            <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
-                          </el-tooltip>
+                          <span class="label">二次买入</span>
+                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['二次买入', 'second_buy']) }}</span>
                         </div>
                         <div class="metric-item">
-                          <span class="label">风险评分:</span>
-                          <span class="value">{{ (analysisResults.decision.risk_score * 100).toFixed(1) }}%</span>
-                          <el-tooltip content="基于历史数据的风险评估，实际风险可能更高" placement="top">
-                            <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
-                          </el-tooltip>
+                          <span class="label">止损价格</span>
+                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['止损价格', 'stop_loss']) }}</span>
+                        </div>
+                        <div class="metric-item">
+                          <span class="label">止盈目标</span>
+                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['止盈目标', 'target_price', 'price_target']) }}</span>
+                        </div>
+                        <div class="metric-item">
+                          <span class="label">支撑位</span>
+                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['支撑位', 'support_level']) }}</span>
+                        </div>
+                        <div class="metric-item">
+                          <span class="label">阻力位</span>
+                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['阻力位', 'resistance_level']) }}</span>
+                        </div>
+                      </div>
+
+                      <div class="decision-insights">
+                        <div v-if="analysisResults.decision.核心洞察" class="insight-item">
+                          <span class="insight-label">💡 核心洞察</span>
+                          <p class="insight-value">{{ analysisResults.decision.核心洞察 }}</p>
+                        </div>
+                        <div v-if="analysisResults.decision.投资逻辑" class="insight-item">
+                          <span class="insight-label">📈 投资逻辑</span>
+                          <p class="insight-value">{{ analysisResults.decision.投资逻辑 }}</p>
+                        </div>
+                        <div v-if="analysisResults.decision.趋势预测" class="insight-item">
+                          <span class="insight-label">🔮 趋势预测</span>
+                          <p class="insight-value">{{ analysisResults.decision.趋势预测 }}</p>
+                        </div>
+                        <div v-if="analysisResults.decision.策略点位" class="insight-item">
+                          <span class="insight-label">🎯 策略点位</span>
+                          <p class="insight-value">{{ analysisResults.decision.策略点位 }}</p>
+                        </div>
+                        <div v-if="analysisResults.decision.风险提示" class="insight-item">
+                          <span class="insight-label">⚠️ 风险提示</span>
+                          <p class="insight-value">{{ analysisResults.decision.风险提示 }}</p>
+                        </div>
+                        <div v-if="analysisResults.decision.持仓周期" class="insight-item">
+                          <span class="insight-label">📅 持仓周期</span>
+                          <p class="insight-value">{{ analysisResults.decision.持仓周期 }}</p>
+                        </div>
+                      </div>
+
+                      <div class="decision-confidence">
+                        <div class="confidence-item">
+                          <span class="label">置信度</span>
+                          <span class="value">{{ formatPctField(analysisResults.decision, ['置信度', 'confidence', 'confidence_score']) }}%</span>
+                        </div>
+                        <div v-if="formatFieldValue(analysisResults.decision, ['风险等级', 'risk_level']) !== '--'" class="confidence-item">
+                          <span class="label">风险等级</span>
+                          <span class="value">{{ formatFieldValue(analysisResults.decision, ['风险等级', 'risk_level']) }}</span>
+                        </div>
+                        <div v-if="formatFieldValue(analysisResults.decision, ['技术面评分']) !== '--'" class="confidence-item">
+                          <span class="label">技术面</span>
+                          <span class="value">{{ formatPctField(analysisResults.decision, ['技术面评分']) }}%</span>
+                        </div>
+                        <div v-if="formatFieldValue(analysisResults.decision, ['基本面评分']) !== '--'" class="confidence-item">
+                          <span class="label">基本面</span>
+                          <span class="value">{{ formatPctField(analysisResults.decision, ['基本面评分']) }}%</span>
+                        </div>
+                        <div v-if="formatFieldValue(analysisResults.decision, ['情绪面评分']) !== '--'" class="confidence-item">
+                          <span class="label">情绪面</span>
+                          <span class="value">{{ formatPctField(analysisResults.decision, ['情绪面评分']) }}%</span>
+                        </div>
+                        <div v-if="formatFieldValue(analysisResults.decision, ['政策面评分']) !== '--'" class="confidence-item">
+                          <span class="label">政策面</span>
+                          <span class="value">{{ formatPctField(analysisResults.decision, ['政策面评分']) }}%</span>
                         </div>
                       </div>
                     </div>
 
                     <div class="decision-reasoning">
                       <h5>分析依据:</h5>
-                      <p>{{ analysisResults.decision.reasoning }}</p>
+                      <p>{{ analysisResults.decision.reasoning || '详见下方详细分析报告' }}</p>
                       <el-alert type="info" :closable="false" style="margin-top: 12px;">
                         <template #default>
-                          <span style="font-size: 13px;">💡 以上分析基于AI模型对历史数据的处理，不构成投资建议，请结合自身情况独立决策。</span>
+                          <span style="font-size: 13px;">💡 以上分析基于AI模型对公开市场数据的解读，不构成投资建议，请结合自身风险承受能力独立决策。</span>
                         </template>
                       </el-alert>
                     </div>
                   </div>
                 </div>
 
-                <!-- 分析概览 -->
-                <div v-if="analysisResults" class="overview-section">
-                  <h4>📊 分析概览</h4>
+                <!-- 分析概览（从 analysisResults 顶层字段提取，若存在则展示） -->
+                <div v-if="analysisResults && (analysisResults.summary || analysisResults.recommendation)" class="overview-section">
+                  <h4>📊 分析要点</h4>
                   <div class="overview-card">
-  
                     <div v-if="analysisResults.summary" class="overview-summary">
                       <h5>分析摘要:</h5>
                       <p>{{ analysisResults.summary }}</p>
                     </div>
-
                     <div v-if="analysisResults.recommendation" class="overview-recommendation">
                       <h5>投资建议:</h5>
                       <p>{{ analysisResults.recommendation }}</p>
@@ -682,7 +713,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed, h } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, onActivated, onDeactivated, computed, h } from 'vue'
+
+// 组件名称：用于 keep-alive 的 include 匹配
+defineOptions({ name: 'SingleAnalysis' })
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElInputNumber } from 'element-plus'
 import {
@@ -1224,13 +1258,58 @@ const restartAnalysis = () => {
 }
 
 
-// 获取操作标签类型
+// 通用字段提取辅助：从对象中按多个候选 key 依次取值
+const pickFieldValue = (obj: any, candidates: string[], fallback: any = null): any => {
+  if (!obj) return fallback
+  for (const k of candidates) {
+    const v = (obj as any)[k]
+    if (v !== undefined && v !== null && v !== '' && v !== 'N/A') return v
+  }
+  return fallback
+}
+
+// 格式化普通字段（优先中文 key，兼容英文 key）
+const formatFieldValue = (obj: any, candidates: string[]): string => {
+  const v = pickFieldValue(obj, candidates)
+  if (v === null || v === undefined || v === '') return '--'
+  if (typeof v === 'number') {
+    return Number.isInteger(v) ? String(v) : v.toFixed(2)
+  }
+  return String(v)
+}
+
+// 格式化为百分比（0~1 → 0%~100%）
+const formatPctField = (obj: any, candidates: string[]): string => {
+  const v = pickFieldValue(obj, candidates)
+  if (v === null || v === undefined || v === '' || v === '--') return '0'
+  const n = parseFloat(String(v))
+  if (isNaN(n)) return '0'
+  if (n > 1) return Math.round(n).toString()
+  return Math.round(n * 100).toString()
+}
+
+// 获取操作标签类型（支持完整 5 档中文评级）
 const getActionTagType = (action: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' => {
+  if (!action) return 'info'
+  // 按关键字匹配（支持 "强烈买入" / "买入" / "减仓" / "卖出" 等）
+  if (action.includes('强烈买入') || action.includes('强力买入')) return 'success'
+  if (action.includes('买入') || action.includes('BUY') || action.includes('buy')) return 'success'
+  if (action.includes('卖出') || action.includes('SELL') || action.includes('sell')) return 'danger'
+  if (action.includes('减仓') || action.includes('减持')) return 'danger'
+  if (action.includes('持有') || action.includes('HOLD') || action.includes('hold')) return 'warning'
+  if (action.includes('观望') || action.includes('中性')) return 'info'
+  // 兜底映射表
   const actionTypes: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     '买入': 'success',
     '持有': 'warning',
     '卖出': 'danger',
-    '观望': 'info'
+    '观望': 'info',
+    '强烈买入': 'success',
+    '减仓': 'danger',
+    '中性': 'info',
+    'BUY': 'success',
+    'HOLD': 'warning',
+    'SELL': 'danger',
   }
   return actionTypes[action] || 'info'
 }
@@ -1260,9 +1339,9 @@ const getAnalysisReports = (data: any) => {
     { key: 'sentiment_report', title: '💭 市场情绪分析', category: '分析师团队' },
     { key: 'news_report', title: '📰 新闻事件分析', category: '分析师团队' },
     { key: 'fundamentals_report', title: '💰 基本面分析', category: '分析师团队' },
-    { key: 'policy_report', title: '🏛️ 政策分析', category: '分析师团队' },
-    { key: 'hot_money_report', title: '🔥 游资追踪', category: '分析师团队' },
-    { key: 'lockup_report', title: '🔓 解禁监控', category: '分析师团队' },
+    { key: 'policy_report', title: '🏛️ 政策分析师', category: '分析师团队' },
+    { key: 'hot_money_report', title: '🔥 游资追踪师', category: '分析师团队' },
+    { key: 'lockup_report', title: '🔒 解禁监控师', category: '分析师团队' },
 
     // 研究团队 (3个)
     { key: 'bull_researcher', title: '🐂 多头研究员', category: '研究团队' },
@@ -1841,6 +1920,31 @@ onUnmounted(() => {
   if (pollingTimer.value) {
     clearInterval(pollingTimer.value)
     pollingTimer.value = null
+  }
+})
+
+// keep-alive 组件被缓存时：保持轮询，但记录状态
+onDeactivated(() => {
+  console.log('⏸️ 单股分析组件被缓存 (deactivated)')
+})
+
+// keep-alive 组件被重新激活：恢复轮询状态
+onActivated(() => {
+  console.log('▶️ 单股分析组件被激活 (activated)')
+  // 如果有正在运行的任务，立即查询一次状态
+  if (currentTaskId.value && analysisStatus.value === 'running') {
+    // 确保轮询仍在进行
+    startPollingTaskStatus()
+    // 立即查询一次状态
+    setTimeout(async () => {
+      try {
+        const response = await analysisApi.getTaskStatus(currentTaskId.value)
+        const status = response.data
+        updateProgressInfo(status)
+      } catch (e) {
+        console.error('激活时查询任务状态失败:', e)
+      }
+    }, 300)
   }
 })
 
@@ -3228,6 +3332,73 @@ onMounted(async () => {
   font-size: 16px;
   font-weight: 600;
   color: var(--el-text-color-primary);
+}
+
+/* 核心洞察区块（daily_stock_analysis 风格） */
+.decision-insights {
+  margin-top: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(229, 246, 253, 0.35) 0%, rgba(232, 245, 233, 0.3) 100%);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+}
+
+.insight-item {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.85);
+  border-left: 3px solid #409EFF;
+  border-radius: 4px;
+}
+
+.insight-label {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  background: #e5f2ff;
+  border-radius: 4px;
+}
+
+.insight-value {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 置信度/评分条 */
+.decision-confidence {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px 16px;
+  background: rgba(255, 251, 235, 0.55);
+  border-radius: 8px;
+}
+
+.confidence-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 70px;
+}
+
+.confidence-item .label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.confidence-item .value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f59e0b;
 }
 
 .decision-reasoning h5 {

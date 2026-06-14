@@ -1,186 +1,226 @@
 <template>
   <el-drawer
-    :model-value="visible"
+    v-model="visible"
     direction="rtl"
-    size="95%"
+    size="100%"
     :before-close="handleClose"
     class="debate-drawer"
   >
+    <!-- 自定义头部 -->
     <template #header>
       <div class="drawer-header">
-        <el-icon class="header-icon"><ChatDotRound /></el-icon>
-        <span class="header-title">辩论对战</span>
-        <el-tag type="info" size="small" effect="plain" style="margin-left: 12px;">
-          {{ debateData ? totalRounds : 0 }} 轮辩论
-        </el-tag>
+        <div class="header-left">
+          <el-icon class="header-icon"><ChatLineSquare /></el-icon>
+          <span class="header-title">多智能体辩论对战</span>
+        </div>
+        <div class="header-right">
+          <el-tag type="info" effect="plain" size="default">
+            <el-icon style="margin-right: 4px;"><Timer /></el-icon>
+            {{ totalRounds }} 轮辩论
+          </el-tag>
+          <el-tag v-if="hasDecision" type="success" effect="plain" size="default">
+            <el-icon style="margin-right: 4px;"><CircleCheckFilled /></el-icon>
+            已裁决
+          </el-tag>
+        </div>
       </div>
     </template>
 
     <div class="debate-container">
-      <!-- 调试信息：显示数据状态 -->
-      <div v-if="debugMode" class="debug-info">
-        <pre>{{ JSON.stringify(debugInfo, null, 2) }}</pre>
-      </div>
+      <!-- 三列主区域 -->
+      <div class="debate-columns">
 
-      <!-- 主要辩论区域 -->
-      <div class="debate-main">
-        <!-- 左侧：多头 VS 空头 -->
-        <div class="debate-side bull-bear">
-          <div class="side-header">
-            <div class="agent-card bull">
-              <el-icon class="agent-icon"><CaretTop /></el-icon>
-              <span class="agent-name">多头</span>
-              <el-tag type="danger" size="small" effect="dark">看涨派</el-tag>
+        <!-- ===== 第一列：多空辩论 ===== -->
+        <div class="debate-column bull-bear-column">
+          <div class="column-header">
+            <div class="column-title">
+              <el-icon><DataLine /></el-icon>
+              <span>多空辩论</span>
             </div>
-            <div class="vs-divider">VS</div>
-            <div class="agent-card bear">
-              <el-icon class="agent-icon"><CaretBottom /></el-icon>
-              <span class="agent-name">空头</span>
-              <el-tag type="success" size="small" effect="dark">看跌派</el-tag>
+            <div class="agent-badges">
+              <span class="badge bull-badge">🐂 多头</span>
+              <span class="vs-text">VS</span>
+              <span class="badge bear-badge">🐻 空头</span>
             </div>
           </div>
 
-          <div class="timeline-scroll">
-            <div v-if="mergedBullBearRounds.length > 0" class="timeline">
+          <div class="column-content">
+            <div v-if="mergedBullBearRounds.length > 0" class="round-list">
               <div
-                v-for="(round, index) in mergedBullBearRounds"
-                :key="`bull-bear-${index}`"
-                class="round-block"
+                v-for="(round, idx) in mergedBullBearRounds"
+                :key="'bb-' + idx"
+                class="round-card"
               >
-                <div class="round-label">
-                  <el-tag :type="getRoundType(round.round)" size="small">
+                <div class="round-card-header">
+                  <el-tag :type="getBullBearTagType(idx)" effect="dark" size="small" round>
                     第 {{ round.round }} 轮
                   </el-tag>
                 </div>
-                <div class="messages-row">
-                  <div v-if="round.bull" class="message-card bull">
-                    <div class="message-header">
-                      <span class="speaker bull">🐂 多头</span>
+
+                <div class="round-messages">
+                  <!-- 多头 -->
+                  <div v-if="round.bull" class="message-block bull-block">
+                    <div class="message-block-header">
+                      <span class="speaker-avatar">🐂</span>
+                      <span class="speaker-name bull-text">多头研究员</span>
                     </div>
-                    <div class="message-content">{{ round.bull.content }}</div>
-                  </div>
-                  <div v-else class="message-card empty">
-                    <div class="message-placeholder">多头未发言</div>
-                  </div>
-                  <div v-if="round.bear" class="message-card bear">
-                    <div class="message-header">
-                      <span class="speaker bear">🐻 空头</span>
+                    <div class="message-block-content">
+                      {{ formatContent(round.bull.content || round.bull) }}
                     </div>
-                    <div class="message-content">{{ round.bear.content }}</div>
                   </div>
-                  <div v-else class="message-card empty">
-                    <div class="message-placeholder">空头未发言</div>
+
+                  <!-- 中间箭头 -->
+                  <div v-if="round.bull || round.bear" class="vs-arrow">
+                    <el-icon><DArrowRight /></el-icon>
+                  </div>
+
+                  <!-- 空头 -->
+                  <div v-if="round.bear" class="message-block bear-block">
+                    <div class="message-block-header">
+                      <span class="speaker-avatar">🐻</span>
+                      <span class="speaker-name bear-text">空头研究员</span>
+                    </div>
+                    <div class="message-block-content">
+                      {{ formatContent(round.bear.content || round.bear) }}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-            <div v-else class="no-data">
-              <el-empty description="暂无多空辩论记录" :image-size="60" />
+            <div v-else class="empty-state">
+              <el-icon class="empty-icon"><ChatDotSquare /></el-icon>
+              <span>暂无多空辩论</span>
             </div>
           </div>
         </div>
 
-        <!-- 右侧：风控辩论 -->
-        <div class="debate-side risk-control">
-          <div class="side-header">
-            <div class="section-title">
-              <el-icon><Warning /></el-icon>
+        <!-- ===== 第二列：风控辩论 ===== -->
+        <div class="debate-column risk-column">
+          <div class="column-header">
+            <div class="column-title">
+              <el-icon><WarningFilled /></el-icon>
               <span>风控辩论</span>
             </div>
-          </div>
-
-          <div class="risk-agents">
-            <div class="agent-card risky">
-              <el-icon class="agent-icon"><Lightning /></el-icon>
-              <span class="agent-name">激进</span>
-              <el-tag type="warning" size="small" effect="dark">高风险</el-tag>
-            </div>
-            <div class="agent-card safe">
-              <el-icon class="agent-icon"><Lock /></el-icon>
-              <span class="agent-name">保守</span>
-              <el-tag type="primary" size="small" effect="dark">低风险</el-tag>
-            </div>
-            <div class="agent-card neutral">
-              <el-icon class="agent-icon"><Aim /></el-icon>
-              <span class="agent-name">中性</span>
-              <el-tag type="info" size="small" effect="dark">均衡</el-tag>
+            <div class="agent-badges">
+              <span class="badge risky-badge">⚡ 激进</span>
+              <span class="badge neutral-badge">⚖️ 中性</span>
+              <span class="badge safe-badge">🛡️ 保守</span>
             </div>
           </div>
 
-          <div class="timeline-scroll">
-            <div v-if="mergedRiskRounds.length > 0" class="timeline">
+          <div class="column-content">
+            <div v-if="mergedRiskRounds.length > 0" class="round-list">
               <div
-                v-for="(round, index) in mergedRiskRounds"
-                :key="`risk-${index}`"
-                class="round-block"
+                v-for="(round, idx) in mergedRiskRounds"
+                :key="'risk-' + idx"
+                class="round-card"
               >
-                <div class="round-label">
-                  <el-tag :type="getRiskRoundType(round.round)" size="small">
+                <div class="round-card-header">
+                  <el-tag :type="getRiskTagType(idx)" effect="dark" size="small" round>
                     第 {{ round.round }} 轮
                   </el-tag>
                 </div>
-                <div class="messages-stack">
-                  <div v-if="round.risky" class="message-card risky">
-                    <div class="message-header">
-                      <span class="speaker risky">⚡ 激进分析师</span>
+
+                <div class="risk-messages">
+                  <div v-if="round.risky" class="message-block risky-block">
+                    <div class="message-block-header">
+                      <span class="speaker-avatar">⚡</span>
+                      <span class="speaker-name risky-text">激进分析师</span>
                     </div>
-                    <div class="message-content">{{ round.risky.content }}</div>
+                    <div class="message-block-content">
+                      {{ formatContent(round.risky.content || round.risky) }}
+                    </div>
                   </div>
-                  <div v-if="round.safe" class="message-card safe">
-                    <div class="message-header">
-                      <span class="speaker safe">🔒 保守分析师</span>
+
+                  <div v-if="round.neutral" class="message-block neutral-block">
+                    <div class="message-block-header">
+                      <span class="speaker-avatar">⚖️</span>
+                      <span class="speaker-name neutral-text">中性分析师</span>
                     </div>
-                    <div class="message-content">{{ round.safe.content }}</div>
+                    <div class="message-block-content">
+                      {{ formatContent(round.neutral.content || round.neutral) }}
+                    </div>
                   </div>
-                  <div v-if="round.neutral" class="message-card neutral">
-                    <div class="message-header">
-                      <span class="speaker neutral">🎯 中性分析师</span>
+
+                  <div v-if="round.safe" class="message-block safe-block">
+                    <div class="message-block-header">
+                      <span class="speaker-avatar">🛡️</span>
+                      <span class="speaker-name safe-text">保守分析师</span>
                     </div>
-                    <div class="message-content">{{ round.neutral.content }}</div>
+                    <div class="message-block-content">
+                      {{ formatContent(round.safe.content || round.safe) }}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-            <div v-else class="no-data">
-              <el-empty description="暂无风控辩论记录" :image-size="60" />
+            <div v-else class="empty-state">
+              <el-icon class="empty-icon"><Warning /></el-icon>
+              <span>暂无风控辩论</span>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- 裁决区域 -->
-      <div class="judge-section">
-        <div class="judge-header">
-          <el-icon><Medal /></el-icon>
-          <span>最终裁决</span>
-        </div>
-        <div class="judge-cards">
-          <div v-if="debateData?.judge_decision" class="judge-card">
-            <div class="judge-card-header">
-              <el-icon><User /></el-icon>
-              <span>研究总监裁决</span>
+        <!-- ===== 第三列：裁决区 ===== -->
+        <div class="debate-column judge-column">
+          <div class="column-header">
+            <div class="column-title">
+              <el-icon><Medal /></el-icon>
+              <span>最终裁决</span>
             </div>
-            <div class="judge-content">{{ debateData.judge_decision }}</div>
           </div>
-          <div v-if="debateData?.final_decision" class="judge-card final">
-            <div class="judge-card-header">
-              <el-icon><Briefcase /></el-icon>
-              <span>组合经理决策</span>
+
+          <div class="column-content">
+            <!-- 研究经理裁决 -->
+            <div v-if="debateData?.judge_decision" class="judge-card research-card">
+              <div class="judge-card-header">
+                <div class="judge-icon-bg">
+                  <el-icon><User /></el-icon>
+                </div>
+                <div class="judge-info">
+                  <div class="judge-name">研究经理裁决</div>
+                  <div class="judge-desc">Research Manager</div>
+                </div>
+              </div>
+              <div class="judge-card-body">
+                {{ formatContent(debateData.judge_decision) }}
+              </div>
             </div>
-            <div class="judge-content">{{ debateData.final_decision }}</div>
-          </div>
-          <div v-if="!debateData?.judge_decision && !debateData?.final_decision" class="no-data-inline">
-            <el-empty description="暂无裁决信息" :image-size="40" />
+
+            <!-- 组合经理最终决策 -->
+            <div v-if="debateData?.final_decision" class="judge-card final-card">
+              <div class="judge-card-header">
+                <div class="judge-icon-bg final">
+                  <el-icon><Briefcase /></el-icon>
+                </div>
+                <div class="judge-info">
+                  <div class="judge-name">投资组合经理决策</div>
+                  <div class="judge-desc">Portfolio Manager</div>
+                </div>
+              </div>
+              <div class="judge-card-body">
+                {{ formatContent(debateData.final_decision) }}
+              </div>
+            </div>
+
+            <div v-if="!debateData?.judge_decision && !debateData?.final_decision" class="empty-state">
+              <el-icon class="empty-icon"><Trophy /></el-icon>
+              <span>等待裁决...</span>
+            </div>
           </div>
         </div>
+
       </div>
     </div>
   </el-drawer>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { ChatDotRound, CaretTop, CaretBottom, Warning, Lightning, Lock, Aim, Medal, User, Briefcase } from '@element-plus/icons-vue'
+import { computed } from 'vue'
+import {
+  ChatLineSquare, DataLine, WarningFilled, Warning, Medal, User, Briefcase,
+  Timer, CircleCheckFilled, ChatDotSquare, DArrowRight, Trophy
+} from '@element-plus/icons-vue'
 
 export interface DebateRoundItem {
   round: number
@@ -210,22 +250,6 @@ const emit = defineEmits<{
   'agent-click': [agent: string]
 }>()
 
-// 调试模式
-const debugMode = ref(false)
-
-const debugInfo = computed(() => {
-  if (!props.debateData) return null
-  return {
-    bull_count: props.debateData.bull_history?.length || 0,
-    bear_count: props.debateData.bear_history?.length || 0,
-    risky_count: props.debateData.risky_history?.length || 0,
-    safe_count: props.debateData.safe_history?.length || 0,
-    neutral_count: props.debateData.neutral_history?.length || 0,
-    has_judge: !!props.debateData.judge_decision,
-    has_final: !!props.debateData.final_decision
-  }
-})
-
 // 总轮数
 const totalRounds = computed(() => {
   if (!props.debateData) return 0
@@ -239,7 +263,11 @@ const totalRounds = computed(() => {
   return Math.max(bullRounds, bearRounds, riskRounds)
 })
 
-// 合并多头/空头的辩论轮次
+const hasDecision = computed(() =>
+  !!props.debateData?.judge_decision || !!props.debateData?.final_decision
+)
+
+// 合并多空辩论轮次
 const mergedBullBearRounds = computed(() => {
   const rounds: Array<{
     round: number
@@ -266,7 +294,7 @@ const mergedBullBearRounds = computed(() => {
   return rounds
 })
 
-// 合并风控辩论的轮次
+// 合并风控辩论轮次
 const mergedRiskRounds = computed(() => {
   const rounds: Array<{
     round: number
@@ -297,14 +325,25 @@ const mergedRiskRounds = computed(() => {
   return rounds
 })
 
-const getRoundType = (round: number): string => {
-  const types = ['primary', 'success', 'warning', 'danger', 'info']
-  return types[round % types.length]
+const getBullBearTagType = (idx: number): string => {
+  const types = ['danger', 'warning', 'success', 'primary', 'info']
+  return types[idx % types.length]
 }
 
-const getRiskRoundType = (round: number): string => {
-  const types = ['warning', 'primary', 'info', 'success']
-  return types[round % types.length]
+const getRiskTagType = (idx: number): string => {
+  const types = ['warning', 'primary', 'info', 'success', 'danger']
+  return types[idx % types.length]
+}
+
+const formatContent = (data: unknown): string => {
+  if (!data) return ''
+  if (typeof data === 'string') return data
+  if (typeof data === 'object') {
+    const obj = data as Record<string, unknown>
+    if ('content' in obj) return formatContent(obj.content)
+    return JSON.stringify(data, null, 2)
+  }
+  return String(data)
 }
 
 const handleClose = () => {
@@ -317,401 +356,418 @@ const handleAgentClick = (agent: string) => {
 </script>
 
 <style scoped lang="scss">
-// 抽屉样式
+// ===== 抽屉容器 =====
 .debate-drawer {
   :deep(.el-drawer__body) {
     padding: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   :deep(.el-drawer__header) {
     margin-bottom: 0;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--el-border-color-lighter);
+    padding: 0;
   }
 }
 
+// ===== 头部 =====
 .drawer-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, var(--el-fill-color-dark) 0%, var(--el-bg-color) 100%);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  flex-shrink: 0;
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
 
   .header-icon {
-    font-size: 24px;
+    font-size: 26px;
     color: var(--el-color-primary);
-    margin-right: 8px;
   }
 
   .header-title {
-    font-size: 20px;
-    font-weight: 600;
+    font-size: 19px;
+    font-weight: 700;
     color: var(--el-text-color-primary);
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
 }
 
-// 容器布局
+// ===== 主容器 =====
 .debate-container {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
   overflow: hidden;
+  min-height: 0;
   background: var(--el-bg-color-page);
 }
 
-.debug-info {
-  background: var(--el-fill-color-dark);
-  color: var(--el-text-color-regular);
-  padding: 12px;
-  font-size: 12px;
-  overflow: auto;
-  max-height: 200px;
-}
-
-// 主要辩论区域
-.debate-main {
+// ===== 三列布局 =====
+.debate-columns {
   flex: 1;
-  display: flex;
-  gap: 16px;
-  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
   overflow: hidden;
   min-height: 0;
 }
 
-// 辩论侧边栏
-.debate-side {
-  flex: 1;
+// ===== 通用列样式 =====
+.debate-column {
   display: flex;
   flex-direction: column;
-  background: var(--el-fill-color-lighter);
-  border-radius: 12px;
   overflow: hidden;
   min-height: 0;
+  border-right: 1px solid var(--el-border-color-lighter);
 
-  &.bull-bear {
-    border: 2px solid var(--el-border-color-lighter);
+  &:last-child {
+    border-right: none;
   }
 
-  &.risk-control {
-    border: 2px solid var(--el-color-warning-light-8);
+  &.bull-bear-column {
+    background: linear-gradient(180deg, rgba(245, 108, 108, 0.03) 0%, var(--el-bg-color-page) 100%);
+  }
+
+  &.risk-column {
+    background: linear-gradient(180deg, rgba(230, 162, 60, 0.03) 0%, var(--el-bg-color-page) 100%);
+  }
+
+  &.judge-column {
+    background: linear-gradient(180deg, rgba(64, 158, 255, 0.03) 0%, var(--el-bg-color-page) 100%);
   }
 }
 
-// 侧边头部
-.side-header {
-  padding: 12px 16px;
+// ===== 列头部 =====
+.column-header {
+  padding: 16px 20px;
   background: var(--el-bg-color);
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  border-bottom: 2px solid var(--el-border-color-lighter);
   flex-shrink: 0;
+
+  .column-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--el-text-color-primary);
+    margin-bottom: 10px;
+
+    .el-icon {
+      font-size: 20px;
+    }
+  }
+
+  .bull-bear-column & .column-title .el-icon { color: var(--el-color-danger); }
+  .risk-column & .column-title .el-icon { color: var(--el-color-warning); }
+  .judge-column & .column-title .el-icon { color: var(--el-color-primary); }
 }
 
-.debate-side.bull-bear .side-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-}
-
-.section-title {
+.agent-badges {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 16px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
   font-weight: 600;
+}
+
+.bull-badge {
+  background: rgba(245, 108, 108, 0.12);
+  color: var(--el-color-danger);
+  border: 1px solid rgba(245, 108, 108, 0.3);
+}
+
+.bear-badge {
+  background: rgba(103, 194, 58, 0.12);
+  color: var(--el-color-success);
+  border: 1px solid rgba(103, 194, 58, 0.3);
+}
+
+.risky-badge {
+  background: rgba(230, 162, 60, 0.12);
   color: var(--el-color-warning);
+  border: 1px solid rgba(230, 162, 60, 0.3);
 }
 
-// Agent 卡片
-.agent-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 16px;
-  border-radius: 8px;
-  background: var(--el-bg-color);
-  border: 2px solid transparent;
-  transition: all 0.3s;
-
-  &.bull {
-    border-color: var(--el-color-danger-light-7);
-    .agent-icon { color: var(--el-color-danger); }
-  }
-
-  &.bear {
-    border-color: var(--el-color-success-light-7);
-    .agent-icon { color: var(--el-color-success); }
-  }
-
-  &.risky {
-    border-color: var(--el-color-warning-light-7);
-    .agent-icon { color: var(--el-color-warning); }
-  }
-
-  &.safe {
-    border-color: var(--el-color-primary-light-7);
-    .agent-icon { color: var(--el-color-primary); }
-  }
-
-  &.neutral {
-    border-color: var(--el-color-info-light-7);
-    .agent-icon { color: var(--el-color-info); }
-  }
-
-  .agent-icon {
-    font-size: 28px;
-  }
-
-  .agent-name {
-    font-weight: 600;
-    font-size: 14px;
-    color: var(--el-text-color-primary);
-  }
+.neutral-badge {
+  background: rgba(144, 147, 153, 0.12);
+  color: var(--el-color-info);
+  border: 1px solid rgba(144, 147, 153, 0.3);
 }
 
-.vs-divider {
-  font-size: 18px;
+.safe-badge {
+  background: rgba(64, 158, 255, 0.12);
+  color: var(--el-color-primary);
+  border: 1px solid rgba(64, 158, 255, 0.3);
+}
+
+.vs-text {
+  font-size: 11px;
   font-weight: 700;
-  color: var(--el-text-color-secondary);
+  color: var(--el-text-color-placeholder);
+  padding: 0 2px;
 }
 
-// 风控 Agent 行
-.risk-agents {
-  display: flex;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--el-bg-color);
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  flex-shrink: 0;
-
-  .agent-card {
-    flex: 1;
-    flex-direction: row;
-    justify-content: center;
-    padding: 10px 8px;
-
-    .agent-name {
-      font-size: 13px;
-    }
-
-    .el-tag {
-      font-size: 11px;
-    }
-  }
-}
-
-// 时间线滚动区域
-.timeline-scroll {
+// ===== 列内容（可滚动）=====
+.column-content {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
+  min-height: 0;
 
   &::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
   }
 
   &::-webkit-scrollbar-thumb {
-    background: var(--el-color-primary-light-6);
-    border-radius: 4px;
+    background: var(--el-border-color);
+    border-radius: 3px;
 
     &:hover {
-      background: var(--el-color-primary-light-5);
+      background: var(--el-color-primary-light-6);
     }
   }
 
   &::-webkit-scrollbar-track {
-    background: var(--el-fill-color-light);
-    border-radius: 4px;
+    background: transparent;
   }
 }
 
-// 时间线
-.timeline {
+// ===== 轮次卡片列表 =====
+.round-list {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-// 轮次块
-.round-block {
-  .round-label {
-    margin-bottom: 8px;
+.round-card {
+  background: var(--el-bg-color);
+  border-radius: 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  overflow: hidden;
+  transition: box-shadow 0.3s;
+
+  &:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
   }
 }
 
-// 消息行（多空辩论用）
-.messages-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+.round-card-header {
+  padding: 10px 16px;
+  background: var(--el-fill-color-lighter);
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
-// 消息堆叠（风控辩论用）
-.messages-stack {
+// ===== 多空辩论消息 =====
+.round-messages {
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-// 消息卡片
-.message-card {
-  background: var(--el-bg-color);
+.message-block {
   border-radius: 8px;
-  padding: 12px;
+  padding: 14px;
   border-left: 4px solid;
 
-  &.bull {
+  &.bull-block {
     border-left-color: var(--el-color-danger);
+    background: linear-gradient(90deg, rgba(245, 108, 108, 0.06) 0%, var(--el-bg-color) 40%);
   }
 
-  &.bear {
+  &.bear-block {
     border-left-color: var(--el-color-success);
+    background: linear-gradient(90deg, rgba(103, 194, 58, 0.06) 0%, var(--el-bg-color) 40%);
   }
 
-  &.risky {
+  &.risky-block {
     border-left-color: var(--el-color-warning);
+    background: linear-gradient(90deg, rgba(230, 162, 60, 0.06) 0%, var(--el-bg-color) 40%);
   }
 
-  &.safe {
-    border-left-color: var(--el-color-primary);
-  }
-
-  &.neutral {
+  &.neutral-block {
     border-left-color: var(--el-color-info);
+    background: linear-gradient(90deg, rgba(144, 147, 153, 0.06) 0%, var(--el-bg-color) 40%);
   }
 
-  &.empty {
-    border-left-color: var(--el-border-color);
-    background: var(--el-fill-color-lighter);
-  }
-
-  .message-header {
-    margin-bottom: 8px;
-  }
-
-  .speaker {
-    font-weight: 600;
-    font-size: 13px;
-
-    &.bull { color: var(--el-color-danger); }
-    &.bear { color: var(--el-color-success); }
-    &.risky { color: var(--el-color-warning); }
-    &.safe { color: var(--el-color-primary); }
-    &.neutral { color: var(--el-color-info); }
-  }
-
-  .message-content {
-    font-size: 14px;
-    line-height: 1.7;
-    color: var(--el-text-color-regular);
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 300px;
-    overflow-y: auto;
-  }
-
-  .message-placeholder {
-    color: var(--el-text-color-secondary);
-    font-size: 13px;
-    font-style: italic;
-    text-align: center;
-    padding: 20px;
+  &.safe-block {
+    border-left-color: var(--el-color-primary);
+    background: linear-gradient(90deg, rgba(64, 158, 255, 0.06) 0%, var(--el-bg-color) 40%);
   }
 }
 
-// 裁决区域
-.judge-section {
-  flex-shrink: 0;
-  padding: 20px;
-  background: var(--el-bg-color);
-  border-top: 2px solid var(--el-border-color-lighter);
-
-  .judge-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--el-color-primary);
-    margin-bottom: 16px;
-
-    .el-icon {
-      font-size: 22px;
-    }
-  }
-
-  .judge-cards {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-
-  .judge-card {
-    background: var(--el-fill-color-lighter);
-    border-radius: 12px;
-    padding: 16px;
-    border: 2px solid var(--el-border-color-lighter);
-
-    &.final {
-      border-color: var(--el-color-primary);
-      background: var(--el-color-primary-light-9);
-    }
-
-    .judge-card-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-weight: 600;
-      font-size: 15px;
-      color: var(--el-text-color-primary);
-      margin-bottom: 12px;
-    }
-
-    .judge-content {
-      font-size: 14px;
-      line-height: 1.8;
-      color: var(--el-text-color-regular);
-      white-space: pre-wrap;
-      word-break: break-word;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-  }
-
-  .no-data-inline {
-    grid-column: span 2;
-    padding: 20px;
-  }
+.message-block-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
-// 无数据
-.no-data {
+.speaker-avatar {
+  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--el-fill-color);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 200px;
 }
 
-// 响应式调整
-@media (max-width: 1024px) {
-  .debate-main {
-    flex-direction: column;
+.speaker-name {
+  font-weight: 700;
+  font-size: 13px;
+
+  &.bull-text { color: var(--el-color-danger); }
+  &.bear-text { color: var(--el-color-success); }
+  &.risky-text { color: var(--el-color-warning); }
+  &.neutral-text { color: var(--el-color-info); }
+  &.safe-text { color: var(--el-color-primary); }
+}
+
+.message-block-content {
+  font-size: 13.5px;
+  line-height: 1.85;
+  color: var(--el-text-color-regular);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// ===== VS 箭头 =====
+.vs-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--el-text-color-placeholder);
+  font-size: 18px;
+  opacity: 0.5;
+  padding: 2px 0;
+}
+
+// ===== 风控辩论 =====
+.risk-messages {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+// ===== 裁决卡片 =====
+.judge-card {
+  background: var(--el-bg-color);
+  border-radius: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  overflow: hidden;
+  margin-bottom: 16px;
+
+  &.final-card {
+    border-color: var(--el-color-primary-light-5);
+    box-shadow: 0 4px 16px rgba(64, 158, 255, 0.1);
+  }
+}
+
+.judge-card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  background: var(--el-fill-color-lighter);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+
+  .judge-icon-bg {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: var(--el-color-primary-light-8);
+    color: var(--el-color-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+
+    &.final {
+      background: var(--el-color-primary);
+      color: white;
+    }
+  }
+
+  .judge-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--el-text-color-primary);
+    margin-bottom: 3px;
+  }
+
+  .judge-desc {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+}
+
+.judge-card-body {
+  padding: 18px 20px;
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--el-text-color-regular);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// ===== 空状态 =====
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--el-text-color-secondary);
+
+  .empty-icon {
+    font-size: 48px;
+    opacity: 0.3;
+  }
+
+  span {
+    font-size: 14px;
+  }
+}
+
+// ===== 响应式 =====
+@media (max-width: 1200px) {
+  .debate-columns {
+    grid-template-columns: 1fr;
     overflow-y: auto;
   }
 
-  .debate-side {
+  .debate-column {
     min-height: 400px;
-  }
+    border-right: none;
+    border-bottom: 1px solid var(--el-border-color-lighter);
 
-  .messages-row {
-    grid-template-columns: 1fr;
-  }
-
-  .judge-cards {
-    grid-template-columns: 1fr;
-  }
-
-  .judge-card {
-    .no-data-inline {
-      grid-column: span 1;
+    &:last-child {
+      border-bottom: none;
     }
   }
 }

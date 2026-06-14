@@ -57,27 +57,30 @@ class NewsDataSyncService:
         if self._news_service is None:
             self._news_service = await get_news_data_service()
         return self._news_service
-    
-    async def _get_tushare_provider(self):
-        """获取Tushare提供者"""
-        if self._tushare_provider is None:
-            self._tushare_provider = get_tushare_provider()
-            await self._tushare_provider.connect()
-        return self._tushare_provider
-    
+
     async def _get_tushare_provider(self):
         """获取Tushare提供者"""
         if self._tushare_provider is None:
             from tradingagents.dataflows.providers.china.tushare import get_tushare_provider
             self._tushare_provider = get_tushare_provider()
-            await self._tushare_provider.connect()
+            # 优先使用 is_available() 判断（provider 在初始化时已尝试连接）
+            if not self._tushare_provider.is_available():
+                try:
+                    await self._tushare_provider.connect()
+                except Exception as e:
+                    self.logger.warning(f"[News] Tushare 连接失败，将跳过该数据源: {e}")
         return self._tushare_provider
 
     async def _get_akshare_provider(self):
         """获取AKShare提供者"""
         if self._akshare_provider is None:
             self._akshare_provider = get_akshare_provider()
-            await self._akshare_provider.connect()
+            # AKShare 不需要 token，优先使用 is_available() 判断
+            if not self._akshare_provider.is_available():
+                try:
+                    await self._akshare_provider.connect()
+                except Exception as e:
+                    self.logger.warning(f"[News] AKShare 连接失败: {e}")
         return self._akshare_provider
     
     async def _get_realtime_aggregator(self):

@@ -190,6 +190,9 @@ class RedisProgressTracker:
             'fundamentals': {"name": "💼 基本面分析师", "description": "分析公司财务状况、盈利能力、成长性等基本面"},
             'news': {"name": "📰 新闻分析师", "description": "分析相关新闻、公告、行业动态对股价的影响"},
             'social': {"name": "💬 社交媒体分析师", "description": "分析社交媒体讨论、网络热度、散户情绪等"},
+            'policy': {"name": "🏛️ 政策分析师", "description": "分析宏观政策、监管政策、产业政策对股价的影响"},
+            'hot_money': {"name": "💰 游资追踪师", "description": "追踪主力资金、龙虎榜、北向资金动向"},
+            'lockup': {"name": "🔒 解禁监控师", "description": "追踪限售股解禁、大股东减持、股权结构变化"},
         }
         return mapping.get(analyst, {"name": f"🔍 {analyst}分析师", "description": f"进行{analyst}相关的专业分析"})
 

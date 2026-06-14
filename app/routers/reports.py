@@ -15,8 +15,287 @@ from .auth_db import get_current_user
 from ..core.database import get_mongo_db
 from ..utils.timezone import to_config_tz
 import logging
+import re
 
 logger = logging.getLogger("webapi")
+
+# ============================================================
+# 报告结构化字段抽取：从多份子报告 markdown 中解析核心字段
+# ============================================================
+
+# 用于从一段文本中抽取指定“章节”后的内容（支持多种标题格式）
+# 格式匹配： `**N. 标题**`, `N. **标题**`, `**标题**`，或纯中文如 `核心洞察`
+_SECTION_HEADERS = [
+    # (优先级从高到低；(name_aliases, 输出字段名, 最大保留字符数))
+    (["核心洞察"], "核心洞察", 1200),
+    (["投资逻辑"], "投资逻辑", 1200),
+    (["趋势预测"], "趋势预测", 1200),
+    (["策略点位"], "策略点位", 1500),
+    (["风险提示"], "风险提示", 800),
+    (["核心理由", "操作建议理由"], "操作建议理由", 800),
+]
+
+# 数值 / 价格类字段的别名
+_PRICE_FIELDS = [
+    (["理想买入"], "理想买入"),
+    (["二次买入"], "二次买入"),
+    (["止损价格", "止损位", "止损线"], "止损价格"),
+    (["止盈目标", "目标价格", "目标价"], "止盈目标"),
+    (["支撑位", "支撑"], "支撑位"),
+    (["阻力位", "压力位"], "阻力位"),
+]
+
+_SCORE_FIELDS = [
+    (["置信度"], "置信度"),
+    (["风险等级"], "风险等级"),
+    (["技术面评分"], "技术面评分"),
+    (["基本面评分"], "基本面评分"),
+    (["情绪面评分"], "情绪面评分"),
+    (["政策面评分"], "政策面评分"),
+]
+
+
+def _iter_text(reports: Dict[str, Any]):
+    """依次取出 reports 中所有字符串子报告，按优先级排序"""
+    order = [
+        "final_trade_decision", "trader_investment_plan",
+        "investment_plan", "research_team_decision",
+        "risk_management_decision",
+    ]
+    for key in order:
+        v = reports.get(key)
+        if isinstance(v, str):
+            yield v
+    for k, v in reports.items():
+        if k not in order and isinstance(v, str):
+            yield v
+
+
+def _match_price(text: str, aliases: List[str]) -> Optional[str]:
+    """
+    在文本中查找诸如 `理想买入\n10.70 元` 或 `7. 支撑位：10.88元` 的价格。
+    返回价格字符串（如 "10.70 元"），找不到返回 None。
+    """
+    if not text:
+        return None
+
+    for alias in aliases:
+        # 尝试 "N. 名称：价格 元（注释）"
+        pattern1 = re.compile(
+            r"(?:^|\n)\s*\*?\s*(?:\d+[\.、]\s*)?\*?\s*" + re.escape(alias) +
+            r"\s*\*?\s*[:：]\s*([^\n，。；,;（(]{0,80})",
+        )
+        m = pattern1.search(text)
+        if m:
+            val = m.group(1).strip()
+            if "不适用" in val:
+                continue
+            num = re.search(r"(\d+(?:\.\d+)?)", val)
+            if num:
+                return f"{num.group(1)} 元"
+            if val and len(val) < 40:
+                return val
+
+        # 尝试单独行：`**8. 止盈目标**` / `**6. 理想买入**` 之后跟着一行价格
+        pattern2 = re.compile(
+            r"(?:^|\n)\s*\*+\s*(?:\d+[\.、]\s*)?" + re.escape(alias) +
+            r"\s*\*+\s*\n\s*([^\n，。；,;（(]{0,80})",
+        )
+        m = pattern2.search(text)
+        if m:
+            val = m.group(1).strip(" *\n")
+            if "不适用" in val:
+                continue
+            num = re.search(r"(\d+(?:\.\d+)?)", val)
+            if num:
+                return f"{num.group(1)} 元"
+            if val and len(val) < 40:
+                return val
+
+        # 简化版：在一段内出现 `名称：数值元`
+        pattern3 = re.compile(
+            re.escape(alias) + r"\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:元|块)?",
+        )
+        m = pattern3.search(text)
+        if m:
+            return f"{m.group(1)} 元"
+
+    return None
+
+
+def _match_score(text: str, aliases: List[str]) -> Optional[str]:
+    """从文本中抽取类似 `置信度：0.75` 或 `**11. 置信度**`\n0.75 的数值"""
+    if not text:
+        return None
+    lines = text.split("\n")
+    n = len(lines)
+
+    for alias in aliases:
+        # 方式 A：在一行内出现 "名称：数值"（支持列表项前缀 `-`/`*`）
+        for line in lines:
+            stripped = line.strip().strip("* \t-*•")
+            # "置信度：0.75" / "置信度 0.75" / "- 技术面评分：0.55（注释）"
+            m = re.match(
+                r"(?:\d+[\.、]\s*)?" + re.escape(alias) +
+                r"\s*[:：]\s*(-?\d+(?:\.\d+)?|高|中|低|中等|较高|较低)\b",
+                stripped,
+            )
+            if m:
+                return m.group(1)
+
+        # 方式 B：标题行 + 下一行是数字
+        for i, line in enumerate(lines):
+            stripped = line.strip().strip("*")
+            if alias in stripped:
+                # 只允许标题形式
+                normalized = stripped.strip("* \t")
+                if re.match(r"^\d*[\.、]?\s*" + re.escape(alias) + r"\s*$", normalized):
+                    for j in range(i + 1, min(i + 3, n)):
+                        next_line = lines[j].strip().strip("* \t-•")
+                        if not next_line:
+                            continue
+                        m = re.match(
+                            r"(-?\d+(?:\.\d+)?|高|中|低|中等|较高|较低)\b",
+                            next_line,
+                        )
+                        if m:
+                            return m.group(1)
+                        break
+                    break
+
+    return None
+
+
+def _extract_section(text: str, aliases: List[str], max_chars: int) -> Optional[str]:
+    """从文本中抽取 "**N. 核心洞察**" 或 "2. 核心洞察" 之后，到下一个同级别标题前的段落"""
+    if not text:
+        return None
+
+    def is_heading_line(line: str) -> bool:
+        """判断是否为类似 `**N. 标题**` 或 `N. 标题` 的行"""
+        s = line.strip()
+        s = s.strip("* \t")
+        return bool(re.match(r"^\d+[\.、]\s*.{1,30}$", s))
+
+    lines = text.split("\n")
+    n = len(lines)
+    # 寻找包含任意 alias 的标题行
+    start_idx = None
+    matched_alias = None
+    for i, line in enumerate(lines):
+        stripped = line.strip().strip("* \t")
+        if not stripped:
+            continue
+        for alias in aliases:
+            if alias in stripped:
+                # 检查是否在一个标题行内
+                # 格式 1：`**2. 核心洞察**` 或 `**核心洞察**`
+                # 格式 2：`2. 核心洞察`
+                if (re.match(r"^\*+\s*\d*[\.、]?\s*" + re.escape(alias) + r"\s*\*+", line.strip())
+                        or re.match(r"^\d+[\.、]\s*" + re.escape(alias) + r"$", stripped)
+                        or stripped == alias):
+                    start_idx = i
+                    matched_alias = alias
+                    break
+        if start_idx is not None:
+            break
+
+    if start_idx is None:
+        return None
+
+    # 从 start_idx 的下一行开始收集，直到遇到下一个同级别标题或文本结尾
+    collected = []
+    for j in range(start_idx + 1, n):
+        line = lines[j]
+        if is_heading_line(line):
+            break
+        # 标题之后的第一个空行可以忽略
+        if not collected and not line.strip():
+            continue
+        collected.append(line)
+
+    content = "\n".join(collected).strip()
+    # 清理 markdown 加粗符号
+    content = re.sub(r"\*+", "", content).strip()
+    # 去除开头多余的冒号/破折号
+    content = content.lstrip("：:-— ").strip()
+    if not content:
+        return None
+    if len(content) > max_chars:
+        content = content[:max_chars] + "…"
+    return content
+
+
+def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    遍历 reports 中的所有子报告，抽取可用于前端展示的结构化字段。
+    字段会被合并到报告详情顶层，以便前端 `pickField(report, [...])` 工作。
+    """
+    result: Dict[str, Any] = {}
+    if not isinstance(reports, dict) or not reports:
+        return result
+
+    combined_text = "\n".join(t for t in _iter_text(reports))
+
+    # 1) 文本型章节（核心洞察/投资逻辑/趋势预测/策略点位/风险提示）
+    for aliases, field_name, max_chars in _SECTION_HEADERS:
+        for sub in _iter_text(reports):
+            val = _extract_section(sub, aliases, max_chars)
+            if val and not result.get(field_name):
+                result[field_name] = val
+                break
+
+    # 2) 价格型字段
+    for aliases, field_name in _PRICE_FIELDS:
+        for sub in _iter_text(reports):
+            val = _match_price(sub, aliases)
+            if val:
+                result[field_name] = val
+                # 同时写入便于前端 pickField 回退的字段名
+                result[field_name + "_raw"] = val
+                break
+
+    # 2a) target_price / stop_loss 英文字段兼容（方便 trading_graph 侧使用）
+    if "止盈目标" in result:
+        num = re.search(r"(\d+(?:\.\d+)?)", result["止盈目标"])
+        if num:
+            result["target_price"] = num.group(1)
+    if "止损价格" in result:
+        num = re.search(r"(\d+(?:\.\d+)?)", result["止损价格"])
+        if num:
+            result["stop_loss"] = num.group(1)
+
+    # 3) 评分型字段（置信度/风险等级/技术面评分 等）
+    for aliases, field_name in _SCORE_FIELDS:
+        for sub in _iter_text(reports):
+            val = _match_score(sub, aliases)
+            if val:
+                result[field_name] = val
+                break
+
+    # 4) 评级/操作建议：从文本中找 "1. 评级：减仓" 或 "操作建议：卖出"
+    for sub in _iter_text(reports):
+        for head in ["操作建议", "评级", "rating", "Rating", "RATING"]:
+            # 尝试冒号型
+            m = re.search(re.escape(head) + r"\s*[：:]\s*([^\n，。；,;]{0,40})", sub)
+            if m:
+                val = m.group(1).strip(" *\n")
+                if val and "result" not in val.lower():
+                    result["评级"] = val
+                    if "操作建议" not in result:
+                        result["操作建议"] = val
+                    break
+            # 或单独行型： **1. 评级**\n减仓
+            sect = _extract_section(sub, [head], 80)
+            if sect and not result.get("评级"):
+                result["评级"] = sect
+                result["操作建议"] = sect
+                break
+        if result.get("评级"):
+            break
+
+    return result
+
 
 # 股票名称缓存
 _stock_name_cache = {}
@@ -182,8 +461,21 @@ async def get_reports_list(
             # 🔥 获取市场类型，如果没有则根据股票代码推断
             market_type = doc.get("market_type")
             if not market_type:
-                from tradingagents.utils.stock_utils import StockUtils
-                market_info = StockUtils.get_market_info(stock_code)
+                try:
+                    from tradingagents.utils.stock_utils import StockUtils
+                    market_info = StockUtils.get_market_info(stock_code)
+                except ImportError:
+                    import logging as _fallback_logging
+                    _fallback_logging.getLogger(__name__).warning(
+                        "tradingagents.utils.stock_utils.StockUtils 不可用，使用 fallback 推断市场类型"
+                    )
+                    code_str = str(stock_code).strip()
+                    if code_str.isdigit() or code_str.endswith(".SH") or code_str.endswith(".SZ"):
+                        market_info = {"market": "china_a"}
+                    elif "." in code_str and not code_str.startswith(tuple("0123456789")):
+                        market_info = {"market": "us"}
+                    else:
+                        market_info = {"market": "unknown"}
                 market_type_map = {
                     "china_a": "A股",
                     "hong_kong": "港股",
@@ -335,6 +627,12 @@ async def get_report_detail(
                 "execution_time": r.get("execution_time", 0),
                 "tokens_used": r.get("tokens_used", 0)
             }
+            # 🔥 从 markdown 子报告中抽取结构化字段（核心洞察、策略点位等）
+            _extracted = extract_structured_fields(report["reports"])
+            # 已有字段保留优先级，仅在缺失时覆盖
+            for _k, _v in _extracted.items():
+                if _v is not None and (not report.get(_k)):
+                    report[_k] = _v
         else:
             # 转换为详细格式（analysis_reports 命中）
             stock_symbol = doc.get("stock_symbol", "")
@@ -373,6 +671,11 @@ async def get_report_detail(
                 "execution_time": doc.get("execution_time", 0),
                 "tokens_used": doc.get("tokens_used", 0)
             }
+            # 🔥 从 markdown 子报告中抽取结构化字段（核心洞察、策略点位、止盈止损等）
+            _extracted = extract_structured_fields(report["reports"])
+            for _k, _v in _extracted.items():
+                if _v is not None and (not report.get(_k)):
+                    report[_k] = _v
 
         return {
             "success": True,

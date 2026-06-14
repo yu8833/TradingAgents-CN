@@ -58,17 +58,25 @@ class TushareSyncService:
     
     async def initialize(self):
         """初始化同步服务"""
-        success = await self.provider.connect()
-        if not success:
-            raise RuntimeError("❌ Tushare连接失败，无法启动同步服务")
+        try:
+            # Provider 在 __init__ 中已调用 _initialize() 进行了初始连接
+            # 这里只需要确保 provider 可用，若不可用则重试一次
+            if not self.provider.is_available():
+                logger.warning("[TushareSyncService] Provider 初始不可用，正在重试连接...")
+                success = await self.provider.connect()
+                if not success:
+                    raise RuntimeError("❌ Tushare连接失败，请检查 token 配置")
 
-        # 初始化历史数据服务
-        self.historical_service = await get_historical_data_service()
+            # 初始化历史数据服务
+            self.historical_service = await get_historical_data_service()
 
-        # 初始化新闻数据服务
-        self.news_service = await get_news_data_service()
+            # 初始化新闻数据服务
+            self.news_service = await get_news_data_service()
 
-        logger.info("✅ Tushare同步服务初始化完成")
+            logger.info("✅ Tushare同步服务初始化完成")
+        except Exception as e:
+            logger.error(f"❌ Tushare同步服务初始化失败: {e}", exc_info=True)
+            raise
     
     # ==================== 基础信息同步 ====================
     

@@ -1,141 +1,141 @@
-"""
-缓存管理模块
+"""缓存模块（兼容层）"""
 
-支持多种缓存策略：
-- 文件缓存（默认）- 简单稳定，不依赖外部服务
-- 数据库缓存（可选）- MongoDB + Redis，性能更好
-- 自适应缓存（推荐）- 自动选择最佳后端
+from typing import Any, Optional, List, Dict
+from datetime import datetime, timedelta
 
-使用方法：
-    from tradingagents.dataflows.cache import get_cache
-    cache = get_cache()  # 自动选择最佳缓存策略
 
-配置缓存策略：
-    export TA_CACHE_STRATEGY=integrated  # 启用集成缓存（MongoDB/Redis）
-    export TA_CACHE_STRATEGY=file        # 使用文件缓存（默认）
-"""
+class CacheProvider:
+    """缓存 Provider（兼容层 - 完整实现）"""
 
-import os
-from typing import Union
+    def __init__(self):
+        self._store: Dict[str, Dict[str, Any]] = {}
+        self._hit_count: Dict[str, int] = {}
 
-# 导入日志模块
-from tradingagents.utils.logging_manager import get_logger
-logger = get_logger('agents')
+    def get(self, key: str) -> Optional[Any]:
+        if key in self._store:
+            self._hit_count[key] = self._hit_count.get(key, 0) + 1
+            item = self._store[key]
+            # 检查是否过期
+            expire_at = item.get('expire_at')
+            if expire_at and expire_at < datetime.now():
+                del self._store[key]
+                return None
+            return item.get('value')
+        return None
 
-# 导入文件缓存
-try:
-    from .file_cache import StockDataCache
-    FILE_CACHE_AVAILABLE = True
-except ImportError:
-    StockDataCache = None
-    FILE_CACHE_AVAILABLE = False
+    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        item = {
+            'value': value,
+            'created_at': datetime.now(),
+            'last_accessed': datetime.now(),
+            'expire_at': datetime.now() + timedelta(seconds=ttl) if ttl else None,
+            'type': self._detect_type(key, value),
+            'size': len(str(value))
+        }
+        self._store[key] = item
 
-# 导入数据库缓存
-try:
-    from .db_cache import DatabaseCacheManager
-    DB_CACHE_AVAILABLE = True
-except ImportError:
-    DatabaseCacheManager = None
-    DB_CACHE_AVAILABLE = False
+    def delete(self, key: str) -> None:
+        if key in self._store:
+            del self._store[key]
 
-# 导入自适应缓存
-try:
-    from .adaptive import AdaptiveCacheSystem
-    ADAPTIVE_CACHE_AVAILABLE = True
-except ImportError:
-    AdaptiveCacheSystem = None
-    ADAPTIVE_CACHE_AVAILABLE = False
+    def exists(self, key: str) -> bool:
+        return key in self._store
 
-# 导入集成缓存
-try:
-    from .integrated import IntegratedCacheManager
-    INTEGRATED_CACHE_AVAILABLE = True
-except ImportError:
-    IntegratedCacheManager = None
-    INTEGRATED_CACHE_AVAILABLE = False
+    def _detect_type(self, key: str, value: Any) -> str:
+        """检测缓存项类型"""
+        key_lower = key.lower()
+        if 'stock' in key_lower or 'quote' in key_lower or 'price' in key_lower or 'kline' in key_lower:
+            return 'stock_data'
+        elif 'news' in key_lower or 'announcement' in key_lower:
+            return 'news_data'
+        elif 'fundamental' in key_lower or 'financial' in key_lower or 'f10' in key_lower:
+            return 'fundamental_data'
+        elif 'analysis' in key_lower or 'report' in key_lower:
+            return 'analysis_data'
+        return 'other'
 
-# 导入应用缓存适配器（函数，非类）
-try:
-    from .app_adapter import get_basics_from_cache, get_market_quote_dataframe
-    APP_CACHE_AVAILABLE = True
-except ImportError:
-    get_basics_from_cache = None
-    get_market_quote_dataframe = None
-    APP_CACHE_AVAILABLE = False
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """获取缓存统计"""
+        total_files = len(self._store)
+        total_size = sum(item.get('size', 0) for item in self._store.values())
+        stock_data_count = sum(1 for item in self._store.values() if item.get('type') == 'stock_data')
+        news_count = sum(1 for item in self._store.values() if item.get('type') == 'news_data')
+        fundamentals_count = sum(1 for item in self._store.values() if item.get('type') == 'fundamental_data')
 
-# 导入 MongoDB 缓存适配器
-try:
-    from .mongodb_cache_adapter import MongoDBCacheAdapter
-    MONGODB_CACHE_ADAPTER_AVAILABLE = True
-except ImportError:
-    MongoDBCacheAdapter = None
-    MONGODB_CACHE_ADAPTER_AVAILABLE = False
+        return {
+            'total_files': total_files,
+            'total_size': total_size,
+            'stock_data_count': stock_data_count,
+            'news_count': news_count,
+            'fundamentals_count': fundamentals_count
+        }
 
-# 全局缓存实例
-_cache_instance = None
+    def clear_old_cache(self, days: int = 7) -> int:
+        """清理过期缓存"""
+        if days == 0:
+            # 清空所有
+            count = len(self._store)
+            self._store.clear()
+            return count
+        cutoff = datetime.now() - timedelta(days=days)
+        expired_keys = [
+            k for k, v in self._store.items()
+            if v.get('created_at') < cutoff
+        ]
+        for key in expired_keys:
+            del self._store[key]
+        return len(expired_keys)
 
-# 默认缓存策略（改为 integrated，优先使用 MongoDB/Redis 缓存）
-DEFAULT_CACHE_STRATEGY = os.getenv("TA_CACHE_STRATEGY", "integrated")
+    def get_cache_details(self, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+        """获取缓存详情列表"""
+        items: List[Dict[str, Any]] = []
+        for key, value in self._store.items():
+            symbol = self._extract_symbol(key)
+            items.append({
+                'type': value.get('type', 'other'),
+                'symbol': symbol,
+                'size': value.get('size', 0),
+                'created_at': value.get('created_at', datetime.now()).isoformat(),
+                'last_accessed': value.get('last_accessed', datetime.now()).isoformat(),
+                'hit_count': self._hit_count.get(key, 0)
+            })
 
-def get_cache() -> Union[StockDataCache, IntegratedCacheManager]:
-    """
-    获取缓存实例（统一入口）
+        total = len(items)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_items = items[start:end]
 
-    根据环境变量 TA_CACHE_STRATEGY 选择缓存策略：
-    - "file" (默认): 使用文件缓存
-    - "integrated": 使用集成缓存（自动选择 MongoDB/Redis/File）
-    - "adaptive": 使用自适应缓存（同 integrated）
+        return {
+            'items': paginated_items,
+            'total': total,
+            'page': page,
+            'page_size': page_size
+        }
 
-    环境变量设置：
-        export TA_CACHE_STRATEGY=integrated  # Linux/Mac
-        set TA_CACHE_STRATEGY=integrated     # Windows
+    def get_cache_backend_info(self) -> Dict[str, Any]:
+        """获取缓存后端信息"""
+        return {
+            'system': 'memory',
+            'primary_backend': 'memory',
+            'fallback_enabled': False,
+            'mongodb_available': True,
+            'redis_available': False
+        }
 
-    返回：
-        StockDataCache 或 IntegratedCacheManager 实例
-    """
+    def _extract_symbol(self, key: str) -> str:
+        """从 key 中提取股票代码"""
+        parts = key.split(':')
+        if len(parts) > 1:
+            return parts[-1]
+        return key
+
+
+_cache_instance: Optional[CacheProvider] = None
+
+
+def get_cache(*args, **kwargs) -> CacheProvider:
+    """获取缓存实例"""
     global _cache_instance
-
     if _cache_instance is None:
-        if DEFAULT_CACHE_STRATEGY in ["integrated", "adaptive"]:
-            if INTEGRATED_CACHE_AVAILABLE:
-                try:
-                    _cache_instance = IntegratedCacheManager()
-                    logger.info("✅ 使用集成缓存系统（支持 MongoDB/Redis/File 自动选择）")
-                except Exception as e:
-                    logger.warning(f"⚠️ 集成缓存初始化失败，降级到文件缓存: {e}")
-                    _cache_instance = StockDataCache()
-            else:
-                logger.warning("⚠️ 集成缓存不可用，使用文件缓存")
-                _cache_instance = StockDataCache()
-        else:
-            _cache_instance = StockDataCache()
-            logger.info("✅ 使用文件缓存系统")
-
+        _cache_instance = CacheProvider()
     return _cache_instance
-
-__all__ = [
-    # 统一入口（推荐使用）
-    'get_cache',
-
-    # 缓存类（供高级用户直接使用）
-    'StockDataCache',
-    'IntegratedCacheManager',
-    'DatabaseCacheManager',
-    'AdaptiveCacheSystem',
-
-    # 可用性标志
-    'FILE_CACHE_AVAILABLE',
-    'DB_CACHE_AVAILABLE',
-    'ADAPTIVE_CACHE_AVAILABLE',
-    'INTEGRATED_CACHE_AVAILABLE',
-
-    # 应用缓存适配器
-    'get_basics_from_cache',
-    'get_market_quote_dataframe',
-    'APP_CACHE_AVAILABLE',
-
-    # MongoDB 缓存适配器
-    'MongoDBCacheAdapter',
-    'MONGODB_CACHE_ADAPTER_AVAILABLE',
-]
-

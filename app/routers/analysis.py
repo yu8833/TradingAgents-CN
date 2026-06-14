@@ -6,11 +6,12 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import time
 import uuid
 import asyncio
+import re as _re
 
 from app.routers.auth_db import get_current_user
 from app.services.queue_service import get_queue_service, QueueService
@@ -24,6 +25,24 @@ from app.models.analysis import (
 
 router = APIRouter()
 logger = logging.getLogger("webapi")
+
+# --- 工具函数 ---
+def _sanitize_for_json(obj):
+    """递归清理对象中的 JSON 非法字符（避免 'Invalid control character'）。"""
+    if isinstance(obj, dict):
+        return {str(k): _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    if isinstance(obj, str):
+        # 去掉 ASCII 控制字符（0x00-0x1F 除常用 \n\r\t）和 0x7F
+        cleaned = _re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', obj)
+        return cleaned
+    if isinstance(obj, bytes):
+        try:
+            return obj.decode('utf-8', errors='ignore')
+        except:
+            return str(obj)
+    return obj
 
 # 兼容性：保留原有的请求模型
 class SingleAnalyzeRequest(BaseModel):
@@ -121,7 +140,7 @@ async def get_task_status_new(
         if result:
             return {
                 "success": True,
-                "data": result,
+                "data": _sanitize_for_json(result),
                 "message": "任务状态获取成功"
             }
         else:
@@ -143,10 +162,15 @@ async def get_task_status_new(
 
                 # 计算时间信息
                 start_time = task_result.get("started_at") or task_result.get("created_at")
-                current_time = datetime.utcnow()
+                # 使用 UTC 做差（避免跨时区导致的负值）
+                current_time = datetime.utcnow().replace(tzinfo=timezone.utc)
                 elapsed_time = 0
                 if start_time:
-                    elapsed_time = (current_time - start_time).total_seconds()
+                    if hasattr(start_time, "tzinfo") and start_time.tzinfo is not None:
+                        elapsed_time = (current_time - start_time).total_seconds()
+                    else:
+                        # naive datetime，假定 UTC
+                        elapsed_time = (datetime.utcnow() - start_time).total_seconds()
 
                 status_data = {
                     "task_id": task_id,
@@ -156,7 +180,7 @@ async def get_task_status_new(
                     "current_step": status,
                     "start_time": start_time,
                     "end_time": task_result.get("completed_at"),
-                    "elapsed_time": elapsed_time,
+                    "elapsed_time": max(0, int(elapsed_time)),
                     "remaining_time": 0,  # 无法准确估算
                     "estimated_total_time": 0,
                     "symbol": task_result.get("symbol") or task_result.get("stock_code"),
@@ -167,7 +191,7 @@ async def get_task_status_new(
 
                 return {
                     "success": True,
-                    "data": status_data,
+                    "data": _sanitize_for_json(status_data),
                     "message": "任务状态获取成功（从任务记录恢复）"
                 }
 
@@ -193,9 +217,9 @@ async def get_task_status_new(
                     "current_step": "completed",
                     "start_time": start_time,
                     "end_time": end_time,
-                    "elapsed_time": elapsed_time,
+                    "elapsed_time": max(0, int(elapsed_time)),
                     "remaining_time": 0,
-                    "estimated_total_time": elapsed_time,  # 已完成任务的总时长就是已用时间
+                    "estimated_total_time": max(0, int(elapsed_time)),  # 已完成任务的总时长就是已用时间
                     "stock_code": mongo_result.get("stock_symbol"),
                     "stock_symbol": mongo_result.get("stock_symbol"),
                     "analysts": mongo_result.get("analysts", []),
@@ -205,7 +229,7 @@ async def get_task_status_new(
 
                 return {
                     "success": True,
-                    "data": status_data,
+                    "data": _sanitize_for_json(status_data),
                     "message": "任务状态获取成功（从历史记录恢复）"
                 }
             else:
@@ -494,7 +518,13 @@ async def get_task_result(
                 logger.warning(f"⚠️ [RESULT] reports字段不是字典类型: {type(reports)}")
                 result_data['reports'] = {}
 
-        # 补全关键字段：recommendation/summary/key_points
+        # 补全关键字段：recommendation/summary/key_points（支持中文字段 + 英文兜底）
+        def _pick_cn(d, *candidates, default=None):
+            for c in candidates:
+                if c in d and d.get(c) not in (None, '', 'None', 'N/A'):
+                    return d.get(c)
+            return default
+
         try:
             reports = result_data.get('reports', {}) or {}
             decision = result_data.get('decision', {}) or {}
@@ -502,20 +532,23 @@ async def get_task_result(
             # recommendation 优先使用决策摘要或报告中的决策
             if not result_data.get('recommendation'):
                 rec_candidates = []
-                if isinstance(decision, dict) and decision.get('action'):
-                    parts = [
-                        f"操作: {decision.get('action')}",
-                        f"目标价: {decision.get('target_price')}" if decision.get('target_price') else None,
-                        f"置信度: {decision.get('confidence')}" if decision.get('confidence') is not None else None
-                    ]
-                    rec_candidates.append("；".join([p for p in parts if p]))
+                if isinstance(decision, dict):
+                    action_val = _pick_cn(decision, '评级', '操作建议', 'action', 'rating', default=None)
+                    target_val = _pick_cn(decision, '止盈目标', 'target_price', 'price_target', default=None)
+                    confidence_val = _pick_cn(decision, '置信度', 'confidence_score', 'confidence', default=None)
+                    if action_val:
+                        parts = [f"操作: {action_val}"]
+                        if target_val:
+                            parts.append(f"止盈目标: {target_val}")
+                        if confidence_val is not None:
+                            parts.append(f"置信度: {confidence_val}")
+                        rec_candidates.append("；".join(parts))
                 # 从报告中兜底
                 for k in ['final_trade_decision', 'investment_plan']:
                     v = reports.get(k)
                     if isinstance(v, str) and len(v.strip()) > 10:
                         rec_candidates.append(v.strip())
                 if rec_candidates:
-                    # 取最有信息量的一条（最长）
                     result_data['recommendation'] = max(rec_candidates, key=len)[:2000]
 
             # summary 从若干报告拼接生成
@@ -525,26 +558,45 @@ async def get_task_result(
                     v = reports.get(k)
                     if isinstance(v, str) and len(v.strip()) > 50:
                         sum_candidates.append(v.strip())
+                # 也尝试从 decision 的中文洞察中取
+                if isinstance(decision, dict):
+                    for k in ['核心洞察', '投资逻辑', '投资_thesis']:
+                        val = decision.get(k)
+                        if isinstance(val, str) and len(val.strip()) > 10:
+                            sum_candidates.insert(0, val.strip())
                 if sum_candidates:
                     result_data['summary'] = ("\n\n".join(sum_candidates))[:3000]
 
-            # key_points 兜底
+            # key_points 兜底（支持新中文字段）
             if not result_data.get('key_points'):
                 kp = []
                 if isinstance(decision, dict):
-                    if decision.get('action'):
-                        kp.append(f"操作建议: {decision.get('action')}")
-                    if decision.get('target_price'):
-                        kp.append(f"目标价: {decision.get('target_price')}")
-                    if decision.get('confidence') is not None:
-                        kp.append(f"置信度: {decision.get('confidence')}")
+                    action_display = _pick_cn(decision, '评级', '操作建议', 'action', 'rating', default=None)
+                    if action_display:
+                        kp.append(f"操作建议: {action_display}")
+                    ideal_buy = _pick_cn(decision, '理想买入', default=None)
+                    if ideal_buy:
+                        kp.append(f"理想买入价: {ideal_buy}")
+                    second_buy = _pick_cn(decision, '二次买入', default=None)
+                    if second_buy:
+                        kp.append(f"二次买入价: {second_buy}")
+                    stop_loss = _pick_cn(decision, '止损价格', 'stop_loss', default=None)
+                    if stop_loss:
+                        kp.append(f"止损价格: {stop_loss}")
+                    target = _pick_cn(decision, '止盈目标', 'target_price', 'price_target', default=None)
+                    if target:
+                        kp.append(f"止盈目标: {target}")
+                    confidence = _pick_cn(decision, '置信度', 'confidence_score', 'confidence', default=None)
+                    if confidence is not None:
+                        kp.append(f"置信度: {confidence}")
                 # 从reports中截取前几句作为要点
-                for k in ['investment_plan', 'final_trade_decision']:
-                    v = reports.get(k)
-                    if isinstance(v, str) and len(v.strip()) > 10:
-                        kp.append(v.strip()[:120])
+                if len(kp) < 3:
+                    for k in ['investment_plan', 'final_trade_decision']:
+                        v = reports.get(k)
+                        if isinstance(v, str) and len(v.strip()) > 10:
+                            kp.append(v.strip()[:120])
                 if kp:
-                    result_data['key_points'] = kp[:5]
+                    result_data['key_points'] = kp[:8]
         except Exception as fill_err:
             logger.warning(f"⚠️ [RESULT] 补全关键字段时出错: {fill_err}")
 
@@ -693,7 +745,7 @@ async def get_task_result(
 
         return {
             "success": True,
-            "data": final_result_data,
+            "data": _sanitize_for_json(final_result_data),
             "message": "分析结果获取成功"
         }
 

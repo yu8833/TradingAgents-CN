@@ -146,23 +146,36 @@ class ModelCapabilityService:
                 for config_dict in llm_configs:
                     if config_dict.get("model_name") == model_name:
                         logger.info(f"🔍 [MongoDB] 找到模型配置: {model_name}")
-                        # 🔧 将字符串列表转换为枚举列表
-                        features_str = config_dict.get('features', [])
+
+                        # 🔧 获取默认配置作为回退（如果存在）
+                        default_cfg = DEFAULT_MODEL_CAPABILITIES.get(model_name, {})
+
+                        # 🔧 将字符串列表转换为枚举列表（优先使用数据库配置，否则使用默认配置）
+                        features_str = config_dict.get('features', []) or default_cfg.get('features', [])
                         features_enum = []
                         for feature_str in features_str:
                             try:
                                 # 将字符串转换为 ModelFeature 枚举
-                                features_enum.append(ModelFeature(feature_str))
+                                if isinstance(feature_str, ModelFeature):
+                                    features_enum.append(feature_str)
+                                else:
+                                    features_enum.append(ModelFeature(feature_str))
                             except ValueError:
                                 logger.warning(f"⚠️ 未知的特性值: {feature_str}")
 
-                        # 🔧 将字符串列表转换为枚举列表
-                        roles_str = config_dict.get('suitable_roles', ["both"])
+                        # 如果 features 仍然为空，使用默认配置的 features
+                        if not features_enum and default_cfg and 'features' in default_cfg:
+                            features_enum = list(default_cfg['features'])
+
+                        # 🔧 将字符串列表转换为枚举列表（优先使用数据库配置，否则使用默认配置）
+                        roles_str = config_dict.get('suitable_roles', []) or default_cfg.get('suitable_roles', ["both"])
                         roles_enum = []
                         for role_str in roles_str:
                             try:
-                                # 将字符串转换为 ModelRole 枚举
-                                roles_enum.append(ModelRole(role_str))
+                                if isinstance(role_str, ModelRole):
+                                    roles_enum.append(role_str)
+                                else:
+                                    roles_enum.append(ModelRole(role_str))
                             except ValueError:
                                 logger.warning(f"⚠️ 未知的角色值: {role_str}")
 
@@ -170,18 +183,21 @@ class ModelCapabilityService:
                         if not roles_enum:
                             roles_enum = [ModelRole.BOTH]
 
-                        logger.info(f"📊 [MongoDB配置] {model_name}: features={features_enum}, roles={roles_enum}")
+                        # 🔧 使用数据库配置的 capability_level，没有则从默认配置获取
+                        cap_level = config_dict.get('capability_level', default_cfg.get('capability_level', 2))
+
+                        logger.info(f"📊 [MongoDB配置] {model_name}: features={features_enum}, roles={roles_enum}, level={cap_level}")
 
                         # 关闭连接
                         client.close()
 
                         return {
                             "model_name": config_dict.get("model_name"),
-                            "capability_level": config_dict.get('capability_level', 2),
+                            "capability_level": cap_level,
                             "suitable_roles": roles_enum,
                             "features": features_enum,
-                            "recommended_depths": config_dict.get('recommended_depths', ["快速", "基础", "标准"]),
-                            "performance_metrics": config_dict.get('performance_metrics', None)
+                            "recommended_depths": config_dict.get('recommended_depths', default_cfg.get('recommended_depths', ["快速", "基础", "标准"])),
+                            "performance_metrics": config_dict.get('performance_metrics', default_cfg.get('performance_metrics'))
                         }
 
             # 关闭连接
@@ -344,18 +360,34 @@ class ModelCapabilityService:
             roles = getattr(m, 'suitable_roles', [ModelRole.BOTH])
             level = getattr(m, 'capability_level', 2)
             features = getattr(m, 'features', [])
-            
+
+            # 🔧 如果 features 为空，从默认配置中获取
+            if not features:
+                default_cfg = DEFAULT_MODEL_CAPABILITIES.get(m.model_name, {})
+                if default_cfg and 'features' in default_cfg:
+                    features = default_cfg['features']
+                else:
+                    features = [ModelFeature.TOOL_CALLING]  # 默认支持工具调用
+
+            # 🔧 确保 roles 有默认值
+            if not roles:
+                roles = [ModelRole.BOTH]
+
             if (ModelRole.QUICK_ANALYSIS in roles or ModelRole.BOTH in roles) and \
                level >= requirements["quick_model_min"] and \
                ModelFeature.TOOL_CALLING in features:
                 quick_candidates.append(m)
-        
+
         # 筛选适合深度分析的模型
         deep_candidates = []
         for m in enabled_models:
             roles = getattr(m, 'suitable_roles', [ModelRole.BOTH])
             level = getattr(m, 'capability_level', 2)
-            
+
+            # 🔧 确保 roles 有默认值
+            if not roles:
+                roles = [ModelRole.BOTH]
+
             if (ModelRole.DEEP_ANALYSIS in roles or ModelRole.BOTH in roles) and \
                level >= requirements["deep_model_min"]:
                 deep_candidates.append(m)

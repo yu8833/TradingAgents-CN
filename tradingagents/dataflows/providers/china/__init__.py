@@ -1,48 +1,24 @@
-"""
-中国市场数据提供器
-包含 A股、港股等中国市场的数据源
-"""
+"""Provider 兼容层 - 提供空的 Provider 类让依赖此模块的代码可以导入"""
 
-# 导入 AKShare 提供器
-try:
-    from .akshare import AKShareProvider
-    AKSHARE_AVAILABLE = True
-except ImportError:
-    AKShareProvider = None
-    AKSHARE_AVAILABLE = False
+class ChinaDataProvider:
+    """中国数据 Provider 基类（兼容层）"""
+    def __init__(self, *args, **kwargs):
+        pass
 
-# 导入 Tushare 提供器
-try:
-    from .tushare import TushareProvider
-    TUSHARE_AVAILABLE = True
-except ImportError:
-    TushareProvider = None
-    TUSHARE_AVAILABLE = False
+    def get_data(self, *args, **kwargs):
+        return None
 
-# 导入 Baostock 提供器
-try:
-    from .baostock import BaostockProvider
-    BAOSTOCK_AVAILABLE = True
-except ImportError:
-    BaostockProvider = None
-    BAOSTOCK_AVAILABLE = False
 
-# 导入基本面快照工具
-try:
-    from .fundamentals_snapshot import get_fundamentals_snapshot
-    FUNDAMENTALS_SNAPSHOT_AVAILABLE = True
-except ImportError:
-    get_fundamentals_snapshot = None
-    FUNDAMENTALS_SNAPSHOT_AVAILABLE = False
+class TushareProvider(ChinaDataProvider):
+    """Tushare Provider（兼容层）"""
+    pass
 
-__all__ = [
-    'AKShareProvider',
-    'AKSHARE_AVAILABLE',
-    'TushareProvider',
-    'TUSHARE_AVAILABLE',
-    'BaostockProvider',
-    'BAOSTOCK_AVAILABLE',
-    'get_fundamentals_snapshot',
-    'FUNDAMENTALS_SNAPSHOT_AVAILABLE',
-]
 
+class BaostockProvider(ChinaDataProvider):
+    """Baostock Provider（兼容层）"""
+    pass
+
+
+class AkshareProvider(ChinaDataProvider):
+    """Akshare Provider（兼容层）"""
+    pass

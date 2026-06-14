@@ -183,9 +183,9 @@
             >
               编辑
             </el-button>
-            <!-- 只有A股显示同步按钮 -->
+            <!-- 只有A股显示同步按钮（兼容中小板/创业板等历史值，也用股票代码判断） -->
             <el-button
-              v-if="row.market === 'A股'"
+              v-if="isAStock(row)"
               type="text"
               size="small"
               @click="showSingleSyncDialog(row)"
@@ -682,15 +682,29 @@ const filteredFavorites = computed<FavoriteItem[]>(() => {
   return result
 })
 
+// 判断是否为 A 股（兼顾 market 字段和股票代码）
+const isAStock = (row: any) => {
+  if (!row) return false
+  const m = String(row.market || '').trim()
+  if (m === 'A股') return true
+  // 兼容中小板/创业板/主板/科创板/北交所 这类板块值
+  if (['主板','创业板','科创板','中小板','北交所','上海','深圳','上交所','深交所','沪市','深市'].includes(m)) {
+    return true
+  }
+  // 用股票代码兜底判断
+  const code = String(row.stock_code || '').trim().toUpperCase()
+  return /^\d{6}$/.test(code)
+}
+
 // 判断是否有A股自选股
 const hasAStocks = computed(() => {
-  return favorites.value.some(item => item.market === 'A股')
+  return favorites.value.some(item => isAStock(item))
 })
 
 // 判断选中的股票是否都是A股
 const selectedStocksAreAllAShares = computed(() => {
   if (selectedStocks.value.length === 0) return false
-  return selectedStocks.value.every(item => item.market === 'A股')
+  return selectedStocks.value.every(item => isAStock(item))
 })
 
 // 方法
