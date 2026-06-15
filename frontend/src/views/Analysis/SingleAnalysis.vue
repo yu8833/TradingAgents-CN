@@ -870,7 +870,7 @@ const analysisForm = reactive<AnalysisForm>({
   market: 'A股',
   analysisDate: new Date(),
   researchDepth: 3, // 默认选中3级标准分析（推荐），将在 onMounted 中从用户偏好加载
-  selectedAnalysts: ['市场分析师', '基本面分析师'], // 将在 onMounted 中从用户偏好加载
+  selectedAnalysts: ['市场分析师', '基本面分析师', '新闻分析师', '情绪分析师', '技术分析师', '政策分析师', '游资追踪师'], // 将在 onMounted 中从用户偏好加载
   includeSentiment: true,
   includeRisk: true,
   language: 'zh-CN'
