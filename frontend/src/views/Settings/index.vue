@@ -182,7 +182,10 @@
                 <el-checkbox label="市场分析师">市场分析师</el-checkbox>
                 <el-checkbox label="基本面分析师">基本面分析师</el-checkbox>
                 <el-checkbox label="新闻分析师">新闻分析师</el-checkbox>
-                <el-checkbox label="社媒分析师">社媒分析师</el-checkbox>
+                <el-checkbox label="情绪分析师">情绪分析师</el-checkbox>
+                <el-checkbox label="技术分析师">技术分析师</el-checkbox>
+                <el-checkbox label="政策分析师">政策分析师</el-checkbox>
+                <el-checkbox label="游资追踪师">游资追踪师</el-checkbox>
               </el-checkbox-group>
             </el-form-item>
 
@@ -546,7 +549,7 @@ const appearanceSettings = ref({
 const analysisSettings = ref({
   defaultMarket: authStore.user?.preferences?.default_market || 'A股',
   defaultDepth: authStore.user?.preferences?.default_depth || '3',
-  defaultAnalysts: authStore.user?.preferences?.default_analysts || ['市场分析师', '基本面分析师'],
+  defaultAnalysts: authStore.user?.preferences?.default_analysts || ['市场分析师', '基本面分析师', '新闻分析师', '情绪分析师', '技术分析师', '政策分析师', '游资追踪师'],
   autoRefresh: authStore.user?.preferences?.auto_refresh ?? true,
   refreshInterval: authStore.user?.preferences?.refresh_interval || 30
 })
@@ -564,7 +567,7 @@ const buildPreferencesPayload = (
   return {
     default_market: current?.default_market || 'A股',
     default_depth: current?.default_depth || '3',
-    default_analysts: current?.default_analysts || ['市场分析师', '基本面分析师'],
+    default_analysts: current?.default_analysts || ['市场分析师', '基本面分析师', '新闻分析师', '情绪分析师', '技术分析师', '政策分析师', '游资追踪师'],
     auto_refresh: current?.auto_refresh ?? true,
     refresh_interval: current?.refresh_interval || 30,
     ui_theme: current?.ui_theme || 'light',
@@ -594,7 +597,7 @@ watch(() => authStore.user, (newUser) => {
     // 更新分析偏好
     analysisSettings.value.defaultMarket = newUser.preferences?.default_market || 'A股'
     analysisSettings.value.defaultDepth = newUser.preferences?.default_depth || '3'
-    analysisSettings.value.defaultAnalysts = newUser.preferences?.default_analysts || ['市场分析师', '基本面分析师']
+    analysisSettings.value.defaultAnalysts = newUser.preferences?.default_analysts || ['市场分析师', '基本面分析师', '新闻分析师', '情绪分析师', '技术分析师', '政策分析师', '游资追踪师']
     analysisSettings.value.autoRefresh = newUser.preferences?.auto_refresh ?? true
     analysisSettings.value.refreshInterval = newUser.preferences?.refresh_interval || 30
 
