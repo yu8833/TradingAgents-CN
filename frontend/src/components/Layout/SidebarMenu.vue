@@ -115,15 +115,52 @@ const activeMenu = computed(() => route.path)
   border: none;
   height: 100%;
 
+  // 调整菜单项高度
   :deep(.el-menu-item),
   :deep(.el-sub-menu__title) {
-    height: 48px;
-    line-height: 48px;
+    height: 50px;
+    line-height: 50px;
+    font-size: 16px;
+    font-weight: 500;
   }
 
+  // 调整子菜单项
+  :deep(.el-menu .el-menu-item) {
+    font-size: 15px;
+    height: 44px;
+    line-height: 44px;
+  }
+
+  // 调整图标大小
+  :deep(.el-icon) {
+    font-size: 20px;
+    margin-right: 10px;
+  }
+
+  // 调整子菜单的图标
+  :deep(.el-sub-menu .el-icon) {
+    font-size: 20px;
+  }
+
+  // 调整文字样式
+  :deep(.el-menu-item span),
+  :deep(.el-sub-menu__title span) {
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  // 当前激活项样式
   :deep(.el-menu-item.is-active) {
     background-color: var(--el-color-primary-light-9);
     color: var(--el-color-primary);
+    font-weight: 600;
+  }
+
+  // 悬停效果
+  :deep(.el-menu-item:hover),
+  :deep(.el-sub-menu__title:hover) {
+    background-color: var(--el-color-primary-light-9);
   }
 }
 </style>

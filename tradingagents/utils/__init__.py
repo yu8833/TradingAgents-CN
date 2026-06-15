@@ -1,29 +1,31 @@
-"""日志初始化工具（兼容层）"""
+"""tradingagents.utils 公共入口。
 
-import logging
-import sys
-import os
+导出
+----
+StockUtils          股票代码工具类
+init_logging        日志初始化（带默认 StreamHandler）
+setup_logging       setup_logging(...) = init_logging(...) 别名
+get_logger          获取 logging.Logger
+prepare_stock_data_async   异步数据准备（兼容层）
+get_trading_date_range     获取日期范围
+"""
 
-
-def init_logging(log_level: str = "INFO", *args, **kwargs):
-    """初始化日志（兼容层）"""
-    level = getattr(logging, str(log_level).upper(), logging.INFO)
-
-    root = logging.getLogger()
-    if not any(
-        isinstance(h, logging.StreamHandler) for h in root.handlers
-    ):
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
-        )
-        root.addHandler(handler)
-    root.setLevel(level)
-    return logging.getLogger("tradingagents")
+from tradingagents.utils.logging_init import get_logger, init_logging
+from tradingagents.utils.stock_utils import StockUtils
+from tradingagents.utils.stock_validator import prepare_stock_data_async
+from tradingagents.utils.dataflow_utils import get_trading_date_range
 
 
-def get_logger(name: str = "tradingagents"):
-    """获取日志器（兼容层）"""
-    return logging.getLogger(name)
+def setup_logging(*args, **kwargs):
+    """init_logging 的别名，保持 API 兼容性。"""
+    return init_logging(*args, **kwargs)
+
+
+__all__ = [
+    "StockUtils",
+    "init_logging",
+    "setup_logging",
+    "get_logger",
+    "prepare_stock_data_async",
+    "get_trading_date_range",
+]

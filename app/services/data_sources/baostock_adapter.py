@@ -237,10 +237,122 @@ class BaoStockAdapter(DataSourceAdapter):
         return None
 
     def get_kline(self, code: str, period: str = "day", limit: int = 120, adj: Optional[str] = None):
-        """BaoStock not used for K-line here; return None to allow fallback"""
+        """
+        获取K线数据。
+
+        Args:
+            code: 6位股票代码（如 '301356'）
+            period: K线周期 ('day'/'week'/'month'/'5m'/'15m'/'30m'/'60m')
+            limit: 最大返回条数
+            adj: 复权方式 ('none'/'qfq'/'hfq')
+        """
         if not self.is_available():
             return None
-        return None
+        try:
+            import baostock as bs
+
+            # 1. 确定市场前缀（A股）
+            # 6开头 -> 上交所
+            # 0开头 -> 深交所
+            # 3开头 -> 深交所创业板
+            # 8开头 -> 北交所
+            # 4开头 -> 北交所
+            code_stripped = code.strip()
+            if code_stripped.startswith('6'):
+                bs_code = f"sh.{code_stripped}"  # 上交所
+            elif code_stripped.startswith('0') or code_stripped.startswith('3'):
+                bs_code = f"sz.{code_stripped}"  # 深交所（0开头为主板，3开头为创业板）
+            elif code_stripped.startswith('8') or code_stripped.startswith('4'):
+                bs_code = f"bj.{code_stripped}"  # 北交所
+            else:
+                bs_code = f"sh.{code_stripped}"  # 默认上交所
+
+            # 2. 周期映射
+            period_map = {
+                "day": "d",
+                "week": "w",
+                "month": "m",
+                "5m": "5",
+                "15m": "15",
+                "30m": "30",
+                "60m": "60",
+            }
+            freq = period_map.get(period, "d")
+
+            # 3. 复权方式
+            adj_map = {"none": "3", "qfq": "2", "hfq": "1"}
+            adj_flag = adj_map.get(adj, "3") if adj else "3"
+
+            # 4. 日期范围（最近2年足够覆盖limit条）
+            from app.core.config import settings
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(settings.TIMEZONE)
+            now = datetime.now(tz)
+            end_date = now.strftime("%Y-%m-%d")
+            start_date = (now - timedelta(days=limit * 3)).strftime("%Y-%m-%d")
+
+            lg = bs.login()
+            if lg.error_code != "0":
+                logger.error(f"BaoStock login failed: {lg.error_msg}")
+                return None
+
+            try:
+                rs = bs.query_history_k_data_plus(
+                    bs_code,
+                    "date,open,high,low,close,volume,amount",
+                    start_date=start_date,
+                    end_date=end_date,
+                    frequency=freq,
+                    adjustflag=adj_flag,
+                )
+                if rs.error_code != "0":
+                    logger.error(f"BaoStock kline query failed: {rs.error_msg}")
+                    return None
+
+                data_list = []
+                while rs.error_code == "0" and rs.next():
+                    data_list.append(rs.get_row_data())
+
+                if not data_list:
+                    logger.warning(f"BaoStock kline: no data for {code}")
+                    return None
+
+                # 取最近 limit 条
+                data_list = data_list[-limit:]
+
+                # 转换格式
+                items = []
+                for row in data_list:
+                    date_str = row[0]
+                    open_ = self._safe_float(row[1])
+                    high_ = self._safe_float(row[2])
+                    low_ = self._safe_float(row[3])
+                    close_ = self._safe_float(row[4])
+                    volume_ = self._safe_float(row[5])
+                    amount_ = self._safe_float(row[6])
+
+                    if open_ is None or close_ is None or high_ is None or low_ is None:
+                        continue
+
+                    items.append({
+                        "time": date_str,   # YYYY-MM-DD 格式
+                        "open": open_,
+                        "high": high_,
+                        "low": low_,
+                        "close": close_,
+                        "volume": volume_ or 0,
+                        "amount": amount_,
+                    })
+
+                logger.info(f"BaoStock kline: fetched {len(items)} items for {code}")
+                return items
+
+            finally:
+                bs.logout()
+
+        except Exception as e:
+            logger.error(f"BaoStock get_kline error for {code}: {e}")
+            return None
 
     def get_news(self, code: str, days: int = 2, limit: int = 50, include_announcements: bool = True):
         """BaoStock does not provide news in this adapter; return None"""

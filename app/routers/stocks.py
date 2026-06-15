@@ -6,6 +6,7 @@
 """
 from typing import Optional, Dict, Any, List, Tuple
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from datetime import datetime
 import logging
 import re
 
@@ -111,8 +112,40 @@ async def get_quote(
     db = get_mongo_db()
     code6 = normalized_code
 
-    # 行情
-    q = await db["market_quotes"].find_one({"code": code6}, {"_id": 0})
+    # 🔥 如果强制刷新，直接从数据源获取最新数据
+    if force_refresh:
+        logger.info(f"🔄 强制刷新：尝试从数据源获取 {code6} 的最新行情")
+        try:
+            from app.services.data_sources.manager import DataSourceManager
+            manager = DataSourceManager()
+            # 获取实时行情快照（所有股票）
+            quotes_map, source = manager.get_realtime_quotes_with_fallback()
+            if quotes_map and code6 in quotes_map:
+                q = quotes_map[code6]
+                logger.info(f"✅ 从 {source} 获取到 {code6} 的实时行情: close={q.get('close')}, pct_chg={q.get('pct_chg')}")
+                # 更新缓存
+                try:
+                    q["code"] = code6
+                    q["updated_at"] = datetime.now()
+                    await db["market_quotes"].update_one(
+                        {"code": code6},
+                        {"$set": q},
+                        upsert=True
+                    )
+                    logger.info(f"✅ 已更新 {code6} 的行情缓存")
+                except Exception as update_err:
+                    logger.warning(f"⚠️ 更新行情缓存失败: {update_err}")
+            else:
+                # 数据源也没有数据，从缓存读取
+                q = await db["market_quotes"].find_one({"code": code6}, {"_id": 0})
+                logger.info(f"⚠️ 数据源未找到 {code6} 的行情，使用缓存数据")
+        except Exception as e:
+            logger.warning(f"⚠️ 强制刷新获取实时行情失败: {e}")
+            # 失败时从缓存读取
+            q = await db["market_quotes"].find_one({"code": code6}, {"_id": 0})
+    else:
+        # 非强制刷新，从缓存读取
+        q = await db["market_quotes"].find_one({"code": code6}, {"_id": 0})
 
     # 🔥 调试日志：查看查询结果
     logger.info(f"🔍 查询 market_quotes: code={code6}")
@@ -332,11 +365,12 @@ async def get_fundamentals(
     import asyncio
 
     # 在线程池中执行同步的实时计算
-    realtime_metrics = await asyncio.to_thread(
+    realtime_metrics_raw = await asyncio.to_thread(
         get_pe_pb_with_fallback,
         code6,
         db.client
     )
+    realtime_metrics = realtime_metrics_raw if isinstance(realtime_metrics_raw, dict) else {}
 
     # 4. 构建返回数据
     # 🔥 优先使用实时市值，降级到 stock_basic_info 的静态市值

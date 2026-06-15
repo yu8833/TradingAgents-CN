@@ -529,29 +529,61 @@
                       </div>
 
                       <div class="decision-insights">
-                        <div v-if="analysisResults.decision.核心洞察" class="insight-item">
-                          <span class="insight-label">💡 核心洞察</span>
-                          <p class="insight-value">{{ analysisResults.decision.核心洞察 }}</p>
+                        <!-- 6 张卡片：核心洞察、投资逻辑、情绪分析、趋势预测、策略点位、风险提示 -->
+                        <div v-if="getRefinedField(analysisResults, '核心洞察')" class="insight-card insight-core">
+                          <div class="insight-card-header">
+                            <span class="insight-icon">💡</span>
+                            <span class="insight-title">核心洞察</span>
+                          </div>
+                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '核心洞察') }}</div>
                         </div>
-                        <div v-if="analysisResults.decision.投资逻辑" class="insight-item">
-                          <span class="insight-label">📈 投资逻辑</span>
-                          <p class="insight-value">{{ analysisResults.decision.投资逻辑 }}</p>
+
+                        <div v-if="getRefinedField(analysisResults, '投资逻辑')" class="insight-card insight-investment">
+                          <div class="insight-card-header">
+                            <span class="insight-icon">📊</span>
+                            <span class="insight-title">投资逻辑</span>
+                          </div>
+                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '投资逻辑') }}</div>
                         </div>
-                        <div v-if="analysisResults.decision.趋势预测" class="insight-item">
-                          <span class="insight-label">🔮 趋势预测</span>
-                          <p class="insight-value">{{ analysisResults.decision.趋势预测 }}</p>
+
+                        <div v-if="getSentimentContent(analysisResults)" class="insight-card insight-sentiment">
+                          <div class="insight-card-header">
+                            <span class="insight-icon">🔥</span>
+                            <span class="insight-title">情绪分析</span>
+                          </div>
+                          <div class="insight-card-body">{{ getSentimentContent(analysisResults) }}</div>
                         </div>
-                        <div v-if="analysisResults.decision.策略点位" class="insight-item">
-                          <span class="insight-label">🎯 策略点位</span>
-                          <p class="insight-value">{{ analysisResults.decision.策略点位 }}</p>
+
+                        <div v-if="getRefinedField(analysisResults, '趋势预测')" class="insight-card insight-trend">
+                          <div class="insight-card-header">
+                            <span class="insight-icon">📈</span>
+                            <span class="insight-title">趋势预测</span>
+                          </div>
+                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '趋势预测') }}</div>
                         </div>
-                        <div v-if="analysisResults.decision.风险提示" class="insight-item">
-                          <span class="insight-label">⚠️ 风险提示</span>
-                          <p class="insight-value">{{ analysisResults.decision.风险提示 }}</p>
+
+                        <div v-if="getRefinedField(analysisResults, '策略点位')" class="insight-card insight-strategy">
+                          <div class="insight-card-header">
+                            <span class="insight-icon">🎯</span>
+                            <span class="insight-title">策略点位</span>
+                          </div>
+                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '策略点位') }}</div>
                         </div>
-                        <div v-if="analysisResults.decision.持仓周期" class="insight-item">
-                          <span class="insight-label">📅 持仓周期</span>
-                          <p class="insight-value">{{ analysisResults.decision.持仓周期 }}</p>
+
+                        <div v-if="getRefinedField(analysisResults, '风险提示')" class="insight-card insight-risk">
+                          <div class="insight-card-header">
+                            <span class="insight-icon">⚠️</span>
+                            <span class="insight-title">风险提示</span>
+                          </div>
+                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '风险提示') }}</div>
+                        </div>
+
+                        <div v-if="getRefinedField(analysisResults, '持仓周期')" class="insight-card insight-holding">
+                          <div class="insight-card-header">
+                            <span class="insight-icon">📅</span>
+                            <span class="insight-title">持仓周期</span>
+                          </div>
+                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '持仓周期') }}</div>
                         </div>
                       </div>
 
@@ -1286,6 +1318,103 @@ const formatPctField = (obj: any, candidates: string[]): string => {
   if (isNaN(n)) return '0'
   if (n > 1) return Math.round(n).toString()
   return Math.round(n * 100).toString()
+}
+
+// 🔹 内容精炼函数：智能选择高价值句子
+const refineContent = (rawContent: string, maxLen: number = 260): string => {
+  if (!rawContent || typeof rawContent !== 'string') return ''
+  let text = rawContent.trim()
+  if (!text) return ''
+
+  // 1. 清理：去除 Markdown 标题、表格、分隔线
+  text = text.replace(/^[>#]{2,}\s*/gm, '')
+  text = text.replace(/^[#*]{1,3}\s*/gm, '')
+  text = text.replace(/\|[\s\S]*?\|/gm, '') // 移除表格
+  text = text.replace(/(?:---|\*{3,})/gm, '')
+  text = text.replace(/\*\*/g, '')
+
+  // 2. 按段落分割成段落数组
+  let paragraphs = text.split(/\n\s*\n/)
+  if (paragraphs.length === 1) {
+    // 没有空行分割，按句号分割
+    const sentences = text.split(/(?<=[。！？!?])/).filter(s => s.trim().length > 0)
+    paragraphs = sentences.length > 1 ? sentences : [text]
+  }
+
+  // 3. 过滤掉太短（去除无效内容（包含无效段落（删除
+  // 3. 评分后）-type
+  // 3. 评分后）：去除过的内容）：
+  // 3. 评分过后，保留有价值的句子
+  const valid_paragraphs = paragraphs.filter(p => {
+    const trimmed = p.trim()
+    if (trimmed.length < 5) return false
+    // 过滤掉"开始，获取内容" 是一个非常的内容
+    // 过滤掉明显的套话/模板文本去除短信息的内容
+    if (/^(好的|数据已|数据|以下|分析|基于|(?:\s*)$/i.test(trimmed.slice(0, 20)
+      return false
+    return true
+  })
+
+  if (valid_paragraphs.length === 0) {
+    valid_paragraphs.push(paragraphs[0])
+  }
+
+  // 4. 对每个段落进行句子级精选，确保不超过 maxLen 字符
+  const result_parts: string[] = []
+  let current_len = 0
+
+  for (const para of valid_paragraphs) {
+    const trimmed = para.trim()
+    if (current_len + trimmed.length <= maxLen) {
+      result_parts.push(trimmed)
+      current_len += trimmed.length + 2
+    } else {
+      // 找到最后一个句号，保留句子级精选句子级句子结束处的前一句，确保句子完整
+      const remaining = maxLen - current_len - 2
+      if (remaining > 30) {
+        // 智能截断到最后一个中文句号
+        const lastPeriod = trimmed.lastIndexOf('。', remaining)
+        const cutPos = Math.max(lastPeriod, trimmed.indexOf('。'))
+        const cutLen = Math.min(trimmed.length, cutPos === -1 ? remaining : cutPos + 1)
+        result_parts.push(trimmed.substring(0, cutLen))
+      }
+      break
+    }
+  }
+
+  // 5. 合并并确保总长度限制
+  const result = result_parts.join('；')
+  return result.length > maxLen ? result.substring(0, maxLen) + '...' : result
+}
+
+// 🔹 获取情绪分析内容（从多个字段提取并精炼
+const getSentimentContent = (results: any): string => {
+  if (!results) return ''
+  const reports = results.reports || results.state || {}
+  const decision = results.decision || {}
+
+  // 优先级：决策中的情绪字段 > sentiment_report
+  const candidates = [
+    decision.情绪分析 || decision.sentiment_summary || '',
+    reports.sentiment_report || '',
+    reports.news_report || '',
+    reports.market_report || ''
+  ]
+
+  for (const c of candidates) {
+    if (c && c.length > 10) {
+      return refineContent(c, 260)
+    }
+  }
+  return ''
+}
+
+// 🔹 获取精炼后的决策字段
+const getRefinedField = (results: any, field: string, maxLen: number = 260): string => {
+  if (!results || !results.decision) return ''
+  const value = results.decision[field]
+  if (!value) return ''
+  return refineContent(String(value), maxLen)
 }
 
 // 获取操作标签类型（支持完整 5 档中文评级）
@@ -3334,16 +3463,148 @@ onMounted(async () => {
   color: var(--el-text-color-primary);
 }
 
-/* 核心洞察区块（daily_stock_analysis 风格） */
+/* 🔹 核心洞察卡片（6 张彩色卡片 + 可选持仓周期） */
 .decision-insights {
   margin-top: 16px;
-  padding: 16px;
-  background: linear-gradient(135deg, rgba(229, 246, 253, 0.35) 0%, rgba(232, 245, 233, 0.3) 100%);
-  border-radius: 8px;
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
 }
 
+@media (max-width: 900px) {
+  .decision-insights {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .decision-insights {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 通用卡片样式 */
+.insight-card {
+  position: relative;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  transition: all 0.25s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 130px;
+}
+
+.insight-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  opacity: 0.8;
+}
+
+.insight-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+.insight-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.insight-icon {
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.insight-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.insight-card-body {
+  font-size: 13px;
+  line-height: 1.75;
+  color: #374151;
+  flex: 1;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* 每张卡片的专属配色 */
+.insight-card.insight-core {
+  background: linear-gradient(135deg, #fffbeb 0%, #ffffff 80%);
+  border-color: #fde68a;
+}
+.insight-card.insight-core::before { background: #f59e0b; }
+.insight-card.insight-core .insight-icon { background: #fef3c7; color: #f59e0b; }
+.insight-card.insight-core .insight-title { color: #b45309; }
+
+.insight-card.insight-investment {
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 80%);
+  border-color: #bfdbfe;
+}
+.insight-card.insight-investment::before { background: #3b82f6; }
+.insight-card.insight-investment .insight-icon { background: #dbeafe; color: #3b82f6; }
+.insight-card.insight-investment .insight-title { color: #1d4ed8; }
+
+.insight-card.insight-sentiment {
+  background: linear-gradient(135deg, #fdf2f8 0%, #ffffff 80%);
+  border-color: #fbcfe8;
+}
+.insight-card.insight-sentiment::before { background: #ec4899; }
+.insight-card.insight-sentiment .insight-icon { background: #fce7f3; color: #ec4899; }
+.insight-card.insight-sentiment .insight-title { color: #be185d; }
+
+.insight-card.insight-trend {
+  background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 80%);
+  border-color: #bbf7d0;
+}
+.insight-card.insight-trend::before { background: #10b981; }
+.insight-card.insight-trend .insight-icon { background: #d1fae5; color: #10b981; }
+.insight-card.insight-trend .insight-title { color: #047857; }
+
+.insight-card.insight-strategy {
+  background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 80%);
+  border-color: #ddd6fe;
+}
+.insight-card.insight-strategy::before { background: #8b5cf6; }
+.insight-card.insight-strategy .insight-icon { background: #ede9fe; color: #8b5cf6; }
+.insight-card.insight-strategy .insight-title { color: #6d28d9; }
+
+.insight-card.insight-risk {
+  background: linear-gradient(135deg, #fef2f2 0%, #ffffff 80%);
+  border-color: #fecaca;
+}
+.insight-card.insight-risk::before { background: #ef4444; }
+.insight-card.insight-risk .insight-icon { background: #fee2e2; color: #ef4444; }
+.insight-card.insight-risk .insight-title { color: #b91c1c; }
+
+.insight-card.insight-holding {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 80%);
+  border-color: #bbf7d0;
+}
+.insight-card.insight-holding::before { background: #059669; }
+.insight-card.insight-holding .insight-icon { background: #d1fae5; color: #059669; }
+.insight-card.insight-holding .insight-title { color: #065f46; }
+
+/* 旧 insight-item 样式（向后兼容） */
 .insight-item {
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.85);

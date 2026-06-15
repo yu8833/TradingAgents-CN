@@ -1,15 +1,39 @@
-"""Analysis 兼容层 - 提供空的技术指标模块"""
+"""技术指标分析模块。
 
-from typing import Any, Dict, List, Optional
+导出
+----
+IndicatorSpec            指标规格
+compute_many             统一批量计算
+add_all_indicators       一次性添加全部常用指标
+compute_ma / compute_ema / compute_macd / compute_rsi
+compute_boll / compute_atr / compute_kdj
+rsi                      Series 便捷接口
+"""
 
-# IndicatorSpec 类
-class IndicatorSpec:
-    """技术指标规格（兼容层）"""
-    def __init__(self, name: str, params: Optional[Dict[str, Any]] = None):
-        self.name = name
-        self.params = params or {}
+from tradingagents.tools.analysis.indicators import (
+    IndicatorSpec,
+    add_all_indicators,
+    compute_atr,
+    compute_boll,
+    compute_ema,
+    compute_kdj,
+    compute_macd,
+    compute_many,
+    compute_ma,
+    compute_rsi,
+    rsi,
+)
 
-# compute_many 函数
-def compute_many(specs: List[IndicatorSpec], data: Any) -> Dict[str, Any]:
-    """计算多个技术指标（兼容层 - 返回空结果）"""
-    return {}
+__all__ = [
+    "IndicatorSpec",
+    "compute_many",
+    "compute_ma",
+    "compute_ema",
+    "compute_macd",
+    "compute_rsi",
+    "compute_boll",
+    "compute_atr",
+    "compute_kdj",
+    "add_all_indicators",
+    "rsi",
+]

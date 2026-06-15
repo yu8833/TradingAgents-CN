@@ -802,7 +802,8 @@ class SimpleAnalysisService:
         """为任务列表补齐股票名称(就地更新)"""
         try:
             for t in tasks:
-                code = t.get("stock_code") or t.get("stock_symbol")
+                # 兼容多种股票代码字段名
+                code = t.get("stock_code") or t.get("stock_symbol") or t.get("symbol")
                 name = t.get("stock_name")
                 if not name and code:
                     t["stock_name"] = self._resolve_stock_name(code)
@@ -1669,89 +1670,154 @@ class SimpleAnalysisService:
             # 注意：不要手动设置过高的进度，让 graph_progress_callback 来更新实际的分析进度
             update_progress_sync(10, "🤖 开始多智能体协作分析", "agent_analysis")
 
-            # 启动一个异步任务来模拟进度更新
+            # 🔧 实时进度更新线程（同步更新进度百分比和消息到内存/MongoDB）
             import threading
             import time
 
+            def _update_progress_with_pct(percentage: int, message: str) -> None:
+                """更新进度：同时更新 progress_tracker、内存任务状态和 MongoDB"""
+                try:
+                    # 1. 更新 progress_tracker（字典形式，确保 progress_percentage 更新）
+                    progress_tracker.update_progress({
+                        'progress_percentage': percentage,
+                        'last_message': message,
+                        'last_update': time.time()
+                    })
+
+                    # 2. 同步更新内存中的任务状态（使用新事件循环避免阻塞事件循环）
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(
+                            self.memory_manager.update_task_status(
+                                task_id=task_id,
+                                status=TaskStatus.RUNNING,
+                                progress=percentage,
+                                message=message,
+                                current_step=message
+                            )
+                        )
+                    finally:
+                        loop.close()
+
+                    # 3. 同步更新 MongoDB
+                    from pymongo import MongoClient
+                    from app.core.config import settings
+                    from datetime import datetime
+                    sync_client = MongoClient(settings.MONGO_URI)
+                    sync_db = sync_client[settings.MONGO_DB]
+                    sync_db.analysis_tasks.update_one(
+                        {"task_id": task_id},
+                        {
+                            "$set": {
+                                "progress": percentage,
+                                "current_step": message,
+                                "message": message,
+                                "updated_at": datetime.now()
+                            }
+                        }
+                    )
+                    sync_client.close()
+                    logger.info(f"📊 [进度更新] {task_id}: {percentage}% - {message}")
+                except Exception as e:
+                    logger.warning(f"⚠️ 进度更新失败 ({percentage}%): {e}")
+
             def simulate_progress():
-                """模拟TradingAgents内部进度"""
+                """实时更新分析进度 - 与 trading_graph.propagate 并行执行
+                使用平滑增量更新：每 2 秒更新一次小进度（1-2%），
+                到达阶段边界时更新阶段消息。"""
                 try:
                     if not progress_tracker:
                         return
 
-                    # 分析师阶段 - 根据选择的分析师数量动态调整
+                    # 获取配置参数
                     analysts = request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
-
-                    # 模拟分析师执行
-                    for i, analyst in enumerate(analysts):
-                        time.sleep(15)  # 每个分析师大约15秒
-                        if analyst == "market":
-                            progress_tracker.update_progress("📊 市场分析师正在分析")
-                        elif analyst == "fundamentals":
-                            progress_tracker.update_progress("💼 基本面分析师正在分析")
-                        elif analyst == "news":
-                            progress_tracker.update_progress("📰 新闻分析师正在分析")
-                        elif analyst == "social":
-                            progress_tracker.update_progress("💬 社交媒体分析师正在分析")
-                        elif analyst == "policy":
-                            progress_tracker.update_progress("🏛️ 政策分析师正在分析")
-                        elif analyst == "hot_money":
-                            progress_tracker.update_progress("💰 游资追踪师正在分析")
-                        elif analyst == "lockup":
-                            progress_tracker.update_progress("🔒 解禁监控师正在分析")
-
-                    # 研究团队阶段
-                    time.sleep(10)
-                    progress_tracker.update_progress("🐂 看涨研究员构建论据")
-
-                    time.sleep(8)
-                    progress_tracker.update_progress("🐻 看跌研究员识别风险")
-
-                    # 辩论阶段 - 根据5个级别确定辩论轮次
                     research_depth = request.parameters.research_depth if request.parameters else "标准"
-                    if research_depth == "快速":
-                        debate_rounds = 1
-                    elif research_depth == "基础":
-                        debate_rounds = 1
-                    elif research_depth == "标准":
+
+                    # 根据研究深度确定辩论轮次
+                    if research_depth in ("快速", "基础", "标准"):
                         debate_rounds = 1
                     elif research_depth == "深度":
                         debate_rounds = 2
                     elif research_depth == "全面":
                         debate_rounds = 3
                     else:
-                        debate_rounds = 1  # 默认
+                        debate_rounds = 1
 
-                    for round_num in range(debate_rounds):
-                        time.sleep(12)
-                        progress_tracker.update_progress(f"🎯 研究辩论 第{round_num+1}轮")
+                    # 📊 阶段进度配置（使用更细粒度的阶段）
+                    # 进度范围：10% → 25% → 45% → 55% → 65% → 70% → 78% → 83% → 87% → 91% → 93% → 97%
+                    stage_messages = [
+                        (12, "🤖 AI分析引擎启动中"),
+                        (15, "📊 市场分析师正在分析"),
+                        (18, "📊 市场分析师正在分析"),
+                        (22, "💼 基本面分析师正在分析"),
+                        (28, "📰 新闻分析师正在分析"),
+                        (32, "💬 社交媒体分析师正在分析"),
+                        (36, "🏛️ 政策分析师正在分析"),
+                        (40, "💰 游资追踪师正在分析"),
+                        (44, "🔒 解禁监控师正在分析"),
+                        (48, "📊 多分析师协作分析中"),
+                        (52, "🐂 看涨研究员构建论据"),
+                        (56, "🐻 看跌研究员识别风险"),
+                        (60, "🎯 研究辩论中"),
+                        (65, "🎯 研究辩论深化中"),
+                        (70, "👔 研究经理形成共识"),
+                        (74, "💼 交易员制定策略"),
+                        (78, "💼 交易员优化策略"),
+                        (82, "🔥 激进风险评估"),
+                        (86, "🛡️ 保守风险评估"),
+                        (90, "⚖️ 中性风险评估"),
+                        (93, "🎯 风险经理制定策略"),
+                        (95, "📡 信号处理中"),
+                        (97, "📡 信号处理中"),
+                    ]
 
-                    time.sleep(8)
-                    progress_tracker.update_progress("👔 研究经理形成共识")
+                    # ⚡ 平滑进度更新机制
+                    start_time_inner = time.time()
+                    # 预估总耗时 = (research_depth * 60秒) + (analysts数 * 20秒)
+                    # 简化：基于研究深度的预估时间
+                    depth_time_map = {
+                        "快速": 90,
+                        "基础": 120,
+                        "标准": 180,
+                        "深度": 240,
+                        "全面": 300,
+                    }
+                    estimated_total = depth_time_map.get(research_depth, 180)
 
-                    # 交易员阶段
-                    time.sleep(10)
-                    progress_tracker.update_progress("💼 交易员制定策略")
+                    current_stage_idx = 0
+                    last_progress_pct = 10
 
-                    # 风险管理阶段
-                    time.sleep(8)
-                    progress_tracker.update_progress("🔥 激进风险评估")
+                    # 🔄 主循环：每 2 秒更新一次小进度，避免用户看到进度卡住
+                    while last_progress_pct < 97:
+                        time.sleep(2)  # 每 2 秒更新一次进度（不是 20 秒！）
 
-                    time.sleep(6)
-                    progress_tracker.update_progress("🛡️ 保守风险评估")
+                        elapsed = time.time() - start_time_inner
+                        # 基于已用时间计算目标进度（从10%增加到97%，在 estimated_total 时间内）
+                        progress_by_time = 10 + (elapsed / estimated_total) * (97 - 10)
 
-                    time.sleep(6)
-                    progress_tracker.update_progress("⚖️ 中性风险评估")
+                        # 选择当前阶段的消息（不超过进度百分比）
+                        while (current_stage_idx < len(stage_messages) - 1 and
+                               progress_by_time >= stage_messages[current_stage_idx + 1][0]):
+                            current_stage_idx += 1
 
-                    time.sleep(8)
-                    progress_tracker.update_progress("🎯 风险经理制定策略")
+                        target_pct = min(int(progress_by_time), 97)
+                        # 确保每次至少增加 1%（避免进度回退或停滞）
+                        if target_pct <= last_progress_pct:
+                            target_pct = last_progress_pct + 1
+                        target_pct = min(target_pct, 97)
 
-                    # 最终阶段
-                    time.sleep(5)
-                    progress_tracker.update_progress("📡 信号处理")
+                        current_msg = stage_messages[current_stage_idx][1]
+                        _update_progress_with_pct(target_pct, current_msg)
+                        last_progress_pct = target_pct
+
+                    logger.info(f"📊 [进度线程] 进度已达到 97%，停止更新，等待实际分析完成")
 
                 except Exception as e:
-                    logger.warning(f"⚠️ 进度模拟失败: {e}")
+                    logger.warning(f"⚠️ 进度模拟线程异常: {e}")
+                    import traceback
+                    logger.debug(f"⚠️ 进度线程异常详情: {traceback.format_exc()}")
 
             # 启动进度模拟线程
             progress_thread = threading.Thread(target=simulate_progress, daemon=True)
@@ -2805,20 +2871,26 @@ class SimpleAnalysisService:
             # 分页
             results = merged_tasks[offset:offset + limit]
 
-            # 🔥 统一处理时区信息：MongoDB 存储的 naive datetime 为 UTC 时间，需转换为配置时区
+            # 🔥 统一处理时区信息：MongoDB 存储的 naive datetime 为 UTC+8 时间
+            # 前端 formatDateTime 函数假定没有时区标识的时间字符串为 UTC+8 时间
             for task in results:
                 for time_field in ("start_time", "end_time", "created_at", "started_at", "completed_at"):
                     value = task.get(time_field)
                     if value:
                         # 如果是 datetime 对象
                         if hasattr(value, "isoformat"):
-                            # MongoDB 返回的是 naive datetime（UTC 时间），使用 to_config_tz 转换
+                            # MongoDB 返回的是 naive datetime（UTC+8 时间），直接转换为 ISO 格式
                             value = to_config_tz(value)
                             task[time_field] = value.isoformat()
-                        # 如果是字符串且没有时区标识，假定为 UTC 并添加 Z
+                        # 如果是字符串且没有时区标识，假定为 UTC+8 并添加 +08:00
                         elif isinstance(value, str) and value and not value.endswith(('Z', '+08:00', '+00:00')):
-                            if 'T' in value or ' ' in value:
-                                task[time_field] = value.replace(' ', 'T') + 'Z'
+                            # 保留原始格式，添加时区标识
+                            if 'T' in value:
+                                # ISO 格式，添加 UTC+8 时区标识
+                                task[time_field] = value + '+08:00'
+                            elif ' ' in value:
+                                # 普通格式，转换为 ISO 格式并添加 UTC+8 时区标识
+                                task[time_field] = value.replace(' ', 'T') + '+08:00'
 
             # 为结果补齐股票名称
             results = self._enrich_stock_names(results)

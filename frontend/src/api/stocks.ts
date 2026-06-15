@@ -84,9 +84,10 @@ export const stocksApi = {
   /**
    * 获取股票行情
    * @param symbol 6位股票代码
+   * @param forceRefresh 是否强制刷新（跳过缓存）
    */
-  async getQuote(symbol: string) {
-    return ApiClient.get<QuoteResponse>(`/api/stocks/${symbol}/quote`)
+  async getQuote(symbol: string, forceRefresh = false) {
+    return ApiClient.get<QuoteResponse>(`/api/stocks/${symbol}/quote`, { force_refresh: forceRefresh })
   },
 
   /**

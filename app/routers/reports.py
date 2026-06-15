@@ -228,34 +228,442 @@ def _extract_section(text: str, aliases: List[str], max_chars: int) -> Optional[
 
 def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     """
-    遍历 reports 中的所有子报告，抽取可用于前端展示的结构化字段。
-    字段会被合并到报告详情顶层，以便前端 `pickField(report, [...])` 工作。
+    遍历 reports 中的所有子报告（以及可能存在的 decision 字典），
+    抽取可用于前端展示的结构化字段。字段会被合并到报告详情顶层，
+    以便前端 `pickField(report, [...])` 工作。
+
+    返回字段（中文命名，便于前端直接展示）：
+      - 置信度 / 技术面评分 / 基本面评分 / 情绪面评分 / 政策面评分
+      - 风险等级
+      - 评级 / 操作建议
+      - 理想买入 / 二次买入 / 止损价格 / 止盈目标 / 支撑位 / 阻力位
+      - 核心洞察 / 投资逻辑 / 趋势预测 / 策略点位 / 风险提示
     """
     result: Dict[str, Any] = {}
     if not isinstance(reports, dict) or not reports:
         return result
 
-    combined_text = "\n".join(t for t in _iter_text(reports))
+    # 1) 先从 decision 字典取值（来自 trading_graph 的结构化输出）
+    decision_obj = reports.get("decision")
+    if isinstance(decision_obj, dict) and decision_obj:
+        conf_val = (
+            decision_obj.get("confidence_score")
+            or decision_obj.get("confidence")
+            or decision_obj.get("score")
+        )
+        if conf_val is not None and conf_val != "":
+            try:
+                if isinstance(conf_val, (int, float)) and 0 < conf_val <= 1:
+                    result["置信度"] = round(conf_val * 100, 1)
+                else:
+                    result["置信度"] = round(float(conf_val), 1)
+            except (TypeError, ValueError):
+                pass
+        rl_val = decision_obj.get("risk_level")
+        if rl_val:
+            result["风险等级"] = str(rl_val)
+        act = (
+            decision_obj.get("action")
+            or decision_obj.get("recommendation")
+            or decision_obj.get("rating")
+        )
+        if act:
+            action_map = {
+                "BUY": "买入", "SELL": "卖出", "HOLD": "持有",
+                "STRONG_BUY": "强烈买入", "STRONG_SELL": "强烈卖出",
+            }
+            normalized = action_map.get(str(act).upper(), str(act))
+            result["评级"] = normalized
+            result["操作建议"] = normalized
+        # 价格类：target_price / stop_loss / ideal_buy / second_buy
+        tp = decision_obj.get("target_price") or decision_obj.get("price_target")
+        if tp is not None and tp != "":
+            try:
+                result["止盈目标"] = f"{round(float(tp), 2)} 元"
+            except (TypeError, ValueError):
+                result["止盈目标"] = str(tp)
+        sl = decision_obj.get("stop_loss") or decision_obj.get("stop_loss_price")
+        if sl is not None and sl != "":
+            try:
+                result["止损价格"] = f"{round(float(sl), 2)} 元"
+            except (TypeError, ValueError):
+                result["止损价格"] = str(sl)
+        buy1 = decision_obj.get("ideal_buy") or decision_obj.get("buy_price")
+        if buy1 is not None and buy1 != "":
+            try:
+                result["理想买入"] = f"{round(float(buy1), 2)} 元"
+            except (TypeError, ValueError):
+                result["理想买入"] = str(buy1)
+        buy2 = decision_obj.get("second_buy")
+        if buy2 is not None and buy2 != "":
+            try:
+                result["二次买入"] = f"{round(float(buy2), 2)} 元"
+            except (TypeError, ValueError):
+                result["二次买入"] = str(buy2)
+        sup = decision_obj.get("support_level") or decision_obj.get("support")
+        if sup is not None and sup != "":
+            try:
+                result["支撑位"] = f"{round(float(sup), 2)} 元"
+            except (TypeError, ValueError):
+                result["支撑位"] = str(sup)
+        res_val = decision_obj.get("resistance_level") or decision_obj.get("resistance")
+        if res_val is not None and res_val != "":
+            try:
+                result["阻力位"] = f"{round(float(res_val), 2)} 元"
+            except (TypeError, ValueError):
+                result["阻力位"] = str(res_val)
 
-    # 1) 文本型章节（核心洞察/投资逻辑/趋势预测/策略点位/风险提示）
-    for aliases, field_name, max_chars in _SECTION_HEADERS:
-        for sub in _iter_text(reports):
-            val = _extract_section(sub, aliases, max_chars)
+    # 2) 再从各子报告 markdown 文本中补充/覆盖（如果 decision 没有）
+    section_aliases = [
+        (["核心洞察"], "核心洞察", 260),
+        (["投资逻辑"], "投资逻辑", 260),
+        (["情绪分析", "市场情绪", "舆情分析"], "情绪分析", 260),
+        (["趋势预测"], "趋势预测", 260),
+        (["策略点位"], "策略点位", 260),
+        (["风险提示"], "风险提示", 260),
+    ]
+    price_aliases = [
+        (["理想买入"], "理想买入"),
+        (["二次买入"], "二次买入"),
+        (["止损价格", "止损位", "止损线"], "止损价格"),
+        (["止盈目标", "目标价格", "目标价"], "止盈目标"),
+        (["支撑位", "支撑"], "支撑位"),
+        (["阻力位", "压力位"], "阻力位"),
+    ]
+    score_aliases = [
+        (["置信度"], "置信度"),
+        (["风险等级"], "风险等级"),
+        (["技术面评分"], "技术面评分"),
+        (["基本面评分"], "基本面评分"),
+        (["情绪面评分"], "情绪面评分"),
+        (["政策面评分"], "政策面评分"),
+    ]
+
+    priority_modules = [
+        "final_trade_decision", "trader_investment_plan",
+        "investment_plan", "research_team_decision",
+        "risk_management_decision",
+    ]
+
+    def _priority_texts():
+        for key in priority_modules:
+            v = reports.get(key)
+            if isinstance(v, str):
+                yield v
+
+    # 2a) 文本章节：先找精确章节名，再回退到对应模块内容（做内容清洗后截取）
+    #    智能清洗：跳过报告标题/分隔线/表格/开场套话，只保留真正的分析正文
+    fallback_modules = {
+        "核心洞察": ["final_trade_decision", "trader_investment_plan", "investment_plan", "research_team_decision"],
+        "投资逻辑": ["final_trade_decision", "trader_investment_plan", "investment_plan", "research_team_decision"],
+        "趋势预测": ["final_trade_decision", "market_report", "trader_investment_plan", "investment_plan"],
+        "策略点位": ["final_trade_decision", "trader_investment_plan", "investment_plan"],
+        "情绪分析": ["sentiment_report", "news_report", "hot_money_report", "market_report"],
+        "风险提示": ["risk_management_decision", "final_trade_decision"],
+    }
+
+    def _clean_and_extract_content(text: str, limit: int) -> str:
+        """
+        从模块文本中清洗并提取可直接展示在卡片里的内容。
+        - 短限制（< 350）：按句子级挑选，优先结论性/总结性句子
+        - 长限制：保留完整结构（段落+小标题）
+        """
+        if not text:
+            return ""
+
+        raw_lines = text.strip().split("\n")
+        in_table = False
+
+        # 套话关键词 - 跳过
+        skip_patterns = [
+            "数据已获取完毕", "下面我将基于", "进行全面的",
+            "市场情绪分析报告", "分析时段", "参考日期",
+            "分析报告", "报告", "总结如下", "如下分析",
+        ]
+
+        # 句子优先级关键词（高价值句子优先保留）
+        high_value_keywords = [
+            "结论", "核心", "总结", "主要", "建议", "看好",
+            "买入", "卖出", "评级", "预测", "趋势", "风险",
+            "关键", "重点", "显著", "拐点", "确立", "利好",
+            "利空", "正面", "负面", "机会", "信号", "逻辑",
+        ]
+
+        # ===== 第一步：逐行清洗 =====
+        cleaned_lines: List[str] = []
+        for ln in raw_lines:
+            stripped = ln.strip()
+
+            # 空行
+            if not stripped:
+                if cleaned_lines and cleaned_lines[-1] != "":
+                    cleaned_lines.append("")
+                continue
+
+            # 跳过分隔线
+            if re.match(r'^[-=_]{2,}$', stripped):
+                continue
+
+            # 跳过表格
+            if stripped.startswith("|") or stripped.startswith("｜"):
+                in_table = True
+                continue
+            if in_table:
+                in_table = False
+
+            # 跳过图片/链接
+            if stripped.startswith("![") or (stripped.startswith("http") and " " not in stripped):
+                continue
+
+            # 跳过套话行
+            skip_line = False
+            for pat in skip_patterns:
+                if pat in stripped and len(stripped) < 120:
+                    skip_line = True
+                    break
+            if skip_line:
+                continue
+
+            # 跳过纯标题行（不管是 ### 还是 **标题**）
+            is_pure_header = False
+            if re.match(r'^#{1,6}\s+', stripped):
+                is_pure_header = True
+            # 类似 "**一、核心结论：**" 这种纯标题
+            if len(stripped) < 30 and re.match(r'^[*_\s\w一二三四五六七八九十\d\.、]+[:：]?\s*$', stripped):
+                is_pure_header = True
+            # 以 "：" / ":" 结尾的短行通常也是标题
+            if len(stripped) < 25 and (stripped.endswith("：") or stripped.endswith(":")):
+                is_pure_header = True
+
+            if is_pure_header:
+                continue
+
+            # 移除 ** 加粗符号
+            stripped = re.sub(r'\*+', '', stripped)
+            # 移除行首 emoji
+            stripped = re.sub(r'^[\U0001F000-\U0001FFFF]\s*', '', stripped)
+
+            # 移除行首的列表标记 (1. 2. • - 等)
+            stripped = re.sub(r'^(\d+[\.、]\s*|[•\-—·]\s*)', '', stripped)
+
+            # 太短且无句号/冒号的行跳过
+            if len(stripped) < 8 and not any(ch in stripped for ch in "。！？："):
+                continue
+
+            cleaned_lines.append(stripped)
+
+        # ===== 第二步：合并成段落 =====
+        paragraphs: List[str] = []
+        current_para: List[str] = []
+
+        for ln in cleaned_lines:
+            if ln == "":
+                if current_para:
+                    joined = " ".join(current_para).strip()
+                    joined = re.sub(r'\s{2,}', ' ', joined)
+                    if len(joined) >= 10:
+                        paragraphs.append(joined)
+                    current_para = []
+            else:
+                current_para.append(ln)
+
+        if current_para:
+            joined = " ".join(current_para).strip()
+            joined = re.sub(r'\s{2,}', ' ', joined)
+            if len(joined) >= 10:
+                paragraphs.append(joined)
+
+        while paragraphs and len(paragraphs[0]) < 15:
+            paragraphs.pop(0)
+
+        if not paragraphs:
+            return ""
+
+        # ===== 第三步：按限制长度处理 =====
+        # 短限制：句子级挑选，优先高价值内容
+        if limit <= 350:
+            # 把所有段落拆成句子（按 。！？；）
+            all_sentences: List[str] = []
+            for para in paragraphs:
+                parts = re.split(r'([。！？；])', para)
+                # 重新组合："句子 + 标点"
+                for i in range(0, len(parts) - 1, 2):
+                    sent = parts[i] + parts[i + 1]
+                    sent = sent.strip()
+                    if len(sent) >= 10:
+                        all_sentences.append(sent)
+                # 处理没有结尾标点的最后一句
+                if len(parts) % 2 == 1 and parts[-1].strip() and len(parts[-1].strip()) >= 10:
+                    all_sentences.append(parts[-1].strip())
+
+            if not all_sentences:
+                # 没有句子？直接从段落中截取
+                combined = " ".join(paragraphs)
+                if len(combined) <= limit:
+                    return combined
+                pos = combined.rfind("。", 0, limit)
+                if pos > limit // 2:
+                    return combined[:pos + 1]
+                return combined[:limit]
+
+            # 对句子评分：高价值关键词加分
+            scored: List[tuple[int, str]] = []
+            for idx, sent in enumerate(all_sentences):
+                score = 0
+                for kw in high_value_keywords:
+                    if kw in sent:
+                        score += 10
+                # 越靠前的句子通常越重要
+                score += max(0, 10 - idx)
+                # 太短的句子（< 12字）可能不完整，略扣分
+                if len(sent) < 12:
+                    score -= 5
+                scored.append((score, sent))
+
+            # 按评分从高到低排序后取前 N 句能容纳的
+            # 但为了保持阅读顺序，我们保留原始顺序
+            # 先选出高价值句子的索引
+            sorted_by_score = sorted(enumerate(scored), key=lambda x: x[1][0], reverse=True)
+
+            selected_indices: List[int] = []
+            total_len = 0
+            for original_idx, (score, sent) in sorted_by_score:
+                if total_len + len(sent) + 2 <= limit:
+                    selected_indices.append(original_idx)
+                    total_len += len(sent) + 2
+                if total_len >= limit - 20:
+                    break
+
+            # 如果选了少于2句，补充前面的句子
+            if len(selected_indices) < 2:
+                for idx in range(len(all_sentences)):
+                    if idx not in selected_indices:
+                        sent = all_sentences[idx]
+                        if total_len + len(sent) + 2 <= limit:
+                            selected_indices.append(idx)
+                            total_len += len(sent) + 2
+                            if len(selected_indices) >= 3:
+                                break
+
+            # 按原始顺序排列
+            selected_indices.sort()
+            result_sentences = [all_sentences[i] for i in selected_indices]
+
+            if not result_sentences:
+                # 兜底：取第一句
+                first = all_sentences[0]
+                if len(first) > limit:
+                    pos = first.rfind("。", 0, limit)
+                    if pos > limit // 3:
+                        return first[:pos + 1]
+                    return first[:limit]
+                return first
+
+            final_text = "。".join(result_sentences)
+            # 修正：去掉可能重复的句号
+            final_text = re.sub(r'。{2,}', '。', final_text)
+            if len(final_text) > limit:
+                pos = final_text.rfind("。", 0, limit)
+                if pos > limit // 2:
+                    return final_text[:pos + 1]
+                return final_text[:limit]
+            return final_text
+
+        # 长限制：保留段落结构
+        result_lines: List[str] = []
+        current_len = 0
+        for p in paragraphs:
+            if current_len + len(p) > limit:
+                remaining = limit - current_len
+                if remaining > 20:
+                    truncate_pos = p.rfind("。", 0, remaining)
+                    if truncate_pos > remaining // 2:
+                        result_lines.append(p[:truncate_pos + 1])
+                    else:
+                        result_lines.append(p[:remaining])
+                break
+            result_lines.append(p)
+            current_len += len(p) + 2
+
+        final_text = "\n\n".join(result_lines).strip()
+        if len(final_text) > limit:
+            final_text = final_text[:limit]
+        return final_text
+
+    for aliases, field_name, max_chars in section_aliases:
+        if result.get(field_name):
+            continue
+        found = False
+        for module_text in _priority_texts():
+            val = _extract_section(module_text, aliases, max_chars)
+            if val and not result.get(field_name):
+                result[field_name] = val
+                found = True
+                break
+        # 精确章节搜索
+        if not found:
+            for v in reports.values():
+                if isinstance(v, str):
+                    val = _extract_section(v, aliases, max_chars)
+                    if val:
+                        result[field_name] = val
+                        found = True
+                        break
+        # 终极回退：从对应模块清洗并截取内容
+        if not found and field_name in fallback_modules:
+            for module_key in fallback_modules[field_name]:
+                module_text = reports.get(module_key)
+                if isinstance(module_text, str) and module_text.strip():
+                    extracted = _clean_and_extract_content(module_text, max_chars)
+                    if extracted:
+                        result[field_name] = extracted
+                        break
+
+    # 2b) 价格字段
+    for aliases, field_name in price_aliases:
+        if result.get(field_name):
+            continue
+        for module_text in _priority_texts():
+            val = _match_price(module_text, aliases)
             if val and not result.get(field_name):
                 result[field_name] = val
                 break
+        if field_name not in result:
+            for v in reports.values():
+                if isinstance(v, str):
+                    val = _match_price(v, aliases)
+                    if val:
+                        result[field_name] = val
+                        break
 
-    # 2) 价格型字段
-    for aliases, field_name in _PRICE_FIELDS:
-        for sub in _iter_text(reports):
-            val = _match_price(sub, aliases)
-            if val:
+    # 2c) 评分/置信度/风险
+    for aliases, field_name in score_aliases:
+        if result.get(field_name):
+            continue
+        for module_text in _priority_texts():
+            val = _match_score(module_text, aliases)
+            if val and not result.get(field_name):
                 result[field_name] = val
-                # 同时写入便于前端 pickField 回退的字段名
-                result[field_name + "_raw"] = val
                 break
+        if field_name not in result:
+            for v in reports.values():
+                if isinstance(v, str):
+                    val = _match_score(v, aliases)
+                    if val:
+                        result[field_name] = val
+                        break
 
-    # 2a) target_price / stop_loss 英文字段兼容（方便 trading_graph 侧使用）
+    # 3) 最后从 combined_text 中尝试提取评级（例如 "1. 操作建议：买入"）
+    if not result.get("评级"):
+        combined_text = "\n".join(
+            v for v in reports.values() if isinstance(v, str)
+        )
+        val = _match_rating(combined_text, ["操作建议", "评级", "投资建议", "建议"])
+        if val:
+            result["评级"] = val
+            result["操作建议"] = val
+
+    # 4) 补充英文字段名兼容（便于前端老代码继续工作）
     if "止盈目标" in result:
         num = re.search(r"(\d+(?:\.\d+)?)", result["止盈目标"])
         if num:
@@ -265,36 +673,30 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
         if num:
             result["stop_loss"] = num.group(1)
 
-    # 3) 评分型字段（置信度/风险等级/技术面评分 等）
-    for aliases, field_name in _SCORE_FIELDS:
-        for sub in _iter_text(reports):
-            val = _match_score(sub, aliases)
-            if val:
-                result[field_name] = val
-                break
-
-    # 4) 评级/操作建议：从文本中找 "1. 评级：减仓" 或 "操作建议：卖出"
-    for sub in _iter_text(reports):
-        for head in ["操作建议", "评级", "rating", "Rating", "RATING"]:
-            # 尝试冒号型
-            m = re.search(re.escape(head) + r"\s*[：:]\s*([^\n，。；,;]{0,40})", sub)
-            if m:
-                val = m.group(1).strip(" *\n")
-                if val and "result" not in val.lower():
-                    result["评级"] = val
-                    if "操作建议" not in result:
-                        result["操作建议"] = val
-                    break
-            # 或单独行型： **1. 评级**\n减仓
-            sect = _extract_section(sub, [head], 80)
-            if sect and not result.get("评级"):
-                result["评级"] = sect
-                result["操作建议"] = sect
-                break
-        if result.get("评级"):
-            break
-
     return result
+
+
+def _match_rating(text: str, aliases: List[str]) -> Optional[str]:
+    """
+    从文本中抽取"操作建议/评级"的关键字（买入/持有/卖出等）。
+    """
+    if not text:
+        return None
+    for alias in aliases:
+        m = re.search(
+            r"(?:^|\n)\s*\*?\s*(?:\d+[\.、]\s*)?\*?\s*" + re.escape(alias) +
+            r"\s*\*?\s*[:：]\s*([^\n，。；,;（(]{0,80})",
+            text,
+        )
+        if m:
+            val = m.group(1).strip()
+            if val:
+                return val
+    # 兜底：从文本中搜索中文"买入/卖出/持有"等关键字
+    for keyword in ["强烈买入", "强烈卖出", "买入", "卖出", "持有", "观望", "减仓", "加仓"]:
+        if keyword in text:
+            return keyword
+    return None
 
 
 # 股票名称缓存
@@ -627,8 +1029,13 @@ async def get_report_detail(
                 "execution_time": r.get("execution_time", 0),
                 "tokens_used": r.get("tokens_used", 0)
             }
+            # 🔥 合并顶层的 decision/detailed_analysis 到 reports，便于统一抽取
+            _decision = r.get("decision") or r.get("detailed_analysis") or r.get("final_decision")
+            _combined_for_extract = dict(report["reports"])
+            if isinstance(_decision, dict) and _decision:
+                _combined_for_extract["decision"] = _decision
             # 🔥 从 markdown 子报告中抽取结构化字段（核心洞察、策略点位等）
-            _extracted = extract_structured_fields(report["reports"])
+            _extracted = extract_structured_fields(_combined_for_extract)
             # 已有字段保留优先级，仅在缺失时覆盖
             for _k, _v in _extracted.items():
                 if _v is not None and (not report.get(_k)):
@@ -671,8 +1078,13 @@ async def get_report_detail(
                 "execution_time": doc.get("execution_time", 0),
                 "tokens_used": doc.get("tokens_used", 0)
             }
+            # 🔥 合并顶层的 decision/detailed_analysis 到 reports，便于统一抽取
+            _decision = doc.get("decision") or doc.get("detailed_analysis") or doc.get("final_decision")
+            _combined_for_extract = dict(report["reports"])
+            if isinstance(_decision, dict) and _decision:
+                _combined_for_extract["decision"] = _decision
             # 🔥 从 markdown 子报告中抽取结构化字段（核心洞察、策略点位、止盈止损等）
-            _extracted = extract_structured_fields(report["reports"])
+            _extracted = extract_structured_fields(_combined_for_extract)
             for _k, _v in _extracted.items():
                 if _v is not None and (not report.get(_k)):
                     report[_k] = _v
@@ -771,10 +1183,10 @@ async def download_report(
     """下载报告
 
     支持的格式:
-    - markdown: Markdown 格式（默认）
-    - json: JSON 格式（包含完整数据）
-    - docx: Word 文档格式（需要 pandoc）
-    - pdf: PDF 格式（需要 pandoc 和 PDF 引擎）
+    - markdown: Markdown 格式（默认，全中文标题）
+    - json: JSON 格式（包含完整数据，中文字段友好）
+    - docx: Word 文档格式（全中文）
+    - pdf: PDF 格式（全中文）
     """
     try:
         logger.info(f"📥 下载报告: {report_id}, 格式: {format}")
@@ -788,14 +1200,79 @@ async def download_report(
         if not doc:
             raise HTTPException(status_code=404, detail="报告不存在")
 
-        stock_symbol = doc.get("stock_symbol", "unknown")
+        stock_symbol = doc.get("stock_symbol", "未知")
         analysis_date = doc.get("analysis_date", datetime.now().strftime("%Y-%m-%d"))
 
+        # 统一的英文 -> 中文报告字段映射（同步 report_exporter.py 中的定义）
+        FIELD_MAP = {
+            "analysis_id": "分析编号",
+            "stock_symbol": "股票代码",
+            "stock_name": "股票名称",
+            "market_type": "市场类型",
+            "analysis_date": "分析日期",
+            "created_at": "创建时间",
+            "updated_at": "更新时间",
+            "analysts": "分析师团队",
+            "research_depth": "研究深度",
+            "status": "状态",
+            "summary": "执行摘要",
+            "executive_summary": "执行摘要",
+            "recommendation": "投资建议",
+            "confidence_score": "置信度",
+            "confidence": "置信度",
+            "risk_level": "风险等级",
+            "key_points": "核心要点",
+            "action": "操作建议",
+            "target_price": "目标价",
+            "stop_loss": "止损价",
+            "execution_time": "执行耗时(秒)",
+            "tokens_used": "Token消耗",
+            "source": "数据来源",
+            "task_id": "任务编号",
+            "decision": "决策详情",
+            "state": "分析状态",
+            "detailed_analysis": "详细分析",
+            "model_info": "模型信息",
+            "reports": "各模块报告",
+        }
+
+        def translate_key(key: str) -> str:
+            if key in FIELD_MAP:
+                return FIELD_MAP[key]
+            cleaned = key.replace("_report", "").replace("_analysis", "").replace("_state", "")
+            if cleaned in FIELD_MAP:
+                return FIELD_MAP[cleaned]
+            return key
+
         if format == "json":
-            # JSON格式下载
-            content = json.dumps(doc, ensure_ascii=False, indent=2, default=str)
-            filename = f"{stock_symbol}_{analysis_date}_report.json"
+            # JSON格式下载：使用中文字段，保持易读性
+            from urllib.parse import quote
+            try:
+                from app.utils.report_exporter import report_exporter
+                title_map = report_exporter.MODULE_TITLE_MAP
+            except Exception:
+                title_map = {}
+
+            def recursive_zh(obj: Any) -> Any:
+                if isinstance(obj, dict):
+                    return {
+                        translate_key(str(k)) if not isinstance(k, str) else
+                        (title_map.get(str(k), translate_key(str(k)))
+                         if str(k) in title_map else translate_key(str(k))):
+                            recursive_zh(v)
+                        for k, v in obj.items()
+                    }
+                if isinstance(obj, list):
+                    return [recursive_zh(x) for x in obj]
+                return obj
+
+            translated = recursive_zh(dict(doc))
+            content = json.dumps(translated, ensure_ascii=False, indent=2, default=str)
+            filename = f"{stock_symbol}_{analysis_date}_报告.json"
             media_type = "application/json"
+
+            # 对中文文件名进行URL编码
+            filename_encoded = quote(filename)
 
             # 返回文件流
             def generate():
@@ -804,62 +1281,41 @@ async def download_report(
             return StreamingResponse(
                 generate(),
                 media_type=media_type,
-                headers={"Content-Disposition": f"attachment; filename={filename}"}
+                headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"}
             )
 
         elif format == "markdown":
-            # Markdown格式下载
-            reports = doc.get("reports", {})
-            content_parts = []
-
-            # 添加标题
-            content_parts.append(f"# {stock_symbol} 分析报告")
-            content_parts.append(f"**分析日期**: {analysis_date}")
-            content_parts.append(f"**分析师**: {', '.join(doc.get('analysts', []))}")
-            content_parts.append(f"**研究深度**: {doc.get('research_depth', 1)}")
-            content_parts.append("")
-
-            # 添加摘要
-            if doc.get("summary"):
-                content_parts.append("## 执行摘要")
-                content_parts.append(doc["summary"])
-                content_parts.append("")
-
-            # 添加各模块内容
-            for module_name, module_content in reports.items():
-                if isinstance(module_content, str) and module_content.strip():
-                    content_parts.append(f"## {module_name}")
-                    content_parts.append(module_content)
-                    content_parts.append("")
-
-            content = "\n".join(content_parts)
-            filename = f"{stock_symbol}_{analysis_date}_report.md"
+            # Markdown格式下载 — 使用统一的报告导出器（全中文标题）
+            from urllib.parse import quote
+            from app.utils.report_exporter import report_exporter
+            content = report_exporter.generate_markdown_report(doc)
+            filename = f"{stock_symbol}_{analysis_date}_报告.md"
             media_type = "text/markdown"
 
-            # 返回文件流
+            # 对中文文件名进行URL编码
+            filename_encoded = quote(filename)
+
             def generate():
                 yield content.encode('utf-8')
 
             return StreamingResponse(
                 generate(),
                 media_type=media_type,
-                headers={"Content-Disposition": f"attachment; filename={filename}"}
+                headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"}
             )
 
         elif format == "docx":
             # Word 文档格式下载
+            from urllib.parse import quote
             from app.utils.report_exporter import report_exporter
 
-            if not report_exporter.pandoc_available:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Word 导出功能不可用。请安装 pandoc: pip install pypandoc"
-                )
-
             try:
-                # 生成 Word 文档
+                # 生成 Word 文档（Markdown -> Docx，全中文）
                 docx_content = report_exporter.generate_docx_report(doc)
-                filename = f"{stock_symbol}_{analysis_date}_report.docx"
+                filename = f"{stock_symbol}_{analysis_date}_报告.docx"
+
+                # 对中文文件名进行URL编码
+                filename_encoded = quote(filename)
 
                 # 返回文件流
                 def generate():
@@ -868,7 +1324,7 @@ async def download_report(
                 return StreamingResponse(
                     generate(),
                     media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"}
                 )
             except Exception as e:
                 logger.error(f"❌ Word 文档生成失败: {e}")
@@ -877,17 +1333,17 @@ async def download_report(
         elif format == "pdf":
             # PDF 格式下载
             from app.utils.report_exporter import report_exporter
-
-            if not report_exporter.pandoc_available:
-                raise HTTPException(
-                    status_code=400,
-                    detail="PDF 导出功能不可用。请安装 pandoc 和 PDF 引擎（wkhtmltopdf 或 LaTeX）"
-                )
+            from urllib.parse import quote
 
             try:
-                # 生成 PDF 文档
+                # 生成 PDF 文档（基于中文 Markdown -> HTML -> PDF）
                 pdf_content = report_exporter.generate_pdf_report(doc)
-                filename = f"{stock_symbol}_{analysis_date}_report.pdf"
+                # 清理文件名中的非ASCII字符
+                safe_symbol = ''.join(c if ord(c) < 128 else 'stock' for c in str(stock_symbol))
+                filename = f"{safe_symbol}_{analysis_date}_report.pdf"
+                # 对中文文件名进行URL编码（用于 Content-Disposition）
+                filename_zh = f"{stock_symbol}_{analysis_date}_报告.pdf"
+                filename_zh_encoded = quote(filename_zh)
 
                 # 返回文件流
                 def generate():
@@ -896,7 +1352,15 @@ async def download_report(
                 return StreamingResponse(
                     generate(),
                     media_type="application/pdf",
-                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                    headers={
+                        "Content-Disposition": f"attachment; filename={filename}; filename*=UTF-8''{filename_zh_encoded}"
+                    }
+                )
+            except FileNotFoundError:
+                logger.error("❌ wkhtmltopdf 命令未找到")
+                raise HTTPException(
+                    status_code=400,
+                    detail="PDF 导出功能不可用：缺少 wkhtmltopdf。请先安装后再试。"
                 )
             except Exception as e:
                 logger.error(f"❌ PDF 文档生成失败: {e}")

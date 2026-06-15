@@ -609,8 +609,8 @@ async function handleSync() {
 }
 
 async function refreshMockQuote() {
-  // 改为调用后端接口获取真实数据
-  await fetchQuote()
+  // 改为调用后端接口获取真实数据，并强制刷新
+  await fetchQuote(true)
 }
 
 // 清除缓存
@@ -649,7 +649,7 @@ async function clearCache() {
   }
 }
 
-async function fetchQuote() {
+async function fetchQuote(forceRefresh = false) {
   // 🔥 参数验证：确保股票代码不为空
   if (!code.value) {
     console.warn('股票代码为空，跳过获取报价')
@@ -657,7 +657,7 @@ async function fetchQuote() {
   }
 
   try {
-    const res = await stocksApi.getQuote(code.value)
+    const res = await stocksApi.getQuote(code.value, forceRefresh)
     const d: any = (res as any)?.data || {}
     // 后端为 snake_case，前端状态为 camelCase，这里进行映射
     quote.price = Number(d.price ?? d.close ?? quote.price)

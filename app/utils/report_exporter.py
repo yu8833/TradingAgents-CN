@@ -64,6 +64,102 @@ except Exception as e:
 class ReportExporter:
     """报告导出器 - 支持 Markdown、Word、PDF 格式"""
 
+    # 统一的英文 -> 中文模块标题映射
+    MODULE_TITLE_MAP = {
+        # 报告概览 / 决策 / 摘要
+        "report_summary": "📊 报告摘要",
+        "summary": "📋 执行摘要",
+        "executive_summary": "📌 执行摘要",
+        "analysis_summary": "📊 分析摘要",
+        "overview": "🔎 综合概览",
+
+        # 市场/宏观/政策
+        "market_report": "🌍 市场分析",
+        "market_analysis": "🌍 市场分析",
+        "macro_report": "📈 宏观分析",
+        "policy_report": "🏛️ 政策分析",
+
+        # 情绪 / 新闻
+        "sentiment_report": "🔥 市场情绪分析",
+        "news_report": "📰 新闻与舆情分析",
+
+        # 基本面 / 财务 / 公司
+        "fundamentals_report": "💼 基本面分析",
+        "company_overview": "🏢 公司概况",
+        "financial_analysis": "💰 财务分析",
+        "valuation_analysis": "💎 估值分析",
+
+        # 技术面
+        "technical_analysis": "📈 技术分析",
+        "technical_analysis_report": "📈 技术分析",
+        "technical_report": "📈 技术分析",
+
+        # 交易 / 资金 / 特殊事件
+        "hot_money_report": "💹 主力资金分析",
+        "trading_volume": "📊 交易量分析",
+        "lockup_report": "🔒 解禁与限售分析",
+        "volume_report": "📊 成交量分析",
+
+        # 决策 / 计划
+        "investment_plan": "📝 投资计划",
+        "investment_debate_state": "🧠 多空辩论",
+        "bull_history": "🐂 多头观点",
+        "bear_history": "🐻 空头观点",
+        "debate_history": "🧐 辩论记录",
+        "trader_investment_plan": "🧭 交易员投资计划",
+        "trader_investment_decision": "🧭 交易员投资决策",
+        "risk_debate_state": "🛡️ 风险辩论",
+        "aggressive_history": "🔥 激进观点",
+        "conservative_history": "❄️ 保守观点",
+        "neutral_history": "⚖️ 中性观点",
+        "final_trade_decision": "🎯 最终交易决策",
+        "final_decision": "🎯 最终交易决策",
+        "decision_summary": "📌 决策摘要",
+
+        # 风险
+        "risk_analysis": "⚠️ 风险分析",
+        "risk_report": "⚠️ 风险提示",
+        "risk_level": "⚠️ 风险等级",
+        "confidence_score": "🎯 置信度",
+
+        # 投资建议
+        "investment_recommendation": "🎯 投资建议",
+        "recommendation": "🎯 投资建议",
+        "trading_signal": "🚦 交易信号",
+
+        # 其他
+        "industry_report": "🏭 行业分析",
+        "sector_analysis": "🏭 板块分析",
+        "detailed_analysis": "📂 详细分析",
+        "state": "📊 完整分析状态",
+
+        # 结构化字段（决策部分）
+        "action": "操作建议",
+        "target_price": "目标价",
+        "stop_loss": "止损价",
+        "confidence": "置信度",
+        "reasoning": "推理说明",
+        "bull_points": "看多理由",
+        "bear_points": "看空理由",
+        "risk_level": "风险等级",
+        "key_points": "核心要点",
+        "technical_signals": "技术信号",
+        "judge_decision": "裁判裁决",
+        "current_response": "当前回应",
+    }
+
+    def get_module_title(self, module_key: str) -> str:
+        """获取模块的中文标题，未命中时返回原 key（去除首尾下划线）"""
+        if module_key in self.MODULE_TITLE_MAP:
+            return self.MODULE_TITLE_MAP[module_key]
+        # 模糊匹配：去除常见后缀再查
+        cleaned = module_key.replace("_report", "").replace("_analysis", "").replace("_state", "")
+        if cleaned in self.MODULE_TITLE_MAP:
+            return self.MODULE_TITLE_MAP[cleaned]
+        # 兜底：英文下划线改为空格 + 中文标题
+        readable = module_key.replace("_", " ").strip()
+        return f"📂 {readable}"
+
     def __init__(self):
         self.export_available = EXPORT_AVAILABLE
         self.pandoc_available = PANDOC_AVAILABLE
@@ -73,31 +169,34 @@ class ReportExporter:
         logger.info(f"  - export_available: {self.export_available}")
         logger.info(f"  - pandoc_available: {self.pandoc_available}")
         logger.info(f"  - pdfkit_available: {self.pdfkit_available}")
-    
+
     def generate_markdown_report(self, report_doc: Dict[str, Any]) -> str:
-        """生成 Markdown 格式报告"""
+        """生成 Markdown 格式报告（全中文标题）"""
         logger.info("📝 生成 Markdown 报告...")
-        
-        stock_symbol = report_doc.get("stock_symbol", "unknown")
+
+        stock_symbol = report_doc.get("stock_symbol", "未知")
         analysis_date = report_doc.get("analysis_date", "")
         analysts = report_doc.get("analysts", [])
         research_depth = report_doc.get("research_depth", 1)
         reports = report_doc.get("reports", {})
         summary = report_doc.get("summary", "")
-        
+
+        # 从 reports 或顶层提取额外内容（通常由 decision 提供）
+        decision = report_doc.get("decision") or report_doc.get("detailed_analysis") or {}
+
         content_parts = []
-        
+
         # 标题和元信息
         content_parts.append(f"# {stock_symbol} 股票分析报告")
         content_parts.append("")
-        content_parts.append(f"**分析日期**: {analysis_date}")
+        content_parts.append(f"**📅 分析日期**: {analysis_date}")
         if analysts:
-            content_parts.append(f"**分析师**: {', '.join(analysts)}")
-        content_parts.append(f"**研究深度**: {research_depth}")
+            content_parts.append(f"**👤 分析师团队**: {', '.join(analysts)}")
+        content_parts.append(f"**🔬 研究深度**: {research_depth}")
         content_parts.append("")
         content_parts.append("---")
         content_parts.append("")
-        
+
         # 执行摘要
         if summary:
             content_parts.append("## 📊 执行摘要")
@@ -106,63 +205,157 @@ class ReportExporter:
             content_parts.append("")
             content_parts.append("---")
             content_parts.append("")
-        
-        # 各模块内容
-        module_order = [
+
+        # 决策摘要（如果有）
+        if decision and isinstance(decision, dict):
+            decision_title = decision.get("title") or decision.get("decision_title")
+            if decision_title:
+                content_parts.append("## 🎯 投资决策")
+                content_parts.append("")
+                content_parts.append(str(decision_title))
+                content_parts.append("")
+            action = decision.get("action") or decision.get("recommendation")
+            if action:
+                content_parts.append(f"- **操作建议**: {action}")
+            target_price = decision.get("target_price")
+            if target_price:
+                content_parts.append(f"- **🎯 目标价**: {target_price}")
+            stop_loss = decision.get("stop_loss")
+            if stop_loss:
+                content_parts.append(f"- **🛑 止损价**: {stop_loss}")
+            confidence = decision.get("confidence") or decision.get("confidence_score")
+            if confidence:
+                content_parts.append(f"- **🔒 置信度**: {confidence}")
+            risk = decision.get("risk_level")
+            if risk:
+                content_parts.append(f"- **⚠️ 风险等级**: {risk}")
+            if decision.get("executive_summary"):
+                content_parts.append(f"- **📝 决策摘要**: {decision['executive_summary']}")
+            if any([decision_title, action, target_price, confidence]):
+                content_parts.append("")
+                content_parts.append("---")
+                content_parts.append("")
+
+        # 各模块内容 - 按推荐顺序遍历（如果 reports 中有这些模块）
+        preferred_order = [
             "company_overview",
-            "financial_analysis", 
+            "market_report",
+            "fundamentals_report",
+            "financial_analysis",
+            "technical_analysis_report",
             "technical_analysis",
+            "sentiment_report",
+            "news_report",
+            "policy_report",
+            "hot_money_report",
+            "lockup_report",
+            "investment_plan",
+            "trader_investment_plan",
+            "trader_investment_decision",
+            "valuation_analysis",
             "market_analysis",
             "risk_analysis",
-            "valuation_analysis",
-            "investment_recommendation"
+            "risk_report",
+            "investment_recommendation",
+            "final_trade_decision",
+            "report_summary",
+            "summary",
+            "overview",
+            "state",
+            "detailed_analysis",
         ]
-        
-        module_titles = {
-            "company_overview": "🏢 公司概况",
-            "financial_analysis": "💰 财务分析",
-            "technical_analysis": "📈 技术分析",
-            "market_analysis": "🌍 市场分析",
-            "risk_analysis": "⚠️ 风险分析",
-            "valuation_analysis": "💎 估值分析",
-            "investment_recommendation": "🎯 投资建议"
-        }
-        
-        # 按顺序添加模块
-        for module_key in module_order:
+
+        # 先按推荐顺序输出
+        for module_key in preferred_order:
             if module_key in reports:
                 module_content = reports[module_key]
-                if isinstance(module_content, str) and module_content.strip():
-                    title = module_titles.get(module_key, module_key)
-                    content_parts.append(f"## {title}")
-                    content_parts.append("")
-                    content_parts.append(module_content)
-                    content_parts.append("")
-                    content_parts.append("---")
-                    content_parts.append("")
-        
-        # 添加其他未列出的模块
+                self._append_module_content(content_parts, module_key, module_content)
+
+        # 再输出未包含在优先顺序中的模块（保持原有顺序）
         for module_key, module_content in reports.items():
-            if module_key not in module_order:
-                if isinstance(module_content, str) and module_content.strip():
-                    content_parts.append(f"## {module_key}")
-                    content_parts.append("")
-                    content_parts.append(module_content)
-                    content_parts.append("")
-                    content_parts.append("---")
-                    content_parts.append("")
-        
+            if module_key not in preferred_order:
+                self._append_module_content(content_parts, module_key, module_content)
+
         # 页脚
         content_parts.append("")
         content_parts.append("---")
         content_parts.append("")
-        content_parts.append("*本报告由 股票分析系统 自动生成*")
+        content_parts.append("*本报告由 AI 自动生成，仅供研究参考，不构成任何投资建议。*")
         content_parts.append("")
-        
+
         markdown_content = "\n".join(content_parts)
         logger.info(f"✅ Markdown 报告生成完成，长度: {len(markdown_content)} 字符")
-        
+
         return markdown_content
+
+    def _append_module_content(
+        self,
+        content_parts: list,
+        module_key: str,
+        module_content: Any,
+    ) -> None:
+        """将一个模块的内容添加到 content_parts"""
+        if module_content is None:
+            return
+        # 字符串：直接写入
+        if isinstance(module_content, str):
+            if not module_content.strip():
+                return
+            title = self.get_module_title(module_key)
+            content_parts.append(f"## {title}")
+            content_parts.append("")
+            content_parts.append(module_content)
+            content_parts.append("")
+            content_parts.append("---")
+            content_parts.append("")
+            return
+        # 字典：递归展开
+        if isinstance(module_content, dict):
+            title = self.get_module_title(module_key)
+            # 如果字典有核心内容（text/result/content），直接取
+            for text_key in ("content", "text", "markdown", "output", "result"):
+                if text_key in module_content and isinstance(module_content[text_key], str):
+                    content_parts.append(f"## {title}")
+                    content_parts.append("")
+                    content_parts.append(module_content[text_key])
+                    content_parts.append("")
+                    content_parts.append("---")
+                    content_parts.append("")
+                    return
+            # 否则：展开子键
+            content_parts.append(f"## {title}")
+            content_parts.append("")
+            for sub_key, sub_val in module_content.items():
+                if sub_key in ("analysis_id", "stock_symbol", "trade_date", "created_at"):
+                    continue
+                sub_title = self.get_module_title(sub_key)
+                if isinstance(sub_val, str):
+                    content_parts.append(f"### {sub_title}")
+                    content_parts.append("")
+                    content_parts.append(sub_val)
+                    content_parts.append("")
+                elif isinstance(sub_val, (int, float, bool)):
+                    content_parts.append(f"- **{sub_title}**: {sub_val}")
+                elif sub_val:
+                    content_parts.append(f"### {sub_title}")
+                    content_parts.append("")
+                    content_parts.append(f"```json\n{sub_val}\n```")
+                    content_parts.append("")
+            content_parts.append("---")
+            content_parts.append("")
+        # 列表：简单渲染
+        elif isinstance(module_content, list):
+            title = self.get_module_title(module_key)
+            content_parts.append(f"## {title}")
+            content_parts.append("")
+            for item in module_content:
+                if isinstance(item, str):
+                    content_parts.append(f"- {item}")
+                else:
+                    content_parts.append(f"- {item}")
+            content_parts.append("")
+            content_parts.append("---")
+            content_parts.append("")
     
     def _clean_markdown_for_pandoc(self, md_content: str) -> str:
         """清理 Markdown 内容，避免 pandoc 解析问题"""
@@ -292,10 +485,12 @@ pre, code {
         md_content = self.generate_markdown_report(report_doc)
 
         try:
-            # 创建临时文件
-            with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp_file:
-                output_file = tmp_file.name
-
+            # 创建临时文件（使用纯ASCII路径避免编码问题）
+            import os as os_module
+            tmp_dir = tempfile.gettempdir()
+            # 使用纯ASCII文件名
+            output_file = os.path.join(tmp_dir, f"report_{os_module.getpid()}_{id(self) % 10000}.docx")
+            
             logger.info(f"📁 临时文件路径: {output_file}")
 
             # Pandoc 参数
@@ -310,6 +505,11 @@ pre, code {
 
             # 清理内容
             cleaned_content = self._clean_markdown_for_pandoc(md_content)
+            # 确保内容是有效的UTF-8字符串
+            if isinstance(cleaned_content, bytes):
+                cleaned_content = cleaned_content.decode('utf-8', errors='replace')
+            # 规范化内容，移除可能引起编码问题的特殊字符
+            cleaned_content = cleaned_content.encode('utf-8', errors='replace').decode('utf-8', errors='replace')
 
             # 转换为 Word
             pypandoc.convert_text(
@@ -610,8 +810,10 @@ pre, code {
         return html_template
 
     def _generate_pdf_with_pdfkit(self, html_content: str) -> bytes:
-        """使用 pdfkit 生成 PDF"""
+        """使用 pdfkit 生成 PDF（先尝试直接字符串方式，失败则使用命令行方式）"""
         import pdfkit
+        import tempfile
+        import subprocess
 
         logger.info("🔧 使用 pdfkit + wkhtmltopdf 生成 PDF...")
 
@@ -624,43 +826,249 @@ pre, code {
             'margin-right': '20mm',
             'margin-bottom': '20mm',
             'margin-left': '20mm',
+            'quiet': '',
         }
 
-        # 生成 PDF
-        pdf_bytes = pdfkit.from_string(html_content, False, options=options)
+        # 方法1：尝试直接使用字符串方式
+        try:
+            # 确保内容是字符串
+            if isinstance(html_content, bytes):
+                html_content = html_content.decode('utf-8')
+            
+            pdf_bytes = pdfkit.from_string(html_content, False, options=options)
+            logger.info(f"✅ pdfkit PDF 生成成功（字符串方式），大小: {len(pdf_bytes)} 字节")
+            return pdf_bytes
+        except Exception as e:
+            logger.warning(f"⚠️ 字符串方式失败，尝试命令行方式: {e}")
 
-        logger.info(f"✅ pdfkit PDF 生成成功，大小: {len(pdf_bytes)} 字节")
-        return pdf_bytes
+        # 方法2：使用临时文件 + 命令行方式
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', encoding='utf-8', delete=False) as f:
+                f.write(html_content)
+                html_file = f.name
+            
+            with tempfile.NamedTemporaryFile(mode='wb', suffix='.pdf', delete=False) as f:
+                pdf_file = f.name
+            
+            # 构建命令行参数
+            cmd = [
+                'wkhtmltopdf',
+                '--encoding', 'UTF-8',
+                '--enable-local-file-access',
+                '--page-size', 'A4',
+                '--margin-top', '20mm',
+                '--margin-right', '20mm',
+                '--margin-bottom', '20mm',
+                '--margin-left', '20mm',
+                '--quiet',
+                html_file,
+                pdf_file
+            ]
+            
+            # 执行命令
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                error_msg = f"wkhtmltopdf 执行失败: {result.stderr}"
+                logger.error(f"❌ {error_msg}")
+                raise Exception(error_msg)
+            
+            # 读取生成的 PDF
+            with open(pdf_file, 'rb') as f:
+                pdf_bytes = f.read()
+            
+            # 清理临时文件
+            os.unlink(html_file)
+            os.unlink(pdf_file)
+            
+            logger.info(f"✅ wkhtmltopdf PDF 生成成功（命令行方式），大小: {len(pdf_bytes)} 字节")
+            return pdf_bytes
+            
+        except Exception as e:
+            # 清理临时文件（如果存在）
+            if 'html_file' in locals():
+                try:
+                    os.unlink(html_file)
+                except:
+                    pass
+            if 'pdf_file' in locals():
+                try:
+                    os.unlink(pdf_file)
+                except:
+                    pass
+            logger.error(f"❌ PDF 生成失败（命令行方式）: {e}")
+            raise
 
+    def _clean_text(self, text: Any) -> str:
+        """清理文本，确保可以正确编码"""
+        if text is None:
+            return ""
+        if isinstance(text, str):
+            # 移除无法编码的字符和控制字符
+            cleaned = text.encode('utf-8', errors='replace').decode('utf-8', errors='replace')
+            # 移除控制字符（除了常见的换行符）
+            cleaned = ''.join(c for c in cleaned if c == '\n' or c == '\r' or c == '\t' or ord(c) >= 32)
+            return cleaned
+        # 其他类型转换为字符串
+        return str(text)
+    
+    def _debug_text_encoding(self, text: str, label: str = "text") -> None:
+        """调试文本编码问题"""
+        problematic_chars = []
+        for i, c in enumerate(text):
+            ord_c = ord(c)
+            # 检查是否是无法用 latin-1 编码的字符
+            if ord_c > 255:
+                problematic_chars.append(f"位置 {i}: '{c}' (U+{ord_c:04X})")
+        
+        if problematic_chars:
+            logger.warning(f"⚠️ 发现 {len(problematic_chars)} 个无法用 latin-1 编码的字符 ({label}):")
+            for pc in problematic_chars[:10]:  # 最多显示10个
+                logger.warning(f"  {pc}")
+            if len(problematic_chars) > 10:
+                logger.warning(f"  ... 还有 {len(problematic_chars) - 10} 个")
+    
+    def _clean_report_data(self, report_doc: Dict[str, Any]) -> Dict[str, Any]:
+        """递归清理报告数据，确保所有字符串都是有效的"""
+        cleaned = {}
+        for key, value in report_doc.items():
+            if isinstance(value, dict):
+                cleaned[key] = self._clean_report_data(value)
+            elif isinstance(value, list):
+                cleaned[key] = [self._clean_text(item) if isinstance(item, (str, bytes)) else item for item in value]
+            elif isinstance(value, str):
+                cleaned[key] = self._clean_text(value)
+            else:
+                cleaned[key] = value
+        return cleaned
+    
     def generate_pdf_report(self, report_doc: Dict[str, Any]) -> bytes:
-        """生成 PDF 格式报告（使用 pdfkit + wkhtmltopdf）"""
+        """生成 PDF 格式报告（使用 stdin/stdout 传递数据，避免编码问题）"""
+        import subprocess
+        
         logger.info("📊 开始生成 PDF 文档...")
 
-        # 检查 pdfkit 是否可用
-        if not self.pdfkit_available:
-            error_msg = (
-                "pdfkit 不可用，无法生成 PDF。\n\n"
-                "安装方法:\n"
-                "1. 安装 pdfkit: pip install pdfkit\n"
-                "2. 安装 wkhtmltopdf: https://wkhtmltopdf.org/downloads.html\n"
-            )
-            if PDFKIT_ERROR:
-                error_msg += f"\n错误详情: {PDFKIT_ERROR}"
-
-            logger.error(f"❌ {error_msg}")
-            raise Exception(error_msg)
+        # 清理报告数据，确保所有字符串都是有效的 UTF-8
+        cleaned_doc = self._clean_report_data(report_doc)
+        logger.info("✅ 报告数据清理完成")
 
         # 生成 Markdown 内容
-        md_content = self.generate_markdown_report(report_doc)
+        md_content = self.generate_markdown_report(cleaned_doc)
+        logger.info(f"📝 Markdown 内容长度: {len(md_content)} 字符")
+        
+        # 调试：检查 Markdown 内容的编码
+        self._debug_text_encoding(md_content, "Markdown")
 
-        # 使用 pdfkit 生成 PDF
+        # 清理 Markdown 内容
+        md_content = self._clean_text(md_content)
+        logger.info(f"📝 清理后 Markdown 内容长度: {len(md_content)} 字符")
+
+        # 转换为 HTML
+        html_content = self._markdown_to_html(md_content)
+        logger.info(f"📝 HTML 内容长度: {len(html_content)} 字符")
+        
+        # 调试：检查 HTML 内容的编码
+        self._debug_text_encoding(html_content, "HTML")
+        
+        # 清理 HTML 内容
+        html_content = self._clean_text(html_content)
+        logger.info(f"📝 清理后 HTML 内容长度: {len(html_content)} 字符")
+        
+        # 使用 stdin/stdout 方式传递数据，避免文件编码问题
         try:
-            html_content = self._markdown_to_html(md_content)
-            return self._generate_pdf_with_pdfkit(html_content)
+            # 构建命令行参数（使用 - 表示从 stdin 读取，输出到 stdout）
+            cmd = [
+                'wkhtmltopdf',
+                '--encoding', 'UTF-8',
+                '--enable-local-file-access',
+                '--page-size', 'A4',
+                '--margin-top', '20mm',
+                '--margin-right', '20mm',
+                '--margin-bottom', '20mm',
+                '--margin-left', '20mm',
+                '--quiet',
+                '-',  # 从 stdin 读取 HTML
+                '-'   # 输出到 stdout
+            ]
+            
+            logger.info(f"🔧 执行命令: {' '.join(cmd)}")
+            
+            # 执行命令（使用字节模式，直接通过 stdin/stdout 传递数据）
+            # 将 HTML 内容编码为 UTF-8 字节
+            html_bytes = html_content.encode('utf-8', errors='replace')
+            logger.info(f"📤 输入 HTML 字节长度: {len(html_bytes)}")
+            
+            result = subprocess.run(cmd, input=html_bytes, capture_output=True)
+            
+            logger.info(f"📊 命令执行返回码: {result.returncode}")
+            if result.stdout:
+                logger.info(f"📋 标准输出长度: {len(result.stdout)} 字节")
+            if result.stderr:
+                try:
+                    logger.info(f"📋 标准错误: {result.stderr.decode('utf-8', errors='replace')[:200]}")
+                except:
+                    logger.info(f"📋 标准错误: (二进制数据，长度: {len(result.stderr)})")
+            
+            if result.returncode != 0:
+                try:
+                    error_msg = f"wkhtmltopdf 执行失败: {result.stderr.decode('utf-8', errors='replace')}"
+                except:
+                    error_msg = f"wkhtmltopdf 执行失败，返回码: {result.returncode}"
+                logger.error(f"❌ {error_msg}")
+                raise Exception(error_msg)
+            
+            # 如果返回码为0但stdout为空，也认为失败
+            if not result.stdout or len(result.stdout) < 100:
+                error_msg = "wkhtmltopdf 生成的 PDF 数据为空或太小"
+                logger.error(f"❌ {error_msg}")
+                raise Exception(error_msg)
+            
+            # 标准输出就是 PDF 数据
+            pdf_bytes = result.stdout
+            logger.info(f"✅ PDF 生成成功，大小: {len(pdf_bytes)} 字节")
+            return pdf_bytes
+            
+        except FileNotFoundError:
+            error_msg = "wkhtmltopdf 命令未找到，请先安装 wkhtmltopdf"
+            logger.error(f"❌ {error_msg}")
+            raise Exception(error_msg)
         except Exception as e:
             error_msg = f"PDF 生成失败: {e}"
             logger.error(f"❌ {error_msg}")
             raise Exception(error_msg)
+    
+    def _generate_pdf_with_pandoc(self, md_content: str) -> bytes:
+        """使用 pandoc 生成 PDF（备选方案）"""
+        import subprocess
+        
+        # 构建命令行参数
+        cmd = [
+            'pandoc',
+            '-f', 'markdown',
+            '-t', 'pdf',
+            '--pdf-engine=xelatex',
+            '-V', 'mainfont=SimSun',
+            '-V', 'sansfont=SimHei',
+            '-V', 'CJKmainfont=SimSun',
+            '-o', '-'  # 输出到 stdout
+        ]
+        
+        logger.info(f"🔧 执行 pandoc 命令: {' '.join(cmd)}")
+        
+        # 将 Markdown 内容编码为 UTF-8
+        md_bytes = md_content.encode('utf-8', errors='replace')
+        
+        result = subprocess.run(cmd, input=md_bytes, capture_output=True)
+        
+        if result.returncode != 0:
+            try:
+                error_msg = f"pandoc 执行失败: {result.stderr.decode('utf-8', errors='replace')}"
+            except:
+                error_msg = f"pandoc 执行失败，返回码: {result.returncode}"
+            logger.error(f"❌ {error_msg}")
+            raise Exception(error_msg)
+        
+        return result.stdout
 
 
 # 创建全局导出器实例
