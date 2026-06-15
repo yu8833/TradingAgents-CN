@@ -1350,7 +1350,7 @@ const refineContent = (rawContent: string, maxLen: number = 260): string => {
     if (trimmed.length < 5) return false
     // 过滤掉"开始，获取内容" 是一个非常的内容
     // 过滤掉明显的套话/模板文本去除短信息的内容
-    if (/^(好的|数据已|数据|以下|分析|基于|(?:\s*)$/i.test(trimmed.slice(0, 20)
+    if (/^(好的|数据已|数据|以下|分析|基于)/i.test(trimmed.slice(0, 20)))
       return false
     return true
   })

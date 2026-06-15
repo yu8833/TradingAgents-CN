@@ -143,7 +143,7 @@
                   </div>
                 </div>
               </el-tooltip>
-              <div class="insight-card-body" v-html="renderInsight(item.text)"></div>
+              <div class="insight-card-body" v-html="renderInsightFull(item.fullText || item.text)"></div>
             </div>
           </div>
         </div>
@@ -286,7 +286,8 @@ import {
   Cpu,
   QuestionFilled,
   ArrowDown,
-  Reading
+  Reading,
+  MoreFilled
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { marked } from 'marked'
@@ -1032,6 +1033,116 @@ const renderInsight = (text: string) => {
   return result.join('\n')
 }
 
+// 渲染完整洞察内容（用于 popover 显示）
+const renderInsightFull = (text: string) => {
+  if (!text) return '<span class="insight-empty">暂无数据</span>'
+  
+  // 使用 renderInsight 的逻辑，但不截断
+  let html = String(text)
+  
+  // 预处理：跳过分隔线行
+  html = html.replace(/(^|\n)[\-=_]{2,}(\n|$)/g, '\n')
+  
+  // 移除表格行
+  html = html.split('\n').map(line => {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('|') || trimmed.startsWith('｜')) return ''
+    if (/^\s*\|?\s*:?-+:?\s*\|/.test(line)) return ''
+    return line
+  }).join('\n')
+  
+  // 跳过纯图片/纯链接行
+  html = html.split('\n').map(line => {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('![') && trimmed.includes(']')) return ''
+    if (/^https?:\/\/\S+$/.test(trimmed)) return ''
+    return line
+  }).join('\n')
+  
+  // 跳过开头的套话段落
+  html = html.replace(/^[\s\S]{0,200}(好的|数据已获取|下面我将|开始分析|尊敬的)[^\n]*\n/, '')
+  
+  // 转义 HTML
+  html = html
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  
+  // 处理 Markdown 加粗
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>')
+  
+  // 处理行内代码
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
+  
+  // 把 Markdown 标题转为加粗的段落小标题
+  html = html.split('\n').map(line => {
+    const m = line.match(/^#{1,6}\s+(.+)$/)
+    if (m) {
+      let title = m[1].trim()
+      title = title.replace(/^[一二三四五六七八九十][、\.]\s*/, '')
+      title = title.replace(/^\d+[\.、]\s*/, '')
+      title = title.replace(/^[\u{1F000}-\u{1FFFF}]\s*/u, '')
+      return `\n\n<div class="insight-heading-full">${title}</div>\n`
+    }
+    return line
+  }).join('\n')
+  
+  // 按行处理：智能识别段落 / 列表
+  const lines = html.split(/\r?\n/)
+  const result: string[] = []
+  let inList = false
+  let currentParagraph = ''
+  
+  for (let raw of lines) {
+    const line = raw.trim()
+    
+    if (!line) {
+      if (currentParagraph) {
+        result.push(`<p class="insight-paragraph-full">${currentParagraph}</p>`)
+        currentParagraph = ''
+      }
+      if (inList) {
+        result.push('</ul>')
+        inList = false
+      }
+      continue
+    }
+    
+    // 检查是否是列表项
+    const listMatch = line.match(/^([\-\*\•]|\d+[\.、])\s+(.+)$/)
+    if (listMatch) {
+      if (currentParagraph) {
+        result.push(`<p class="insight-paragraph-full">${currentParagraph}</p>`)
+        currentParagraph = ''
+      }
+      if (!inList) {
+        result.push('<ul class="insight-list-full">')
+        inList = true
+      }
+      result.push(`<li>${listMatch[2]}</li>`)
+      continue
+    }
+    
+    // 普通文本 - 累积到当前段落
+    if (inList) {
+      result.push('</ul>')
+      inList = false
+    }
+    currentParagraph += (currentParagraph ? ' ' : '') + line
+  }
+  
+  // 处理最后的剩余内容
+  if (currentParagraph) {
+    result.push(`<p class="insight-paragraph-full">${currentParagraph}</p>`)
+  }
+  if (inList) {
+    result.push('</ul>')
+  }
+  
+  return result.join('\n')
+}
+
 // 置信度评分相关函数
 // 将后端返回的 0-1 小数转换为 0-100 的百分制
 const normalizeConfidenceScore = (score: number) => {
@@ -1317,43 +1428,93 @@ const insightItems = computed(() => {
     { key: 'core',       title: '核心洞察', icon: '💡',
       subtitle: '一句话把握报告要点',
       candidates: ['核心洞察'],
-      maxChars: 300,
+      maxChars: 400,
       tooltip: '模型从所有分析维度中提炼的最具代表性结论，通常是影响评级与操作建议的核心原因。',
     },
     { key: 'logic',      title: '投资逻辑', icon: '📊',
       subtitle: '为什么看好或看空',
       candidates: ['投资逻辑'],
-      maxChars: 300,
+      maxChars: 400,
       tooltip: 'AI 对该标的给出买入/持有/卖出建议的底层依据，综合公司基本面、行业周期、估值与市场情绪等信息。',
     },
     { key: 'sentiment',  title: '情绪分析', icon: '🔥',
       subtitle: '市场情绪与舆论热度',
       candidates: ['情绪分析', '市场情绪', '舆情分析', '情绪面分析'],
-      maxChars: 300,
+      maxChars: 400,
       tooltip: '基于新闻热度、社交媒体讨论、资金流向（北向资金、主力净流入）、板块热度等信息得出的市场情绪判断。',
     },
     { key: 'trend',      title: '趋势预测', icon: '📈',
       subtitle: '短期 / 中期走势判断',
       candidates: ['趋势预测'],
-      maxChars: 300,
+      maxChars: 400,
       tooltip: '基于技术指标与近期行情的方向性判断。仅作参考，不构成投资建议——实际走势受宏观消息、资金流向等多重因素影响。',
     },
     { key: 'strategy',   title: '策略点位', icon: '🎯',
       subtitle: '入场 / 加仓 / 离场参考',
       candidates: ['策略点位'],
-      maxChars: 300,
+      maxChars: 400,
       tooltip: '与上方价格卡片互为补充，提供交易上的具体执行建议，包括理想买入区间、加仓位置、止损止盈参考线。',
     },
     { key: 'risk',       title: '风险提示', icon: '⚠️',
       subtitle: '需要重点关注的风险',
       candidates: ['风险提示'],
-      maxChars: 300,
+      maxChars: 400,
       tooltip: '可能影响投资结果的风险因素，例如行业政策变化、财报不及预期、估值偏高、市场波动放大、流动性风险等。',
     },
   ]
   const result = defs
-    .map(d => ({ ...d, text: pickField(report.value, d.candidates, d.maxChars || 800) }))
-    .filter(d => d.text !== null && d.text !== undefined && d.text !== '')
+    .map(d => {
+      // 获取完整内容：优先从后端的 _full 字段获取，否则从 report 模块中直接取
+      let fullText = null
+      for (const key of d.candidates) {
+        const fullKey = key + '_full'
+        const v = report.value?.[fullKey]
+        if (v !== null && v !== undefined && v !== '' && v !== 'None') {
+          fullText = v
+          break
+        }
+      }
+      // 如果没有 _full 字段，尝试从原始 report 模块中提取完整内容
+      if (!fullText) {
+        const moduleMap = report.value?.reports || {}
+        const fallbackMap: { [key: string]: string[] } = {
+          '核心洞察': ['final_trade_decision', 'research_team_decision', 'trader_investment_plan'],
+          '投资逻辑': ['investment_plan', 'trader_investment_plan', 'research_team_decision', 'final_trade_decision'],
+          '趋势预测': ['market_report', 'trader_investment_plan', 'final_trade_decision'],
+          '策略点位': ['trader_investment_plan', 'investment_plan', 'final_trade_decision'],
+          '情绪分析': ['sentiment_report', 'news_report', 'hot_money_report', 'market_report'],
+          '市场情绪': ['sentiment_report', 'news_report', 'hot_money_report'],
+          '舆情分析': ['sentiment_report', 'news_report'],
+          '情绪面分析': ['sentiment_report', 'news_report'],
+          '风险提示': ['risk_management_decision', 'risky_analyst', 'safe_analyst', 'neutral_analyst', 'final_trade_decision'],
+        }
+        for (const key of d.candidates) {
+          const moduleKeys = fallbackMap[key] || []
+          for (const mk of moduleKeys) {
+            const moduleText = moduleMap[mk]
+            if (typeof moduleText === 'string' && moduleText.trim()) {
+              // 从模块中提取匹配字段的内容（最多400字）
+              const re = new RegExp(
+                '(?:^|\\n)[#*_]*\\s*(?:\\d+[.、]\\s*)?' + key.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') +
+                '[*_]*\\s*[:：]?\\s*(?:\\n|[:：])?\\s*([\\s\\S]{0,' + d.maxChars + '}?)(?=\\n\\s*#+|\\n\\s*\\n|$)',
+              )
+              const m = moduleText.match(re)
+              if (m && m[1] && m[1].trim()) {
+                fullText = m[1].trim()
+                break
+              }
+            }
+          }
+          if (fullText) break
+        }
+      }
+      // 最终兜底：如果还是没有，使用原有的截断内容
+      if (!fullText) {
+        fullText = pickField(report.value, d.candidates, d.maxChars || 400)
+      }
+      return { ...d, fullText }
+    })
+    .filter(d => d.fullText !== null && d.fullText !== undefined && d.fullText !== '')
   return result
 })
 
@@ -1849,6 +2010,22 @@ watch(
               line-height: 1.8;
               font-size: 14px;
             }
+          }
+
+          // 悬停查看完整内容提示
+          .insight-expand-hint {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 14px;
+            padding: 10px 14px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(96, 165, 250, 0.12) 100%);
+            border-radius: 8px;
+            font-size: 13px;
+            color: #3b82f6;
+            font-weight: 500;
+            border: 1px solid rgba(59, 130, 246, 0.15);
           }
 
           strong {

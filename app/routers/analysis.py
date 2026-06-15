@@ -14,6 +14,7 @@ import asyncio
 import re as _re
 
 from app.routers.auth_db import get_current_user
+from app.routers.reports import extract_structured_fields
 from app.services.queue_service import get_queue_service, QueueService
 from app.services.analysis_service import get_analysis_service
 from app.services.simple_analysis_service import get_simple_analysis_service
@@ -733,6 +734,45 @@ async def get_task_result(
             validated_reports[safe_key] = validated_content
 
         final_result_data["reports"] = validated_reports
+
+        # 🔥 核心修复：从 reports 中提取结构化字段（评级、操作建议、核心洞察等）
+        # 并统一合并到 decision 字典中，供前端 SingleAnalysis.vue 使用
+        try:
+            _extract_input = {
+                "decision": dict(final_result_data.get("decision", {})),
+            }
+            _extract_input.update(final_result_data["reports"])
+            _extracted = extract_structured_fields(_extract_input)
+
+            if _extracted:
+                logger.info(f"🔍 [FINAL] 从reports中提取到字段: {list(_extracted.keys())}")
+                # 将提取的字段合并到 decision 中（前端 getRefinedField 从 decision 取）
+                _decision = dict(final_result_data.get("decision", {}) or {})
+                for _k, _v in _extracted.items():
+                    if _v is not None and _v != "":
+                        _decision[_k] = _v
+                # 确保评级/操作建议/action 三者一致
+                _rating = _decision.get("评级") or _decision.get("操作建议") or _decision.get("action")
+                if _rating:
+                    _decision["评级"] = _rating
+                    _decision["操作建议"] = _rating
+                    _decision["action"] = _rating
+                    logger.info(f"🔍 [FINAL] 统一后的评级字段: {_rating}")
+                # 同时把提取的核心洞察等字段也放到顶层（兼容 ReportDetail.vue 页面）
+                for _k, _v in _extracted.items():
+                    if _v is not None and _v != "" and _k not in final_result_data:
+                        final_result_data[_k] = _v
+                final_result_data["decision"] = _decision
+
+                # 检查6张卡片的内容
+                for card in ["核心洞察", "投资逻辑", "趋势预测", "策略点位", "情绪分析", "风险提示"]:
+                    if _decision.get(card):
+                        preview = str(_decision[card])[:40]
+                        logger.info(f"🔍 [FINAL] ✅ {card}: {preview}...")
+                    else:
+                        logger.info(f"🔍 [FINAL] ⚠️  {card}: (空)")
+        except Exception as extract_err:
+            logger.warning(f"⚠️ [RESULT] 提取结构化字段失败: {extract_err}")
 
         logger.info(f"✅ [RESULT] 成功获取任务结果: {task_id}")
         logger.info(f"📊 [RESULT] 最终返回 {len(final_result_data.get('reports', {}))} 个报告")

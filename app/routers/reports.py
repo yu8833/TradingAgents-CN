@@ -226,24 +226,228 @@ def _extract_section(text: str, aliases: List[str], max_chars: int) -> Optional[
     return content
 
 
+def _extract_holder_empty_advice(text: str, field_name: str) -> Optional[str]:
+    """
+    提取持仓者建议或空仓者建议。
+    匹配格式如：
+      - "1.  **对于当前持仓者（首要任务）：**" + 列表项
+      - "持仓者：xxx"
+      - "对于空仓者：xxx"
+      - "止损价格（建议给现持仓者）：xxx"
+      - "理想买入（不建议，仅作空仓者观察参考）：xxx"
+    
+    收集从标题行之后的所有内容（包括列表项），直到遇到下一个章节标题或文档结束。
+    """
+    if not text:
+        return None
+    
+    lines = text.split("\n")
+    n = len(lines)
+    
+    # 持仓者关键词（精确匹配）
+    holder_patterns = [
+        r"^持仓者[：:：]",
+        r"^对于.*持仓者[：:：]",
+        r"^当前持仓者[：:：]",
+        r"^持有者[：:：]",
+        r"持仓者建议[：:：]",
+        r"建议给现持仓者",
+        r"（建议给现持仓者）",
+        r"（持仓者.*建议）",
+    ]
+    # 空仓者关键词（精确匹配）
+    empty_patterns = [
+        r"^空仓者[：:：]",
+        r"^对于.*空仓者[：:：]",
+        r"^未持仓者[：:：]",
+        r"^观望者[：:：]",
+        r"空仓建议[：:：]",
+        r"空仓者观察",
+        r"空仓者.*参考",
+        r"仅作.*空仓者",
+        r"空仓者.*观望",
+        r"空仓者.*买入",
+        r"不建议.*空仓者",
+    ]
+    
+    patterns = holder_patterns if field_name == "持仓者建议" else empty_patterns
+    # 排除关键词
+    if field_name == "持仓者建议":
+        exclude_patterns = [r"^空仓者", r"空仓者[：:：]", r"观望者[：:：]", r"仅作.*空仓者", r"不建议.*空仓者", r"空仓者.*观望", r"空仓者.*买入"]
+    else:
+        exclude_patterns = [r"^持仓者", r"持仓者[：:：]", r"持有者[：:：]", r"建议给现持仓者", r"（建议给现持仓者）"]
+    
+    collected = []
+    
+    # 方法1：找章节标题
+    start_idx = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        for pat in patterns:
+            if re.search(pat, stripped):
+                start_idx = i
+                break
+        if start_idx is not None:
+            break
+    
+    if start_idx is not None:
+        # 收集从 start_idx+1 开始的内容
+        for j in range(start_idx + 1, n):
+            line = lines[j]
+            stripped = line.strip()
+            
+            # 遇到任何标题行（# 到 ######）停止
+            if re.match(r"^#{1,6}\s+", stripped):
+                break
+            
+            # 持仓者遇到"对于空仓者"或"空仓者"停止
+            if field_name == "持仓者建议":
+                if re.search(r"(对于空仓者|空仓者[：:：])", stripped):
+                    break
+            
+            # 跳过纯标题行（如 "1. xxx：" 或 "#### xxx"）
+            if re.match(r"^\d+[\.、]\s*", stripped) and re.search(r"[：:：]$", stripped):
+                continue
+            
+            if stripped:
+                collected.append(stripped)
+    else:
+        # 方法2：对于结构化列表格式，收集所有包含关键词且不包含排除关键词的行
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            
+            # 检查是否包含关键词
+            has_keyword = False
+            for pat in patterns:
+                if re.search(pat, stripped):
+                    has_keyword = True
+                    break
+            
+            # 检查是否包含排除关键词
+            has_exclude = False
+            for pat in exclude_patterns:
+                if re.search(pat, stripped):
+                    has_exclude = True
+                    break
+            
+            if has_keyword and not has_exclude:
+                # 清理并添加
+                cleaned = re.sub(r"\*+", "", stripped)
+                cleaned = re.sub(r"^[\•\-\*\d\.]+\s*", "", cleaned)
+                if cleaned and len(cleaned) > 5:
+                    collected.append(cleaned)
+    
+    if not collected:
+        return None
+    
+    # 清理内容
+    content = "\n".join(collected)
+    # 移除 markdown 加粗符号
+    content = re.sub(r"\*+", "", content)
+    # 移除列表标记
+    content = re.sub(r"^[\•\-\*\d\.]+\s*", "", content, flags=re.MULTILINE)
+    content = content.strip()
+    
+    if not content:
+        return None
+    
+    # 限制长度
+    max_chars = 1000
+    if len(content) > max_chars:
+        # 在句号处截断
+        pos = content.rfind("。", 0, max_chars)
+        if pos > max_chars // 2:
+            content = content[:pos + 1]
+        else:
+            content = content[:max_chars] + "…"
+    
+    return content
+
+
 def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     """
     遍历 reports 中的所有子报告（以及可能存在的 decision 字典），
     抽取可用于前端展示的结构化字段。字段会被合并到报告详情顶层，
     以便前端 `pickField(report, [...])` 工作。
 
+    **统一的评级/操作建议**：`评级`、`操作建议`、`action` 三个字段完全一致，
+    优先级为：final_trade_decision 文本 > trader_investment_plan 文本 >
+    research_team_decision 文本 > decision 对象字典 > 全文兜底。
+
+    **六张核心洞察卡片**：每张卡片的内容明确来源于对应研究报告章节，
+    按以下优先级提取：章节标题精确匹配 → 关键字段匹配 → 对应模块正文精选。
+
     返回字段（中文命名，便于前端直接展示）：
       - 置信度 / 技术面评分 / 基本面评分 / 情绪面评分 / 政策面评分
       - 风险等级
-      - 评级 / 操作建议
+      - 评级 / 操作建议 / action（三者完全一致）
       - 理想买入 / 二次买入 / 止损价格 / 止盈目标 / 支撑位 / 阻力位
-      - 核心洞察 / 投资逻辑 / 趋势预测 / 策略点位 / 风险提示
+      - 核心洞察 / 投资逻辑 / 情绪分析 / 趋势预测 / 策略点位 / 风险提示
     """
     result: Dict[str, Any] = {}
     if not isinstance(reports, dict) or not reports:
         return result
 
-    # 1) 先从 decision 字典取值（来自 trading_graph 的结构化输出）
+    # 0) 先从高优先级文本模块提取操作建议（评级），比 decision 字典更权威
+    priority_modules = [
+        "final_trade_decision", "trader_investment_plan",
+        "investment_plan", "research_team_decision",
+        "risk_management_decision",
+    ]
+
+    def _priority_texts():
+        for key in priority_modules:
+            v = reports.get(key)
+            if isinstance(v, str):
+                yield v
+
+    # 统一的评级规范化函数（确保最终输出是 5 档中文评级之一）
+    def _normalize_rating(val: str) -> str:
+        v = str(val).strip()
+        # 先清理可能的前后缀（如"评级：买入"、"建议: 强烈买入"）
+        for kw in ["评级", "操作建议", "投资建议", "建议"]:
+            if v.startswith(kw):
+                v = v[len(kw):].lstrip("：:、•·- ")
+                v = v.strip()
+                break
+        # 去除标点前后缀
+        v = v.strip("，。；：:、•·()（） ")
+        # 常见英文/缩写翻译
+        en_map = {
+            "BUY": "买入", "SELL": "卖出", "HOLD": "持有",
+            "STRONG_BUY": "强烈买入", "STRONG_SELL": "强烈卖出",
+            "STRONG BUY": "强烈买入", "STRONG SELL": "强烈卖出",
+            "OVERWEIGHT": "买入", "UNDERWEIGHT": "减仓",
+            "NEUTRAL": "持有", "WAIT": "持有", "观望": "持有",
+        }
+        v_upper = v.upper()
+        if v_upper in en_map:
+            return en_map[v_upper]
+        # 中文关键词识别（从长到短匹配，避免误识别）
+        cn_aliases = [
+            ("强烈买入", "强烈买入"),
+            ("强烈卖出", "强烈卖出"),
+            ("买入", "买入"),
+            ("卖出", "卖出"),
+            ("减仓", "减仓"),
+            ("加仓", "买入"),
+            ("持有", "持有"),
+            ("观望", "持有"),
+        ]
+        for alias, final in cn_aliases:
+            if alias in v:
+                return final
+        return v
+
+    # 从优先级最高的模块开始提取，找到第一个非空的评级
+    text_rating = None
+    for module_text in _priority_texts():
+        val = _match_rating(module_text, ["操作建议", "评级", "投资建议", "建议"])
+        if val:
+            text_rating = _normalize_rating(val)
+            break
+
+    # 1) 从 decision 字典取值（来自 trading_graph 的结构化输出）
     decision_obj = reports.get("decision")
     if isinstance(decision_obj, dict) and decision_obj:
         conf_val = (
@@ -259,23 +463,28 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
                     result["置信度"] = round(float(conf_val), 1)
             except (TypeError, ValueError):
                 pass
-        rl_val = decision_obj.get("risk_level")
-        if rl_val:
-            result["风险等级"] = str(rl_val)
-        act = (
-            decision_obj.get("action")
-            or decision_obj.get("recommendation")
-            or decision_obj.get("rating")
-        )
-        if act:
-            action_map = {
-                "BUY": "买入", "SELL": "卖出", "HOLD": "持有",
-                "STRONG_BUY": "强烈买入", "STRONG_SELL": "强烈卖出",
-            }
-            normalized = action_map.get(str(act).upper(), str(act))
-            result["评级"] = normalized
-            result["操作建议"] = normalized
-        # 价格类：target_price / stop_loss / ideal_buy / second_buy
+        if "风险等级" not in result:
+            rl_val = decision_obj.get("risk_level")
+            if rl_val:
+                result["风险等级"] = str(rl_val)
+        # 仅当文本模块未提取到操作建议时，才使用 decision 字典
+        if text_rating is None:
+            act = (
+                decision_obj.get("action")
+                or decision_obj.get("recommendation")
+                or decision_obj.get("rating")
+            )
+            if act:
+                text_rating = _normalize_rating(str(act))
+
+    # 统一设置评级 / 操作建议 / action，三者保持完全一致
+    if text_rating:
+        result["评级"] = text_rating
+        result["操作建议"] = text_rating
+        result["action"] = text_rating
+
+    # 1b) 从 decision 字典提取价格类字段（与评级无关，独立提取）
+    if isinstance(decision_obj, dict) and decision_obj:
         tp = decision_obj.get("target_price") or decision_obj.get("price_target")
         if tp is not None and tp != "":
             try:
@@ -314,13 +523,22 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
                 result["阻力位"] = str(res_val)
 
     # 2) 再从各子报告 markdown 文本中补充/覆盖（如果 decision 没有）
+    #    **六张核心洞察卡片的字段别名定义**：
+    #    每个卡片对应的章节标题别名，由长到短匹配，防止误识别
     section_aliases = [
-        (["核心洞察"], "核心洞察", 260),
-        (["投资逻辑"], "投资逻辑", 260),
-        (["情绪分析", "市场情绪", "舆情分析"], "情绪分析", 260),
-        (["趋势预测"], "趋势预测", 260),
-        (["策略点位"], "策略点位", 260),
-        (["风险提示"], "风险提示", 260),
+        # 1. 核心洞察：研究经理总结的主要矛盾/关键结论
+        (["核心洞察", "核心结论", "核心观点", "核心要点", "核心逻辑", "核心矛盾"], "核心洞察", 300),
+        # 2. 投资逻辑：支撑买入/卖出评级的底层理由（基本面+技术面+情绪面综合）
+        (["投资逻辑", "投资依据", "投资理由", "投资论证", "分析逻辑", "判断依据"], "投资逻辑", 300),
+        # 3. 情绪分析：市场情绪、资金流向、散户/主力态度
+        (["情绪分析", "市场情绪", "舆情分析", "情绪面", "情绪面分析", "资金情绪"], "情绪分析", 300),
+        # 4. 趋势预测：短期/中期走势判断、趋势方向、技术形态结论
+        (["趋势预测", "趋势展望", "走势判断", "走势预测", "方向判断", "中期展望"], "趋势预测", 300),
+        # 5. 策略点位：入场/加仓/离场的关键价格位置
+        (["策略点位", "关键点位", "交易策略", "操作策略", "关键支撑", "关键阻力", "关键支撑位/阻力位"],
+         "策略点位", 300),
+        # 6. 风险提示：所有可能影响结论的负面因素
+        (["风险提示", "风险因素", "风险分析", "主要风险", "风险预警", "风险说明"], "风险提示", 300),
     ]
     price_aliases = [
         (["理想买入"], "理想买入"),
@@ -339,27 +557,27 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
         (["政策面评分"], "政策面评分"),
     ]
 
-    priority_modules = [
-        "final_trade_decision", "trader_investment_plan",
-        "investment_plan", "research_team_decision",
-        "risk_management_decision",
-    ]
-
-    def _priority_texts():
-        for key in priority_modules:
-            v = reports.get(key)
-            if isinstance(v, str):
-                yield v
-
     # 2a) 文本章节：先找精确章节名，再回退到对应模块内容（做内容清洗后截取）
-    #    智能清洗：跳过报告标题/分隔线/表格/开场套话，只保留真正的分析正文
+    #    **每类卡片的内容来源严格定义**（按优先级从高到低）：
+    #    - 核心洞察：研究经理/最终决策（最具总结性的结论）
+    #    - 投资逻辑：研究经理/交易员计划（分析推理过程）
+    #    - 趋势预测：市场技术分析/交易员计划（技术面判断）
+    #    - 策略点位：交易员投资计划/最终决策（具体操作点位）
+    #    - 情绪分析：情绪分析报告/新闻报告/游资追踪（市场情绪相关内容）
+    #    - 风险提示：风险管理决策/最终决策（风险警示内容）
     fallback_modules = {
-        "核心洞察": ["final_trade_decision", "trader_investment_plan", "investment_plan", "research_team_decision"],
-        "投资逻辑": ["final_trade_decision", "trader_investment_plan", "investment_plan", "research_team_decision"],
-        "趋势预测": ["final_trade_decision", "market_report", "trader_investment_plan", "investment_plan"],
-        "策略点位": ["final_trade_decision", "trader_investment_plan", "investment_plan"],
-        "情绪分析": ["sentiment_report", "news_report", "hot_money_report", "market_report"],
-        "风险提示": ["risk_management_decision", "final_trade_decision"],
+        "核心洞察": ["final_trade_decision", "research_team_decision",
+                      "trader_investment_plan", "investment_plan"],
+        "投资逻辑": ["research_team_decision", "final_trade_decision",
+                    "trader_investment_plan", "bull_researcher", "bear_researcher"],
+        "趋势预测": ["market_report", "trader_investment_plan",
+                   "final_trade_decision", "investment_plan"],
+        "策略点位": ["trader_investment_plan", "investment_plan",
+                   "final_trade_decision", "market_report"],
+        "情绪分析": ["sentiment_report", "news_report", "hot_money_report",
+                   "market_report", "final_trade_decision"],
+        "风险提示": ["risk_management_decision", "final_trade_decision",
+                   "risky_analyst", "safe_analyst", "neutral_analyst"],
     }
 
     def _clean_and_extract_content(text: str, limit: int) -> str:
@@ -594,13 +812,40 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
         if result.get(field_name):
             continue
         found = False
-        for module_text in _priority_texts():
-            val = _extract_section(module_text, aliases, max_chars)
-            if val and not result.get(field_name):
-                result[field_name] = val
-                found = True
-                break
-        # 精确章节搜索
+        full_content = ""
+
+        # 步骤 A：优先从字段专属的 fallback_modules 中搜索精确章节标题
+        # （这是最可靠的内容来源）
+        if field_name in fallback_modules:
+            for module_key in fallback_modules[field_name]:
+                module_text = reports.get(module_key)
+                if not (isinstance(module_text, str) and module_text.strip()):
+                    continue
+                val = _extract_section(module_text, aliases, max_chars)
+                if val and not result.get(field_name):
+                    result[field_name] = val
+                    found = True
+                # 尝试提取完整内容（不截断）
+                full_val = _extract_section(module_text, aliases, 5000)
+                if full_val and len(full_val) > len(val or ""):
+                    full_content = full_val
+                if found and full_content:
+                    break
+
+        # 步骤 B：在全局优先级模块中搜索精确章节标题（补充）
+        if not found:
+            for module_text in _priority_texts():
+                val = _extract_section(module_text, aliases, max_chars)
+                if val and not result.get(field_name):
+                    result[field_name] = val
+                    found = True
+                full_val = _extract_section(module_text, aliases, 5000)
+                if full_val and len(full_val) > len(val or ""):
+                    full_content = full_val
+                if found and full_content:
+                    break
+
+        # 步骤 C：在全部报告模块中搜索精确章节标题（兜底）
         if not found:
             for v in reports.values():
                 if isinstance(v, str):
@@ -608,8 +853,12 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
                     if val:
                         result[field_name] = val
                         found = True
+                        full_val = _extract_section(v, aliases, 5000)
+                        if full_val and len(full_val) > len(val):
+                            full_content = full_val
                         break
-        # 终极回退：从对应模块清洗并截取内容
+
+        # 步骤 D：终极回退——从字段专属模块正文清洗并截取（内容仍然来源于研究报告）
         if not found and field_name in fallback_modules:
             for module_key in fallback_modules[field_name]:
                 module_text = reports.get(module_key)
@@ -617,7 +866,13 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
                     extracted = _clean_and_extract_content(module_text, max_chars)
                     if extracted:
                         result[field_name] = extracted
+                        full_extracted = _clean_and_extract_content(module_text, 5000)
+                        if full_extracted and len(full_extracted) > len(extracted):
+                            full_content = full_extracted
                         break
+        # 存储完整内容（用于前端悬停显示）
+        if full_content and len(full_content) > len(result.get(field_name, "")):
+            result[field_name + "_full"] = full_content
 
     # 2b) 价格字段
     for aliases, field_name in price_aliases:
@@ -660,8 +915,10 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
         )
         val = _match_rating(combined_text, ["操作建议", "评级", "投资建议", "建议"])
         if val:
-            result["评级"] = val
-            result["操作建议"] = val
+            final_rating = _normalize_rating(val)
+            result["评级"] = final_rating
+            result["操作建议"] = final_rating
+            result["action"] = final_rating
 
     # 4) 补充英文字段名兼容（便于前端老代码继续工作）
     if "止盈目标" in result:
@@ -673,29 +930,131 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
         if num:
             result["stop_loss"] = num.group(1)
 
+    # 5) 提取持仓者建议和空仓者建议（使用专门的提取函数）
+    holder_modules = ["research_team_decision", "final_trade_decision", "trader_investment_plan", "investment_plan"]
+    empty_modules = ["research_team_decision", "final_trade_decision", "trader_investment_plan", "investment_plan"]
+    
+    if not result.get("持仓者建议"):
+        for key in holder_modules:
+            module_text = reports.get(key)
+            if isinstance(module_text, str):
+                extracted = _extract_holder_empty_advice(module_text, "持仓者建议")
+                if extracted:
+                    result["持仓者建议"] = extracted
+                    break
+    
+    if not result.get("空仓者建议"):
+        for key in empty_modules:
+            module_text = reports.get(key)
+            if isinstance(module_text, str):
+                extracted = _extract_holder_empty_advice(module_text, "空仓者建议")
+                if extracted:
+                    result["空仓者建议"] = extracted
+                    break
+
     return result
 
 
 def _match_rating(text: str, aliases: List[str]) -> Optional[str]:
     """
     从文本中抽取"操作建议/评级"的关键字（买入/持有/卖出等）。
+    优先级：精确匹配标题行（含下一行内容）> 标题行带冒号 > 研究经理结论搜索 > 关键词搜索
     """
     if not text:
         return None
+
+    # 0) 最可靠的格式：**数字. 操作建议** 后面跟换行后的内容
+    #    例：**7. 操作建议**\n买入  或  **操作建议**\n强烈卖出
     for alias in aliases:
-        m = re.search(
+        patterns = [
+            # 格式1：**7. 操作建议** 后换行跟评级词
+            r"(?:^|\n)\s*\*\*\s*(?:\d+[\.、]\s*)?" + re.escape(alias) + r"\s*\*\*\s*[\r\n]+\s*([^\s，。；,;（(【【\*\#]{1,30})",
+            # 格式2：**操作建议：**买入 （星号内带冒号）
+            r"(?:^|\n)\s*\*\*\s*(?:\d+[\.、]\s*)?" + re.escape(alias) + r"\s*[:：]\s*\*\*\s*([^\s，。；,;（(]{1,30})",
+            # 格式3：**7. 操作建议：** 强烈买入
+            r"(?:^|\n)\s*\*\*\s*(?:\d+[\.、]\s*)?" + re.escape(alias) + r"[:：]\s*\*\*\s*([^\s，。；,;（(]{1,30})",
+        ]
+        for pattern in patterns:
+            try:
+                m = re.search(pattern, text)
+                if m:
+                    val = m.group(1).strip()
+                    val = re.sub(r'[\*_#\s]+', '', val).strip()
+                    if val and 0 < len(val) <= 20:
+                        return val
+            except re.error:
+                continue
+
+    # 1) 标题行带冒号的格式
+    for alias in aliases:
+        patterns = [
             r"(?:^|\n)\s*\*?\s*(?:\d+[\.、]\s*)?\*?\s*" + re.escape(alias) +
-            r"\s*\*?\s*[:：]\s*([^\n，。；,;（(]{0,80})",
-            text,
-        )
-        if m:
-            val = m.group(1).strip()
-            if val:
-                return val
-    # 兜底：从文本中搜索中文"买入/卖出/持有"等关键字
-    for keyword in ["强烈买入", "强烈卖出", "买入", "卖出", "持有", "观望", "减仓", "加仓"]:
-        if keyword in text:
-            return keyword
+            r"\s*\*?\s*[:：]\s*([^\n，。；,;（(]{0,60})",
+            r"(?:^|\n)\s*【" + re.escape(alias) + r"】\s*([^\n，。；,;（(]{0,60})",
+            r"(?:^|\n)\s*\*\*" + re.escape(alias) + r"\*\*\s*[:：]\s*([^\n，。；,;（(]{0,60})",
+        ]
+        for pattern in patterns:
+            try:
+                m = re.search(pattern, text)
+                if m:
+                    val = m.group(1).strip()
+                    if val:
+                        val = re.sub(r'[\*_#]+', '', val).strip()
+                        if len(val) <= 20:
+                            return val
+                        # 如果内容太长，提取其中的评级关键词
+                        for kw in ["强烈买入", "强烈卖出", "买入", "卖出", "持有", "观望", "减仓", "加仓"]:
+                            if kw in val:
+                                return kw
+            except re.error:
+                continue
+
+    # 2) 搜索研究经理/最终决策中的结论
+    manager_patterns = [
+        r"研究经理.*结论[\s\S]{0,200}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
+        r"最终决策[\s\S]{0,200}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
+        r"最终投资决策[\s\S]{0,200}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
+        r"综合判断[\s\S]{0,100}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
+        r"综合评估[\s\S]{0,100}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
+        r"投资建议[\s\S]{0,100}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
+    ]
+
+    for pattern in manager_patterns:
+        try:
+            m = re.search(pattern, text)
+            if m:
+                return m.group(1)
+        except re.error:
+            continue
+
+    # 3) 搜索明确的结论行
+    conclusion_patterns = [
+        r"(?:^|\n)\s*\*?结论\s*\*?[:：]\s*([^\n]{0,80})",
+        r"(?:^|\n)\s*\*?总结\s*\*?[:：]\s*([^\n]{0,80})",
+    ]
+
+    for pattern in conclusion_patterns:
+        try:
+            m = re.search(pattern, text)
+            if m:
+                val = m.group(1).strip()
+                if val:
+                    for keyword in ["强烈买入", "强烈卖出", "买入", "卖出", "持有", "观望", "减仓", "加仓"]:
+                        if keyword in val:
+                            return keyword
+        except re.error:
+            continue
+
+    # 4) 兜底：从文本中搜索中文评级词（优先匹配完整词）
+    keywords = ["强烈买入", "强烈卖出", "买入", "卖出", "持有", "观望", "减仓", "加仓"]
+    for keyword in keywords:
+        pattern = r'(?:^|\s|[，。；！？\n])' + re.escape(keyword) + r'(?:$|\s|[，。；！？\n])'
+        try:
+            if re.search(pattern, text):
+                return keyword
+        except re.error:
+            continue
+
     return None
 
 
