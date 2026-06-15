@@ -5,7 +5,7 @@
 """
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 import pandas as pd
 from pymongo import ReplaceOne
 
@@ -289,15 +289,27 @@ class FinancialDataService:
     def _standardize_financial_data(
         self,
         symbol: str,
-        financial_data: Dict[str, Any],
+        financial_data: Any,
         data_source: str,
         market: str,
         report_period: str = None,
         report_type: str = "quarterly"
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[Union[Dict[str, Any], List[Dict[str, Any]]]]:
         """标准化财务数据"""
         try:
             now = datetime.now(timezone.utc)
+            
+            # 如果是列表，遍历处理每个元素
+            if isinstance(financial_data, list):
+                result = []
+                for item in financial_data:
+                    if isinstance(item, dict):
+                        standardized = self._standardize_financial_data(
+                            symbol, item, data_source, market, report_period, report_type
+                        )
+                        if standardized:
+                            result.append(standardized)
+                return result if result else None
             
             # 根据数据源进行不同的标准化处理
             if data_source == "tushare":
