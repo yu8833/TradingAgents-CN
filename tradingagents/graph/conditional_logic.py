@@ -59,6 +59,22 @@ class ConditionalLogic:
             return "tools_hot_money"
         return "Msg Clear Hot_money"
 
+    def should_continue_sentiment(self, state: AgentState):
+        """Determine if sentiment analysis should continue."""
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_sentiment"
+        return "Msg Clear Sentiment"
+
+    def should_continue_technical(self, state: AgentState):
+        """Determine if technical analysis should continue."""
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_technical"
+        return "Msg Clear Technical"
+
     def should_continue_lockup(self, state: AgentState):
         """Determine if lockup/reduction analysis should continue."""
         messages = state["messages"]
