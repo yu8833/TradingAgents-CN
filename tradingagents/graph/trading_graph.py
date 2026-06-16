@@ -60,7 +60,7 @@ class TradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"],
+        selected_analysts=["market", "sentiment", "news", "fundamentals", "policy", "hot_money", "technical"],
         debug=False,
         config: Dict[str, Any] = None,
         callbacks: Optional[List] = None,
@@ -165,21 +165,17 @@ class TradingAgentsGraph:
         return {
             "market": ToolNode(
                 [
-                    # Core stock data tools
                     get_stock_data,
-                    # Technical indicators
                     get_indicators,
                 ]
             ),
-            "social": ToolNode(
+            "sentiment": ToolNode(
                 [
-                    # News tools for social media analysis
                     get_news,
                 ]
             ),
             "news": ToolNode(
                 [
-                    # News and insider information
                     get_news,
                     get_global_news,
                     get_insider_transactions,
@@ -214,12 +210,10 @@ class TradingAgentsGraph:
                     get_industry_comparison,
                 ]
             ),
-            "lockup": ToolNode(
+            "technical": ToolNode(
                 [
-                    get_insider_transactions,
-                    get_news,
-                    get_fundamentals,
-                    get_lockup_expiry,
+                    get_stock_data,
+                    get_indicators,
                 ]
             ),
         }

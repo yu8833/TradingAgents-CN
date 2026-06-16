@@ -27,19 +27,19 @@ class GraphSetup:
         self.conditional_logic = conditional_logic
 
     def setup_graph(
-        self, selected_analysts=["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
+        self, selected_analysts=["market", "sentiment", "news", "fundamentals", "policy", "hot_money", "technical"]
     ):
         """Set up and compile the agent workflow graph.
 
         Args:
             selected_analysts (list): List of analyst types to include. Options are:
-                - "market": Market analyst (technical analysis)
-                - "social": Social media / sentiment analyst
+                - "market": Market analyst (market trends)
+                - "sentiment": Sentiment analyst
                 - "news": News analyst
                 - "fundamentals": Fundamentals analyst
                 - "policy": Policy analyst (A-stock specific)
                 - "hot_money": Hot money / capital flow tracker (A-stock specific)
-                - "lockup": Lockup expiry / reduction watcher (A-stock specific)
+                - "technical": Technical analyst (technical indicators)
         """
         if len(selected_analysts) == 0:
             raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
@@ -56,12 +56,12 @@ class GraphSetup:
             delete_nodes["market"] = create_msg_delete()
             tool_nodes["market"] = self.tool_nodes["market"]
 
-        if "social" in selected_analysts:
-            analyst_nodes["social"] = create_social_media_analyst(
+        if "sentiment" in selected_analysts:
+            analyst_nodes["sentiment"] = create_sentiment_analyst(
                 self.quick_thinking_llm
             )
-            delete_nodes["social"] = create_msg_delete()
-            tool_nodes["social"] = self.tool_nodes["social"]
+            delete_nodes["sentiment"] = create_msg_delete()
+            tool_nodes["sentiment"] = self.tool_nodes["sentiment"]
 
         if "news" in selected_analysts:
             analyst_nodes["news"] = create_news_analyst(
@@ -91,12 +91,12 @@ class GraphSetup:
             delete_nodes["hot_money"] = create_msg_delete()
             tool_nodes["hot_money"] = self.tool_nodes["hot_money"]
 
-        if "lockup" in selected_analysts:
-            analyst_nodes["lockup"] = create_lockup_watcher(
+        if "technical" in selected_analysts:
+            analyst_nodes["technical"] = create_technical_analyst(
                 self.quick_thinking_llm
             )
-            delete_nodes["lockup"] = create_msg_delete()
-            tool_nodes["lockup"] = self.tool_nodes["lockup"]
+            delete_nodes["technical"] = create_msg_delete()
+            tool_nodes["technical"] = self.tool_nodes["technical"]
 
         # Create quality gate node
         quality_gate_node = create_quality_gate(self.quick_thinking_llm)
