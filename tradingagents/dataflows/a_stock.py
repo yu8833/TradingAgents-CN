@@ -23,6 +23,7 @@ import logging
 import math
 import random
 import re as _re
+import socket
 import time
 import uuid
 import urllib.request
@@ -76,53 +77,34 @@ _code_to_name: dict[str, str] | None = None
 
 
 def _build_name_code_map() -> tuple[dict[str, str], dict[str, str]]:
-    """Build name→code and code→name maps.
-
-    Primary: mootdx (both SH & SZ markets).
-    Fallback: akshare (if installed).
-    """
+    """Build name→code and code→name maps via mootdx (both SH & SZ markets)."""
     global _name_to_code, _code_to_name
     if _name_to_code is not None:
         return _name_to_code, _code_to_name
 
+    client = _get_mootdx_client()
     n2c: dict[str, str] = {}
     c2n: dict[str, str] = {}
 
-    # --- Primary: mootdx ---
-    if _has_mootdx():
-        try:
-            client = Quotes.factory(market="std")
-            for market in (0, 1):  # 0=SZ, 1=SH
-                stocks = client.stocks(market=market)
-                if stocks is None or stocks.empty:
+    try:
+        for market in (0, 1):  # 0=SZ, 1=SH
+            stocks = client.stocks(market=market)
+            if stocks is None or stocks.empty:
+                continue
+            for _, row in stocks.iterrows():
+                code = str(row["code"]).strip()
+                name = str(row["name"]).strip()
+                if not _re.match(r"^[036]\d{5}$", code):
                     continue
-                for _, row in stocks.iterrows():
-                    code = str(row["code"]).strip()
-                    name = str(row["name"]).strip()
-                    if not _re.match(r"^[036]\d{5}$", code):
-                        continue
-                    clean_name = name.replace(" ", "").replace("　", "")
-                    n2c[clean_name] = code
-                    c2n[code] = clean_name
-        except Exception as e:
-            logger.warning("mootdx name/code map failed: %s", e)
-
-    # --- Fallback: akshare ---
-    if not n2c:
-        try:
-            import akshare as ak
-            df = ak.stock_info_a_code_name()
-            if df is not None and not df.empty:
-                for _, row in df.iterrows():
-                    code = str(row["code"]).strip().zfill(6)
-                    name = str(row["name"]).strip()
-                    if not _re.match(r"^[036]\d{5}$", code):
-                        continue
-                    clean_name = name.replace(" ", "").replace("　", "")
-                    n2c[clean_name] = code
-                    c2n[code] = clean_name
-        except Exception as e:
-            logger.warning("akshare name/code map failed: %s", e)
+                clean_name = name.replace(" ", "").replace("　", "")
+                n2c[clean_name] = code
+                c2n[code] = clean_name
+    except Exception as e:
+        # 网络抖动/通达信不可达时给出明确提示，而非冒泡成风马牛不相及的报错（#46/#66）
+        raise ValueError(
+            "无法通过 mootdx 解析股票名称（通达信服务暂时不可达）：%s。"
+            "请稍后重试，或直接输入 6 位股票代码。" % e
+        ) from e
 
     _name_to_code = n2c
     _code_to_name = c2n
@@ -167,37 +149,56 @@ def resolve_ticker(user_input: str) -> str:
 # ---------------------------------------------------------------------------
 
 _mootdx_client = None
-_mootdx_available: bool | None = None
+
+# 实测可用的通达信备选服务器（按延迟排序，2026-06 验证）。用于规避 mootdx
+# 0.11.x 全新安装时 BESTIP.HQ 为空串导致的 `ValueError: not enough values to unpack`。
+_TDX_SERVERS = [
+    ("119.97.185.59", 7709), ("124.70.133.119", 7709), ("116.205.183.150", 7709),
+    ("123.60.73.44", 7709), ("116.205.163.254", 7709), ("121.36.225.169", 7709),
+    ("123.60.70.228", 7709), ("124.71.9.153", 7709), ("110.41.147.114", 7709),
+    ("124.71.187.122", 7709),
+]
 
 
-def _has_mootdx() -> bool:
-    """Check whether mootdx is installed (cached)."""
-    global _mootdx_available
-    if _mootdx_available is not None:
-        return _mootdx_available
+def _probe_tdx(ip: str, port: int, timeout: float = 2.0) -> bool:
+    """TCP 握手探测通达信服务器是否可达。"""
     try:
-        from mootdx.quotes import Quotes  # noqa: F401
-        _mootdx_available = True
-    except Exception:
-        _mootdx_available = False
-        logger.warning("mootdx not installed: all mootdx-dependent paths will fall back to HTTP APIs")
-    return _mootdx_available
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def _get_mootdx_client():
-    """Lazy-init mootdx Quotes client (TCP connection, reusable).
+    """Lazy-init 健壮版 mootdx Quotes client（TCP 连接，可复用）。
 
-    Raises RuntimeError if mootdx package is not installed.
-    Callers should catch and fall back to direct HTTP APIs.
+    规避 mootdx 0.11.x 全新安装的 BESTIP 空串 bug：先 TCP 探测内置服务器列表、
+    用第一个可达的显式 server 绕过 BESTIP；三级 fallback（bestip 测速 → 裸 factory →
+    明确 RuntimeError）保证 IP 老化/换网/老用户场景都能工作。
     """
     global _mootdx_client
-    if not _has_mootdx():
-        raise RuntimeError("mootdx is not installed")
-    if _mootdx_client is None:
-        from mootdx.quotes import Quotes
+    if _mootdx_client is not None:
+        return _mootdx_client
 
-        _mootdx_client = Quotes.factory(market="std")
-    return _mootdx_client
+    from mootdx.quotes import Quotes
+
+    for ip, port in _TDX_SERVERS:
+        if _probe_tdx(ip, port):
+            _mootdx_client = Quotes.factory(market="std", server=(ip, port))
+            return _mootdx_client
+    try:
+        _mootdx_client = Quotes.factory(market="std", bestip=True)  # fallback 1
+        return _mootdx_client
+    except Exception:
+        pass
+    try:
+        _mootdx_client = Quotes.factory(market="std")  # fallback 2（老用户 config 已有 IP）
+        return _mootdx_client
+    except Exception as e:
+        raise RuntimeError(
+            "mootdx 通达信服务器均不可达（TCP 7709）。海外网络通常全部超时，"
+            "请走国内代理或直接使用 6 位股票代码。原始错误：%s" % e
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -391,49 +392,77 @@ def _sina_kline_fallback(code: str, start_date: str = None, end_date: str = None
     return df
 
 
-def _akshare_kline_fallback(code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
-    """Fetch daily K-line via akshare (second fallback after Sina)."""
-    try:
-        import akshare as ak
-    except Exception:
-        return pd.DataFrame()
+def _last_ohlcv_date(df: pd.DataFrame) -> pd.Timestamp | None:
+    """Return the latest OHLCV Date in a normalized dataframe."""
+    if df is None or df.empty or "Date" not in df.columns:
+        return None
+    dates = pd.to_datetime(df["Date"], errors="coerce")
+    if dates.dropna().empty:
+        return None
+    return dates.max().normalize()
 
-    try:
-        if start_date:
-            sd = start_date.replace("-", "")
-        else:
-            sd = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
-        if end_date:
-            ed = end_date.replace("-", "")
-        else:
-            ed = datetime.now().strftime("%Y%m%d")
 
-        df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=sd, end_date=ed, adjust="qfq")
-        if df is None or df.empty:
-            return pd.DataFrame()
-        # Normalize columns to Date, Open, High, Low, Close, Volume
-        out = pd.DataFrame()
-        out["Date"] = pd.to_datetime(df.iloc[:, 0])
-        out["Open"] = pd.to_numeric(df.get("开盘", df.get("Open")), errors="coerce")
-        out["High"] = pd.to_numeric(df.get("最高", df.get("High")), errors="coerce")
-        out["Low"] = pd.to_numeric(df.get("最低", df.get("Low")), errors="coerce")
-        out["Close"] = pd.to_numeric(df.get("收盘", df.get("Close")), errors="coerce")
-        out["Volume"] = pd.to_numeric(df.get("成交量", df.get("Volume")), errors="coerce")
-        return out.dropna()
+def _normalize_ohlcv_dates(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize OHLCV Date values to daily granularity."""
+    if df is None or df.empty or "Date" not in df.columns:
+        return df
+    df = df.copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.normalize()
+    return df.dropna(subset=["Date"])
+
+
+def _needs_sina_supplement(df: pd.DataFrame, target_date: str | None) -> bool:
+    """True when mootdx/cache data is older than the requested cutoff date."""
+    if not target_date:
+        return False
+    last_date = _last_ohlcv_date(df)
+    if last_date is None:
+        return True
+    target = pd.to_datetime(target_date).normalize()
+    return last_date < target
+
+
+def _merge_ohlcv(primary: pd.DataFrame, supplement: pd.DataFrame) -> pd.DataFrame:
+    """Merge OHLCV frames, preferring supplement rows on duplicate dates."""
+    frames = [frame for frame in (primary, supplement) if frame is not None and not frame.empty]
+    if not frames:
+        return pd.DataFrame(columns=["Date", "Open", "High", "Low", "Close", "Volume"])
+    combined = pd.concat(frames, ignore_index=True)
+    combined = _normalize_ohlcv_dates(combined)
+    combined = combined.drop_duplicates(subset=["Date"], keep="last")
+    combined = combined.sort_values("Date").reset_index(drop=True)
+    return combined
+
+
+def _supplement_stale_ohlcv_with_sina(
+    code: str,
+    df: pd.DataFrame,
+    target_date: str | None,
+    start_date: str | None = None,
+) -> tuple[pd.DataFrame, bool]:
+    """Use Sina daily K-line to fill dates missing from mootdx/cache data."""
+    if not _needs_sina_supplement(df, target_date):
+        return df, False
+    try:
+        sina_df = _sina_kline_fallback(code, start_date, target_date)
     except Exception as e:
-        logger.warning("akshare K-line fallback failed for %s: %s", code, e)
-        return pd.DataFrame()
+        logger.warning("sina K-line supplement failed for %s: %s", code, e)
+        return df, False
+    if sina_df.empty:
+        return df, False
+    merged = _merge_ohlcv(df, sina_df)
+    return merged, _last_ohlcv_date(merged) != _last_ohlcv_date(df)
 
 
 # ---------------------------------------------------------------------------
-# OHLCV loading with cache (mootdx -> Sina -> akshare)
+# OHLCV loading with cache (mootdx -> CSV)
 # ---------------------------------------------------------------------------
-
 
 def _load_ohlcv_astock(symbol: str, curr_date: str) -> pd.DataFrame:
-    """Fetch OHLCV, cache to CSV, filter by curr_date.
+    """Fetch OHLCV via mootdx, cache to CSV, filter by curr_date.
 
-    Priority: mootdx (TCP) -> Sina HTTP -> akshare
+    Mirrors stockstats_utils.load_ohlcv but uses mootdx instead of yfinance.
+    Returns DataFrame with columns: Date, Open, High, Low, Close, Volume
     """
     from .config import get_config
 
@@ -450,59 +479,49 @@ def _load_ohlcv_astock(symbol: str, curr_date: str) -> pd.DataFrame:
         mtime = datetime.fromtimestamp(os.path.getmtime(cache_file))
         if mtime.date() == datetime.now().date():
             data = pd.read_csv(cache_file, on_bad_lines="skip", encoding="utf-8")
-            data["Date"] = pd.to_datetime(data["Date"])
+            data = _normalize_ohlcv_dates(data)
+            data, supplemented = _supplement_stale_ohlcv_with_sina(
+                code, data, curr_date, start_date=None
+            )
+            if supplemented:
+                data.to_csv(cache_file, index=False, encoding="utf-8")
             cutoff = pd.to_datetime(curr_date)
             return data[data["Date"] <= cutoff]
 
     # Fetch from mootdx — 800 daily bars (~3 years of trading days)
-    df = pd.DataFrame()
-    sources_tried: list[str] = []
+    try:
+        client = _get_mootdx_client()
+        df = client.bars(symbol=code, category=4, offset=800)
 
-    if _has_mootdx():
-        try:
-            client = _get_mootdx_client()
-            raw = client.bars(symbol=code, category=4, offset=800)
-            if raw is not None and not (hasattr(raw, "empty") and raw.empty):
-                raw = raw.drop(
-                    columns=["datetime", "year", "month", "day", "hour", "minute"],
-                    errors="ignore",
-                )
-                raw = raw.reset_index()
-                rename_map = {
-                    "datetime": "Date", "open": "Open", "close": "Close",
-                    "high": "High", "low": "Low", "volume": "Volume",
-                }
-                raw = raw.rename(columns=rename_map)
-                if all(c in raw.columns for c in ["Date", "Open", "High", "Low", "Close", "Volume"]):
-                    df = raw[["Date", "Open", "High", "Low", "Close", "Volume"]].copy()
-                    df["Date"] = pd.to_datetime(df["Date"])
-                    sources_tried.append("mootdx (TCP)")
-        except Exception as e:
-            logger.warning("mootdx OHLCV failed for %s: %s", code, e)
-            sources_tried.append("mootdx: " + str(e))
+        if df is None or df.empty:
+            raise ValueError(f"No OHLCV data from mootdx for {code}")
 
-    if df.empty:
+        # mootdx returns index named 'datetime' AND a column named 'datetime'
+        # (plus year/month/day/hour/minute/volume). Drop duplicates before reset.
+        df = df.drop(columns=["datetime", "year", "month", "day", "hour", "minute"], errors="ignore")
+        df = df.reset_index()  # moves index 'datetime' → column 'datetime'
+        rename_map = {
+            "datetime": "Date",
+            "open": "Open",
+            "close": "Close",
+            "high": "High",
+            "low": "Low",
+            "volume": "Volume",
+        }
+        df = df.rename(columns=rename_map)
+        df = df[["Date", "Open", "High", "Low", "Close", "Volume"]]
+        df = _normalize_ohlcv_dates(df)
+    except Exception as e:
+        logger.warning("mootdx OHLCV failed for %s: %s, trying sina HTTP fallback", code, e)
         # Fallback: Sina direct HTTP API
         try:
             df = _sina_kline_fallback(code)
-            if not df.empty:
-                sources_tried.append("sina HTTP")
-        except Exception as e:
-            logger.warning("sina OHLCV failed for %s: %s", code, e)
-            sources_tried.append("sina: " + str(e))
+            if df.empty:
+                raise ValueError(f"No OHLCV data from sina for {code}")
+        except Exception:
+            raise ValueError(f"No OHLCV data from mootdx/sina for {code}")
 
-    if df.empty:
-        # Fallback: akshare
-        try:
-            df = _akshare_kline_fallback(code)
-            if not df.empty:
-                sources_tried.append("akshare")
-        except Exception as e:
-            logger.warning("akshare OHLCV failed for %s: %s", code, e)
-            sources_tried.append("akshare: " + str(e))
-
-    if df.empty:
-        raise ValueError(f"No OHLCV data for {code} (tried: {', '.join(sources_tried)})")
+    df, _ = _supplement_stale_ohlcv_with_sina(code, df, curr_date, start_date=None)
 
     # Cache to disk
     df.to_csv(cache_file, index=False, encoding="utf-8")
@@ -525,60 +544,50 @@ def get_stock_data(
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
     end_date: Annotated[str, "End date in yyyy-mm-dd format"],
 ) -> str:
-    """Get OHLCV stock price data (mootdx → Sina → akshare)."""
+    """Get OHLCV stock price data via mootdx."""
     code = _normalize_ticker(symbol)
 
-    df = pd.DataFrame()
-    data_source = ""
+    data_source = "mootdx (TCP)"
+    try:
+        client = _get_mootdx_client()
+        df = client.bars(symbol=code, category=4, offset=800)
 
-    # --- Primary: mootdx ---
-    if _has_mootdx():
-        try:
-            client = _get_mootdx_client()
-            raw = client.bars(symbol=code, category=4, offset=800)
-            if raw is not None and not (hasattr(raw, "empty") and raw.empty):
-                raw = raw.drop(
-                    columns=["datetime", "year", "month", "day", "hour", "minute"],
-                    errors="ignore",
-                )
-                raw = raw.reset_index()
-                raw = raw.rename(
-                    columns={
-                        "datetime": "Date",
-                        "open": "Open",
-                        "close": "Close",
-                        "high": "High",
-                        "low": "Low",
-                        "volume": "Volume",
-                    }
-                )
-                if all(c in raw.columns for c in ["Date", "Open", "High", "Low", "Close", "Volume"]):
-                    df = raw[["Date", "Open", "High", "Low", "Close", "Volume"]].copy()
-                    df["Date"] = pd.to_datetime(df["Date"])
-                    data_source = "mootdx (TCP)"
-        except Exception as e:
-            logger.warning("mootdx K-line failed for %s: %s", code, e)
+        if df is None or df.empty:
+            raise ValueError(f"No data from mootdx for {code}")
 
-    # --- Fallback: Sina ---
-    if df.empty:
+        # Drop duplicate datetime column + extra columns before reset_index
+        df = df.drop(
+            columns=["datetime", "year", "month", "day", "hour", "minute"],
+            errors="ignore",
+        )
+        df = df.reset_index()  # index 'datetime' → column 'datetime'
+        df = df.rename(
+            columns={
+                "datetime": "Date",
+                "open": "Open",
+                "close": "Close",
+                "high": "High",
+                "low": "Low",
+                "volume": "Volume",
+                "amount": "Amount",
+            }
+        )
+        df = _normalize_ohlcv_dates(df)
+
+    except Exception as e:
+        logger.warning("mootdx K-line failed for %s: %s, trying sina HTTP fallback", code, e)
+        # Fallback: Sina direct HTTP API
         try:
             df = _sina_kline_fallback(code, start_date, end_date)
-            if not df.empty:
-                data_source = "sina HTTP (fallback)"
-        except Exception as e:
-            logger.warning("sina K-line failed for %s: %s", code, e)
+            if df.empty:
+                return "K线数据获取失败：mootdx和新浪备用源均不可用，请检查网络连接"
+            data_source = "sina HTTP (fallback)"
+        except Exception:
+            return "K线数据获取失败：mootdx和新浪备用源均不可用，请检查网络连接"
 
-    # --- Fallback: akshare ---
-    if df.empty:
-        try:
-            df = _akshare_kline_fallback(code, start_date, end_date)
-            if not df.empty:
-                data_source = "akshare (fallback)"
-        except Exception as e:
-            logger.warning("akshare K-line failed for %s: %s", code, e)
-
-    if df.empty:
-        return "K线数据获取失败：所有数据源（mootdx/sina/akshare）均不可用， 请检查网络连接或稍后重试"
+    df, supplemented = _supplement_stale_ohlcv_with_sina(code, df, end_date, start_date)
+    if supplemented:
+        data_source = f"{data_source} + sina HTTP supplement"
 
     # Filter by date range
     start_dt = pd.to_datetime(start_date)
@@ -630,103 +639,6 @@ _INDICATOR_DESCRIPTIONS = {
 }
 
 
-def _calc_indicator_manually(data: pd.DataFrame, indicator: str) -> dict[str, str]:
-    """Compute indicators with plain pandas (stockstats-free fallback).
-
-    Supports: close_N_sma, close_10_ema, rsi, macd, macds, macdh,
-              boll, boll_ub, boll_lb, atr, vwma, mfi.
-    """
-    df = data.copy()
-    df = df.sort_values("Date").reset_index(drop=True)
-    close = pd.to_numeric(df["Close"], errors="coerce")
-    high = pd.to_numeric(df["High"], errors="coerce")
-    low = pd.to_numeric(df["Low"], errors="coerce")
-    volume = pd.to_numeric(df["Volume"], errors="coerce")
-
-    out: dict[str, str] = {}
-    series: pd.Series | None = None
-
-    try:
-        if indicator == "rsi":
-            delta = close.diff()
-            up = delta.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
-            down = (-delta.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
-            rs = up / down.where(down != 0, pd.NA)
-            series = 100 - 100 / (1 + rs)
-        elif indicator == "macd":
-            ema12 = close.ewm(span=12, adjust=False).mean()
-            ema26 = close.ewm(span=26, adjust=False).mean()
-            series = ema12 - ema26
-        elif indicator == "macds":
-            ema12 = close.ewm(span=12, adjust=False).mean()
-            ema26 = close.ewm(span=26, adjust=False).mean()
-            dif = ema12 - ema26
-            series = dif.ewm(span=9, adjust=False).mean()
-        elif indicator == "macdh":
-            ema12 = close.ewm(span=12, adjust=False).mean()
-            ema26 = close.ewm(span=26, adjust=False).mean()
-            dif = ema12 - ema26
-            dea = dif.ewm(span=9, adjust=False).mean()
-            series = (dif - dea) * 2
-        elif indicator == "boll":
-            series = close.rolling(window=20, min_periods=1).mean()
-        elif indicator == "boll_ub":
-            ma = close.rolling(window=20, min_periods=1).mean()
-            std = close.rolling(window=20, min_periods=1).std()
-            series = ma + 2 * std
-        elif indicator == "boll_lb":
-            ma = close.rolling(window=20, min_periods=1).mean()
-            std = close.rolling(window=20, min_periods=1).std()
-            series = ma - 2 * std
-        elif indicator == "atr":
-            tr = pd.DataFrame({
-                "hl": high - low,
-                "hc": (high - close.shift(1)).abs(),
-                "lc": (low - close.shift(1)).abs(),
-            }).max(axis=1)
-            series = tr.rolling(window=14, min_periods=1).mean()
-        elif indicator == "vwma":
-            tp = (high + low + close) / 3
-            denom = volume.rolling(window=14, min_periods=1).sum()
-            num = (tp * volume).rolling(window=14, min_periods=1).sum()
-            series = num / denom.where(denom != 0, pd.NA)
-        elif indicator == "mfi":
-            tp = (high + low + close) / 3
-            mf = tp * volume
-            diff = tp.diff()
-            pos = mf.where(diff > 0, 0).rolling(14, min_periods=1).sum()
-            neg = mf.where(diff < 0, 0).rolling(14, min_periods=1).sum()
-            mr = pos / neg.where(neg != 0, pd.NA)
-            series = 100 - 100 / (1 + mr)
-        elif indicator.startswith("close_") and indicator.endswith("_sma"):
-            try:
-                window = int(indicator.split("_")[1])
-            except ValueError:
-                window = 20
-            series = close.rolling(window=window, min_periods=1).mean()
-        elif indicator.startswith("close_") and indicator.endswith("_ema"):
-            try:
-                window = int(indicator.split("_")[1])
-            except ValueError:
-                window = 12
-            series = close.ewm(span=window, adjust=False).mean()
-        else:
-            raise ValueError(f"indicator {indicator} not supported in manual fallback")
-    except Exception as e:
-        logger.warning("manual indicator calc failed (%s): %s", indicator, e)
-        return out
-
-    if series is None:
-        return out
-
-    df["_val"] = series
-    df["_date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y-%m-%d")
-    for _, row in df.iterrows():
-        v = row["_val"]
-        out[row["_date"]] = "N/A" if v is None or (isinstance(v, float) and v != v) else str(round(float(v), 4))
-    return out
-
-
 def get_indicators(
     symbol: Annotated[str, "A-stock code"],
     indicator: Annotated[
@@ -735,7 +647,9 @@ def get_indicators(
     curr_date: Annotated[str, "Current trading date, YYYY-mm-dd"],
     look_back_days: Annotated[int, "how many days to look back"],
 ) -> str:
-    """Get technical indicators (stockstats primary, manual pandas fallback)."""
+    """Get technical indicators using stockstats on mootdx OHLCV data."""
+    from stockstats import wrap
+
     code = _normalize_ticker(symbol)
 
     if indicator not in _INDICATOR_DESCRIPTIONS:
@@ -746,24 +660,18 @@ def get_indicators(
 
     try:
         data = _load_ohlcv_astock(code, curr_date)
+        df = wrap(data)
+        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
 
-        # --- Primary: stockstats (if available) ---
-        try:
-            from stockstats import wrap
-            df = wrap(data.copy())
-            df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
-            # Trigger stockstats calculation
-            df[indicator]
+        # Trigger stockstats calculation
+        df[indicator]
 
-            ind_dict: dict[str, str] = {}
-            for _, row in df.iterrows():
-                d = row["Date"]
-                v = row[indicator]
-                ind_dict[d] = "N/A" if pd.isna(v) else str(round(float(v), 4))
-        except Exception as e:
-            logger.warning("stockstats unavailable/failed (%s), using manual calculation: %s", indicator, e)
-            # --- Fallback: manual pandas calculation ---
-            ind_dict = _calc_indicator_manually(data, indicator)
+        # Build date -> value lookup
+        ind_dict = {}
+        for _, row in df.iterrows():
+            d = row["Date"]
+            v = row[indicator]
+            ind_dict[d] = "N/A" if pd.isna(v) else str(round(float(v), 4))
 
         # Generate output for look_back window
         curr_dt = datetime.strptime(curr_date, "%Y-%m-%d")

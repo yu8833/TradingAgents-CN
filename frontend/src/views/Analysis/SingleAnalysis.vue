@@ -17,9 +17,9 @@
 
     <!-- 主要分析表单 -->
     <div class="analysis-container">
-      <el-row :gutter="24">
+      <el-row :gutter="24" class="form-row">
         <!-- 左侧：基础配置 -->
-        <el-col :span="18">
+        <el-col :span="18" class="form-col">
           <el-card class="main-form-card" shadow="hover">
             <template #header>
               <div class="card-header">
@@ -95,58 +95,6 @@
                     :disabled-date="disabledDate"
                   />
                 </el-form-item>
-              </div>
-
-              <!-- 分析深度 -->
-              <div class="form-section">
-                <h4 class="section-title">🎯 分析深度</h4>
-                <div class="depth-selector">
-                  <div
-                    v-for="(depth, index) in depthOptions"
-                    :key="index"
-                    class="depth-option"
-                    :class="{ active: analysisForm.researchDepth === index + 1 }"
-                    @click="analysisForm.researchDepth = index + 1"
-                  >
-                    <div class="depth-icon">{{ depth.icon }}</div>
-                    <div class="depth-info">
-                      <div class="depth-name">{{ depth.name }}</div>
-                      <div class="depth-desc">{{ depth.description }}</div>
-                      <div class="depth-time">{{ depth.time }}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 分析师团队 -->
-              <div class="form-section">
-                <h4 class="section-title">👥 分析师团队</h4>
-                <div class="analysts-grid">
-                  <div
-                    v-for="analyst in ANALYSTS"
-                    :key="analyst.id"
-                    class="analyst-card"
-                    :class="{ 
-                      active: analysisForm.selectedAnalysts.includes(analyst.name)
-                    }"
-                    @click="toggleAnalyst(analyst.name)"
-                  >
-                    <div class="analyst-avatar">
-                      <el-icon>
-                        <component :is="analyst.icon" />
-                      </el-icon>
-                    </div>
-                    <div class="analyst-content">
-                      <div class="analyst-name">{{ analyst.name }}</div>
-                      <div class="analyst-desc">{{ analyst.description }}</div>
-                    </div>
-                    <div class="analyst-check">
-                      <el-icon v-if="analysisForm.selectedAnalysts.includes(analyst.name)" class="check-icon">
-                        <Check />
-                      </el-icon>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               <!-- 操作按钮 -->
@@ -334,7 +282,7 @@
         </el-col>
 
         <!-- 右侧：高级配置 -->
-        <el-col :span="6">
+        <el-col :span="6" class="form-col">
           <el-card class="config-card" shadow="hover">
             <template #header>
               <div class="card-header">
@@ -400,32 +348,6 @@
                     <DeepModelSelector v-model="modelSettings.deepAnalysisModel" :available-models="availableModels" type="deep" size="small" width="100%" />
                   </div>
                 </div>
-
-                <!-- 🆕 模型推荐提示 -->
-                <el-alert
-                  v-if="modelRecommendation"
-                  :title="modelRecommendation.title"
-                  :type="modelRecommendation.type"
-                  :closable="false"
-                  style="margin-top: 12px;"
-                >
-                  <template #default>
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-                      <div style="font-size: 13px; line-height: 1.8; flex: 1; white-space: pre-line;">
-                        {{ modelRecommendation.message }}
-                      </div>
-                      <el-button
-                        v-if="modelRecommendation.quickModel && modelRecommendation.deepModel"
-                        type="primary"
-                        size="small"
-                        @click="applyRecommendedModels"
-                        style="flex-shrink: 0;"
-                      >
-                        应用推荐
-                      </el-button>
-                    </div>
-                  </template>
-                </el-alert>
               </div>
 
               <!-- 分析选项 -->
@@ -485,156 +407,93 @@
               </template>
 
               <div class="results-content">
-                <!-- 最终决策：策略点位 + 核心洞察（8 字段中文格式） -->
+                <!-- 风险提示 -->
+                <div class="risk-disclaimer">
+                  <el-alert
+                    type="warning"
+                    :closable="false"
+                    show-icon
+                  >
+                    <template #title>
+                      <div class="disclaimer-content">
+                        <el-icon class="disclaimer-icon"><WarningFilled /></el-icon>
+                        <div class="disclaimer-text">
+                          <p style="margin: 0 0 8px 0;"><strong>⚠️ 重要风险提示与免责声明</strong></p>
+                          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+                            <li><strong>工具性质：</strong>本系统为股票分析辅助工具，使用AI技术对公开市场数据进行分析，不具备证券投资咨询资质。</li>
+                            <li><strong>非投资建议：</strong>所有分析结果、评分、建议仅为技术分析参考，不构成任何买卖建议或投资决策依据。</li>
+                            <li><strong>数据局限性：</strong>分析基于历史数据和公开信息，可能存在延迟、不完整或不准确的情况，无法预测未来市场走势。</li>
+                            <li><strong>投资风险：</strong>股票投资存在市场风险、流动性风险、政策风险等多种风险，可能导致本金损失。</li>
+                            <li><strong>独立决策：</strong>投资者应基于自身风险承受能力、投资目标和财务状况独立做出投资决策。</li>
+                            <li><strong>专业咨询：</strong>重大投资决策建议咨询具有合法资质的专业投资顾问或金融机构。</li>
+                            <li><strong>责任声明：</strong>使用本工具产生的任何投资决策及其后果由投资者自行承担，本系统不承担任何责任。</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </template>
+                  </el-alert>
+                </div>
+
+                <!-- 最终决策 -->
                 <div v-if="analysisResults.decision" class="decision-section">
-                  <h4>🎯 决策摘要</h4>
+                  <h4>🎯 分析参考</h4>
                   <div class="decision-card">
                     <div class="decision-main">
                       <div class="decision-action">
-                        <span class="label">操作建议:</span>
+                        <span class="label">分析倾向:</span>
                         <el-tag
-                          :type="getActionTagType(analysisResults.decision.评级 || analysisResults.decision.action || analysisResults.decision.操作建议)"
+                          :type="getActionTagType(analysisResults.decision.action)"
                           size="large"
                         >
-                          {{ analysisResults.decision.评级 || analysisResults.decision.action || analysisResults.decision.操作建议 }}
+                          {{ analysisResults.decision.action }}
                         </el-tag>
                         <el-tag type="info" size="small" style="margin-left: 8px;">仅供参考</el-tag>
                       </div>
 
                       <div class="decision-metrics">
                         <div class="metric-item">
-                          <span class="label">理想买入</span>
-                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['理想买入', 'ideal_buy', 'target_price']) }}</span>
+                          <span class="label">参考价格:</span>
+                          <span class="value">{{ analysisResults.decision.target_price }}</span>
                         </div>
                         <div class="metric-item">
-                          <span class="label">二次买入</span>
-                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['二次买入', 'second_buy']) }}</span>
+                          <span class="label">模型置信度:</span>
+                          <span class="value">{{ (analysisResults.decision.confidence * 100).toFixed(1) }}%</span>
+                          <el-tooltip content="基于AI模型计算的置信度，不代表实际投资成功率" placement="top">
+                            <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
+                          </el-tooltip>
                         </div>
                         <div class="metric-item">
-                          <span class="label">止损价格</span>
-                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['止损价格', 'stop_loss']) }}</span>
-                        </div>
-                        <div class="metric-item">
-                          <span class="label">止盈目标</span>
-                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['止盈目标', 'target_price', 'price_target']) }}</span>
-                        </div>
-                        <div class="metric-item">
-                          <span class="label">支撑位</span>
-                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['支撑位', 'support_level']) }}</span>
-                        </div>
-                        <div class="metric-item">
-                          <span class="label">阻力位</span>
-                          <span class="value">¥{{ formatFieldValue(analysisResults.decision, ['阻力位', 'resistance_level']) }}</span>
-                        </div>
-                      </div>
-
-                      <div class="decision-insights">
-                        <!-- 6 张卡片：核心洞察、投资逻辑、情绪分析、趋势预测、策略点位、风险提示 -->
-                        <div v-if="getRefinedField(analysisResults, '核心洞察')" class="insight-card insight-core">
-                          <div class="insight-card-header">
-                            <span class="insight-icon">💡</span>
-                            <span class="insight-title">核心洞察</span>
-                          </div>
-                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '核心洞察') }}</div>
-                        </div>
-
-                        <div v-if="getRefinedField(analysisResults, '投资逻辑')" class="insight-card insight-investment">
-                          <div class="insight-card-header">
-                            <span class="insight-icon">📊</span>
-                            <span class="insight-title">投资逻辑</span>
-                          </div>
-                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '投资逻辑') }}</div>
-                        </div>
-
-                        <div v-if="getSentimentContent(analysisResults)" class="insight-card insight-sentiment">
-                          <div class="insight-card-header">
-                            <span class="insight-icon">🔥</span>
-                            <span class="insight-title">情绪分析</span>
-                          </div>
-                          <div class="insight-card-body">{{ getSentimentContent(analysisResults) }}</div>
-                        </div>
-
-                        <div v-if="getRefinedField(analysisResults, '趋势预测')" class="insight-card insight-trend">
-                          <div class="insight-card-header">
-                            <span class="insight-icon">📈</span>
-                            <span class="insight-title">趋势预测</span>
-                          </div>
-                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '趋势预测') }}</div>
-                        </div>
-
-                        <div v-if="getRefinedField(analysisResults, '策略点位')" class="insight-card insight-strategy">
-                          <div class="insight-card-header">
-                            <span class="insight-icon">🎯</span>
-                            <span class="insight-title">策略点位</span>
-                          </div>
-                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '策略点位') }}</div>
-                        </div>
-
-                        <div v-if="getRefinedField(analysisResults, '风险提示')" class="insight-card insight-risk">
-                          <div class="insight-card-header">
-                            <span class="insight-icon">⚠️</span>
-                            <span class="insight-title">风险提示</span>
-                          </div>
-                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '风险提示') }}</div>
-                        </div>
-
-                        <div v-if="getRefinedField(analysisResults, '持仓周期')" class="insight-card insight-holding">
-                          <div class="insight-card-header">
-                            <span class="insight-icon">📅</span>
-                            <span class="insight-title">持仓周期</span>
-                          </div>
-                          <div class="insight-card-body">{{ getRefinedField(analysisResults, '持仓周期') }}</div>
-                        </div>
-                      </div>
-
-                      <div class="decision-confidence">
-                        <div class="confidence-item">
-                          <span class="label">置信度</span>
-                          <span class="value">{{ formatPctField(analysisResults.decision, ['置信度', 'confidence', 'confidence_score']) }}%</span>
-                        </div>
-                        <div v-if="formatFieldValue(analysisResults.decision, ['风险等级', 'risk_level']) !== '--'" class="confidence-item">
-                          <span class="label">风险等级</span>
-                          <span class="value">{{ formatFieldValue(analysisResults.decision, ['风险等级', 'risk_level']) }}</span>
-                        </div>
-                        <div v-if="formatFieldValue(analysisResults.decision, ['技术面评分']) !== '--'" class="confidence-item">
-                          <span class="label">技术面</span>
-                          <span class="value">{{ formatPctField(analysisResults.decision, ['技术面评分']) }}%</span>
-                        </div>
-                        <div v-if="formatFieldValue(analysisResults.decision, ['基本面评分']) !== '--'" class="confidence-item">
-                          <span class="label">基本面</span>
-                          <span class="value">{{ formatPctField(analysisResults.decision, ['基本面评分']) }}%</span>
-                        </div>
-                        <div v-if="formatFieldValue(analysisResults.decision, ['情绪面评分']) !== '--'" class="confidence-item">
-                          <span class="label">情绪面</span>
-                          <span class="value">{{ formatPctField(analysisResults.decision, ['情绪面评分']) }}%</span>
-                        </div>
-                        <div v-if="formatFieldValue(analysisResults.decision, ['政策面评分']) !== '--'" class="confidence-item">
-                          <span class="label">政策面</span>
-                          <span class="value">{{ formatPctField(analysisResults.decision, ['政策面评分']) }}%</span>
+                          <span class="label">风险评分:</span>
+                          <span class="value">{{ (analysisResults.decision.risk_score * 100).toFixed(1) }}%</span>
+                          <el-tooltip content="基于历史数据的风险评估，实际风险可能更高" placement="top">
+                            <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
+                          </el-tooltip>
                         </div>
                       </div>
                     </div>
 
                     <div class="decision-reasoning">
                       <h5>分析依据:</h5>
-                      <p>{{ analysisResults.decision.reasoning || '详见下方详细分析报告' }}</p>
+                      <p>{{ analysisResults.decision.reasoning }}</p>
                       <el-alert type="info" :closable="false" style="margin-top: 12px;">
                         <template #default>
-                          <span style="font-size: 13px;">💡 以上分析基于AI模型对公开市场数据的解读，不构成投资建议，请结合自身风险承受能力独立决策。</span>
+                          <span style="font-size: 13px;">💡 以上分析基于AI模型对历史数据的处理，不构成投资建议，请结合自身情况独立决策。</span>
                         </template>
                       </el-alert>
                     </div>
                   </div>
                 </div>
 
-                <!-- 分析概览（从 analysisResults 顶层字段提取，若存在则展示） -->
-                <div v-if="analysisResults && (analysisResults.summary || analysisResults.recommendation)" class="overview-section">
-                  <h4>📊 分析要点</h4>
+                <!-- 分析概览 -->
+                <div v-if="analysisResults" class="overview-section">
+                  <h4>📊 分析概览</h4>
                   <div class="overview-card">
+  
                     <div v-if="analysisResults.summary" class="overview-summary">
                       <h5>分析摘要:</h5>
                       <p>{{ analysisResults.summary }}</p>
                     </div>
+
                     <div v-if="analysisResults.recommendation" class="overview-recommendation">
                       <h5>投资建议:</h5>
                       <p>{{ analysisResults.recommendation }}</p>
@@ -693,10 +552,6 @@
                     <el-icon><CreditCard /></el-icon>
                     一键模拟下单
                   </el-button>
-                  <el-button type="warning" @click="openDebateDrawer">
-                    <el-icon><ChatDotRound /></el-icon>
-                    查看辩论详情
-                  </el-button>
                   <el-dropdown trigger="click" @command="downloadReport">
                     <el-button type="primary">
                       <el-icon><Download /></el-icon>
@@ -739,16 +594,160 @@
         </el-row>
       </div>
     </div>
-    <!-- 辩论抽屉组件 -->
-    <DebateDrawer v-model:visible="debateDrawerVisible" :debate-data="debateData" />
+
+    <!-- 分析流程介绍 -->
+    <div class="pipeline-intro">
+      <!-- 第一部分：7位分析师团队 -->
+      <div class="pipeline-section">
+        <div class="section-header">
+          <h3>👥 7位分析师团队 · 并行研究</h3>
+          <p class="section-subtitle">7位AI分析师同时从不同维度研究股票，覆盖短线博弈到长线价值</p>
+        </div>
+        <div class="analyst-teams">
+          <!-- 短线博弈维度 -->
+          <div class="team-group">
+            <div class="team-label">⚡ 短线博弈</div>
+            <div class="team-cards">
+              <div class="analyst-chip analyst-chip--market">
+                <span class="chip-icon">📊</span>
+                <span class="chip-name">市场分析师</span>
+                <span class="chip-desc">技术指标 · 均线/KDJ/MACD</span>
+              </div>
+              <div class="analyst-chip analyst-chip--social">
+                <span class="chip-icon">💬</span>
+                <span class="chip-name">社交媒体分析师</span>
+                <span class="chip-desc">情绪拐点 · 散户逆向指标</span>
+              </div>
+              <div class="analyst-chip analyst-chip--fund">
+                <span class="chip-icon">💰</span>
+                <span class="chip-name">游资追踪师</span>
+                <span class="chip-desc">主力资金 · 龙虎榜 · 北向</span>
+              </div>
+              <div class="analyst-chip analyst-chip--unlock">
+                <span class="chip-icon">🔒</span>
+                <span class="chip-name">解禁追踪师</span>
+                <span class="chip-desc">限售股解禁 · 大股东减持</span>
+              </div>
+            </div>
+          </div>
+          <!-- 长线价值维度 -->
+          <div class="team-group">
+            <div class="team-label">💎 长线价值</div>
+            <div class="team-cards">
+              <div class="analyst-chip analyst-chip--fundamental">
+                <span class="chip-icon">💼</span>
+                <span class="chip-name">基本面分析师</span>
+                <span class="chip-desc">财务数据 · 护城河 · 内在价值</span>
+              </div>
+              <div class="analyst-chip analyst-chip--news">
+                <span class="chip-icon">📰</span>
+                <span class="chip-name">新闻分析师</span>
+                <span class="chip-desc">公告研报 · 事件冲击分析</span>
+              </div>
+              <div class="analyst-chip analyst-chip--policy">
+                <span class="chip-icon">🏛️</span>
+                <span class="chip-name">政策分析师</span>
+                <span class="chip-desc">产业政策 · 宏观调控 · 监管动向</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第二部分：辩论与决策流程 -->
+      <div class="pipeline-section section--debate">
+        <div class="section-header">
+          <h3>⚔️ 多空辩论 · 三方风控 · 最终决策</h3>
+          <p class="section-subtitle">研究团队通过对抗性辩论形成共识，风控团队从三个视角兜底，最终给出可操作的投资建议</p>
+        </div>
+
+        <!-- 辩论流程时间线 -->
+        <div class="debate-timeline">
+          <!-- 阶段1: 研究辩论 -->
+          <div class="timeline-phase">
+            <div class="phase-label">📋 研究辩论</div>
+            <div class="phase-flow">
+              <div class="debate-node node--bull">
+                <span class="node-icon">🐂</span>
+                <span class="node-name">看涨研究员</span>
+                <span class="node-desc">构建买入逻辑<br/>行业景气 · 业绩拐点 · 资金流入</span>
+              </div>
+              <div class="timeline-arrow">⚡ VS ⚡</div>
+              <div class="debate-node node--bear">
+                <span class="node-icon">🐻</span>
+                <span class="node-name">看跌研究员</span>
+                <span class="node-desc">识别做空风险<br/>宏观压力 · 业绩雷点 · 顶背离</span>
+              </div>
+              <div class="timeline-arrow">→</div>
+              <div class="debate-node node--debate">
+                <span class="node-icon">🎯</span>
+                <span class="node-name">多轮深度辩论</span>
+                <span class="node-desc">逐条反驳对方论据<br/>让逻辑更扎实</span>
+              </div>
+              <div class="timeline-arrow">→</div>
+              <div class="debate-node node--manager">
+                <span class="node-icon">👔</span>
+                <span class="node-name">研究经理</span>
+                <span class="node-desc">综合共识<br/>投资亮点 / 风险点 / 适用场景</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 阶段2: 交易策略 -->
+          <div class="timeline-phase phase--trade">
+            <div class="phase-label">📈 交易策略</div>
+            <div class="trade-node">
+              <span class="node-icon">💼</span>
+              <span class="node-name">交易员</span>
+              <span class="node-desc">制定具体策略：买入 / 持有 / 卖出 + 目标价位 + 仓位建议</span>
+            </div>
+          </div>
+
+          <!-- 阶段3: 三方风控 -->
+          <div class="timeline-phase">
+            <div class="phase-label">🛡️ 三方风控</div>
+            <div class="risk-perspectives">
+              <div class="risk-card risk-card--aggressive">
+                <span class="risk-icon">🔥</span>
+                <span class="risk-name">激进风险</span>
+                <span class="risk-desc">高仓位 · 高杠杆 · 快进快出</span>
+              </div>
+              <div class="risk-card risk-card--neutral">
+                <span class="risk-icon">⚖️</span>
+                <span class="risk-name">中性风险</span>
+                <span class="risk-desc">均衡仓位 · 标准止损 · 趋势跟随</span>
+              </div>
+              <div class="risk-card risk-card--conservative">
+                <span class="risk-icon">🛡️</span>
+                <span class="risk-name">保守风险</span>
+                <span class="risk-desc">轻仓 · 宽止损 · 长周期持有</span>
+              </div>
+            </div>
+            <div class="risk-manager">
+              <span class="node-icon">🎯</span>
+              <span class="node-name">风险经理</span>
+              <span class="node-desc">综合三方风控视角 → 止损位 / 仓位上限 / 持有周期</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 最终决策 -->
+        <div class="final-decision">
+          <div class="decision-label">📡 最终决策</div>
+          <div class="decision-options">
+            <div class="decision-chip decision-chip--buy">BUY</div>
+            <div class="decision-chip decision-chip--hold">HOLD</div>
+            <div class="decision-chip decision-chip--sell">SELL</div>
+          </div>
+          <p class="decision-desc">综合所有分析师报告、多空辩论、风控意见，输出最终交易信号与完整分析报告</p>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, onActivated, onDeactivated, computed, h } from 'vue'
-
-// 组件名称：用于 keep-alive 的 include 匹配
-defineOptions({ name: 'SingleAnalysis' })
+import { ref, reactive, onMounted, onUnmounted, computed, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElInputNumber } from 'element-plus'
 import {
@@ -764,7 +763,6 @@ import {
   Cpu,
   QuestionFilled,
   ArrowDown,
-  ChatDotRound,
 } from '@element-plus/icons-vue'
 import { analysisApi, type SingleAnalysisRequest } from '@/api/analysis'
 import { paperApi } from '@/api/paper'
@@ -773,10 +771,8 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { configApi } from '@/api/config'
 import DeepModelSelector from '@/components/DeepModelSelector.vue'
-import DebateDrawer from '@/components/DebateDrawer.vue'
-import { ANALYSTS, convertAnalystNamesToIds } from '@/constants/analysts'
+import { convertAnalystNamesToIds } from '@/constants/analysts'
 import { marked } from 'marked'
-import { recommendModels } from '@/api/modelCapabilities'
 import { validateStockCode, getStockCodeFormatHelp } from '@/utils/stockValidator'
 import { normalizeMarketForAnalysis, getMarketByStockCode } from '@/utils/market'
 
@@ -795,7 +791,6 @@ interface AnalysisForm {
   symbol: string
   market: MarketType
   analysisDate: Date
-  researchDepth: number
   selectedAnalysts: string[]
   includeSentiment: boolean
   includeRisk: boolean
@@ -815,8 +810,6 @@ const analysisStatus = ref('idle') // 'idle', 'running', 'completed', 'failed'
 const showResults = ref(false)
 const analysisResults = ref<any>(null)
 const activeReportTab = ref('') // 当前激活的报告标签页
-const debateDrawerVisible = ref(false)
-const debateData = ref<any>(null)
 const progressInfo = ref({
   progress: 0,
   currentStep: '',
@@ -865,12 +858,20 @@ const modelRecommendation = ref<{
 
 // 分析表单
 const analysisForm = reactive<AnalysisForm>({
-  stockCode: '',  // 保留用于表单绑定
-  symbol: '',     // 标准化后的代码
+  stockCode: '',
+  symbol: '',
   market: 'A股',
   analysisDate: new Date(),
-  researchDepth: 3, // 默认选中3级标准分析（推荐），将在 onMounted 中从用户偏好加载
-  selectedAnalysts: ['市场分析师', '基本面分析师', '新闻分析师', '情绪分析师', '技术分析师', '政策分析师', '游资追踪师'], // 将在 onMounted 中从用户偏好加载
+  // 默认启用全部 7 位分析师
+  selectedAnalysts: [
+    '市场分析师',
+    '社交媒体分析师',
+    '新闻分析师',
+    '基本面分析师',
+    '政策分析师',
+    '游资追踪师',
+    '解禁追踪师'
+  ],
   includeSentiment: true,
   includeRisk: true,
   language: 'zh-CN'
@@ -879,15 +880,6 @@ const analysisForm = reactive<AnalysisForm>({
 // 股票代码验证相关
 const stockCodeError = ref<string>('')
 const stockCodeHelp = ref<string>('')
-
-// 深度选项（5个级别，基于实际测试数据更新）
-const depthOptions = [
-  { icon: '⚡', name: '1级 - 快速分析', description: '基础数据概览，快速决策', time: '2-5分钟' },
-  { icon: '📈', name: '2级 - 基础分析', description: '常规投资决策', time: '3-6分钟' },
-  { icon: '🎯', name: '3级 - 标准分析', description: '技术+基本面，推荐', time: '4-8分钟' },
-  { icon: '🔍', name: '4级 - 深度分析', description: '多轮辩论，深度研究', time: '6-11分钟' },
-  { icon: '🏆', name: '5级 - 全面分析', description: '最全面的分析报告', time: '8-16分钟' }
-]
 
 // 禁用日期
 const disabledDate = (time: Date) => {
@@ -955,13 +947,10 @@ const fetchStockInfo = () => {
 }
 
 // 切换分析师
-const toggleAnalyst = (analystName: string) => {
-  const index = analysisForm.selectedAnalysts.indexOf(analystName)
-  if (index > -1) {
-    analysisForm.selectedAnalysts.splice(index, 1)
-  } else {
-    analysisForm.selectedAnalysts.push(analystName)
-  }
+// 已废弃：分析师默认全部启用，前端不提供勾选界面
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const toggleAnalyst = (_analystName: string) => {
+  // no-op
 }
 
 // 提交分析
@@ -983,10 +972,7 @@ const submitAnalysis = async () => {
   // 使用标准化后的代码
   analysisForm.symbol = validation.normalizedCode || stockCode.toUpperCase()
 
-  if (analysisForm.selectedAnalysts.length === 0) {
-    ElMessage.warning('请至少选择一个分析师')
-    return
-  }
+  // 默认启用全部 7 位分析师，无需选择校验
 
   submitting.value = true
 
@@ -998,11 +984,10 @@ const submitAnalysis = async () => {
 
     const request: SingleAnalysisRequest = {
       symbol: analysisForm.symbol,
-      stock_code: analysisForm.symbol,  // 兼容字段
+      stock_code: analysisForm.symbol,
       parameters: {
         market_type: analysisForm.market,
         analysis_date: analysisDate.toISOString().split('T')[0],
-        research_depth: getDepthDescription(analysisForm.researchDepth),
         selected_analysts: convertAnalystNamesToIds(analysisForm.selectedAnalysts),
         include_sentiment: analysisForm.includeSentiment,
         include_risk: analysisForm.includeRisk,
@@ -1290,155 +1275,13 @@ const restartAnalysis = () => {
 }
 
 
-// 通用字段提取辅助：从对象中按多个候选 key 依次取值
-const pickFieldValue = (obj: any, candidates: string[], fallback: any = null): any => {
-  if (!obj) return fallback
-  for (const k of candidates) {
-    const v = (obj as any)[k]
-    if (v !== undefined && v !== null && v !== '' && v !== 'N/A') return v
-  }
-  return fallback
-}
-
-// 格式化普通字段（优先中文 key，兼容英文 key）
-const formatFieldValue = (obj: any, candidates: string[]): string => {
-  const v = pickFieldValue(obj, candidates)
-  if (v === null || v === undefined || v === '') return '--'
-  if (typeof v === 'number') {
-    return Number.isInteger(v) ? String(v) : v.toFixed(2)
-  }
-  return String(v)
-}
-
-// 格式化为百分比（0~1 → 0%~100%）
-const formatPctField = (obj: any, candidates: string[]): string => {
-  const v = pickFieldValue(obj, candidates)
-  if (v === null || v === undefined || v === '' || v === '--') return '0'
-  const n = parseFloat(String(v))
-  if (isNaN(n)) return '0'
-  if (n > 1) return Math.round(n).toString()
-  return Math.round(n * 100).toString()
-}
-
-// 🔹 内容精炼函数：智能选择高价值句子
-const refineContent = (rawContent: string, maxLen: number = 260): string => {
-  if (!rawContent || typeof rawContent !== 'string') return ''
-  let text = rawContent.trim()
-  if (!text) return ''
-
-  // 1. 清理：去除 Markdown 标题、表格、分隔线
-  text = text.replace(/^[>#]{2,}\s*/gm, '')
-  text = text.replace(/^[#*]{1,3}\s*/gm, '')
-  text = text.replace(/\|[\s\S]*?\|/gm, '') // 移除表格
-  text = text.replace(/(?:---|\*{3,})/gm, '')
-  text = text.replace(/\*\*/g, '')
-
-  // 2. 按段落分割成段落数组
-  let paragraphs = text.split(/\n\s*\n/)
-  if (paragraphs.length === 1) {
-    // 没有空行分割，按句号分割
-    const sentences = text.split(/(?<=[。！？!?])/).filter(s => s.trim().length > 0)
-    paragraphs = sentences.length > 1 ? sentences : [text]
-  }
-
-  // 3. 过滤掉太短（去除无效内容（包含无效段落（删除
-  // 3. 评分后）-type
-  // 3. 评分后）：去除过的内容）：
-  // 3. 评分过后，保留有价值的句子
-  const valid_paragraphs = paragraphs.filter(p => {
-    const trimmed = p.trim()
-    if (trimmed.length < 5) return false
-    // 过滤掉"开始，获取内容" 是一个非常的内容
-    // 过滤掉明显的套话/模板文本去除短信息的内容
-    if (/^(好的|数据已|数据|以下|分析|基于)/i.test(trimmed.slice(0, 20)))
-      return false
-    return true
-  })
-
-  if (valid_paragraphs.length === 0) {
-    valid_paragraphs.push(paragraphs[0])
-  }
-
-  // 4. 对每个段落进行句子级精选，确保不超过 maxLen 字符
-  const result_parts: string[] = []
-  let current_len = 0
-
-  for (const para of valid_paragraphs) {
-    const trimmed = para.trim()
-    if (current_len + trimmed.length <= maxLen) {
-      result_parts.push(trimmed)
-      current_len += trimmed.length + 2
-    } else {
-      // 找到最后一个句号，保留句子级精选句子级句子结束处的前一句，确保句子完整
-      const remaining = maxLen - current_len - 2
-      if (remaining > 30) {
-        // 智能截断到最后一个中文句号
-        const lastPeriod = trimmed.lastIndexOf('。', remaining)
-        const cutPos = Math.max(lastPeriod, trimmed.indexOf('。'))
-        const cutLen = Math.min(trimmed.length, cutPos === -1 ? remaining : cutPos + 1)
-        result_parts.push(trimmed.substring(0, cutLen))
-      }
-      break
-    }
-  }
-
-  // 5. 合并并确保总长度限制
-  const result = result_parts.join('；')
-  return result.length > maxLen ? result.substring(0, maxLen) + '...' : result
-}
-
-// 🔹 获取情绪分析内容（从多个字段提取并精炼
-const getSentimentContent = (results: any): string => {
-  if (!results) return ''
-  const reports = results.reports || results.state || {}
-  const decision = results.decision || {}
-
-  // 优先级：决策中的情绪字段 > sentiment_report
-  const candidates = [
-    decision.情绪分析 || decision.sentiment_summary || '',
-    reports.sentiment_report || '',
-    reports.news_report || '',
-    reports.market_report || ''
-  ]
-
-  for (const c of candidates) {
-    if (c && c.length > 10) {
-      return refineContent(c, 260)
-    }
-  }
-  return ''
-}
-
-// 🔹 获取精炼后的决策字段
-const getRefinedField = (results: any, field: string, maxLen: number = 260): string => {
-  if (!results || !results.decision) return ''
-  const value = results.decision[field]
-  if (!value) return ''
-  return refineContent(String(value), maxLen)
-}
-
-// 获取操作标签类型（支持完整 5 档中文评级）
+// 获取操作标签类型
 const getActionTagType = (action: string): 'primary' | 'success' | 'warning' | 'info' | 'danger' => {
-  if (!action) return 'info'
-  // 按关键字匹配（支持 "强烈买入" / "买入" / "减仓" / "卖出" 等）
-  if (action.includes('强烈买入') || action.includes('强力买入')) return 'success'
-  if (action.includes('买入') || action.includes('BUY') || action.includes('buy')) return 'success'
-  if (action.includes('卖出') || action.includes('SELL') || action.includes('sell')) return 'danger'
-  if (action.includes('减仓') || action.includes('减持')) return 'danger'
-  if (action.includes('持有') || action.includes('HOLD') || action.includes('hold')) return 'warning'
-  if (action.includes('观望') || action.includes('中性')) return 'info'
-  // 兜底映射表
   const actionTypes: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     '买入': 'success',
     '持有': 'warning',
     '卖出': 'danger',
-    '观望': 'info',
-    '强烈买入': 'success',
-    '减仓': 'danger',
-    '中性': 'info',
-    'BUY': 'success',
-    'HOLD': 'warning',
-    'SELL': 'danger',
+    '观望': 'info'
   }
   return actionTypes[action] || 'info'
 }
@@ -1463,14 +1306,14 @@ const getAnalysisReports = (data: any) => {
 
   // 定义报告映射（按照完整的分析流程顺序）
   const reportMappings = [
-    // 分析师团队 (7个) - A股特有：政策、游资、解禁
+    // 分析师团队 (7个)
     { key: 'market_report', title: '📈 市场技术分析', category: '分析师团队' },
     { key: 'sentiment_report', title: '💭 市场情绪分析', category: '分析师团队' },
     { key: 'news_report', title: '📰 新闻事件分析', category: '分析师团队' },
     { key: 'fundamentals_report', title: '💰 基本面分析', category: '分析师团队' },
-    { key: 'policy_report', title: '🏛️ 政策分析师', category: '分析师团队' },
-    { key: 'hot_money_report', title: '🔥 游资追踪师', category: '分析师团队' },
-    { key: 'lockup_report', title: '🔒 解禁监控师', category: '分析师团队' },
+    { key: 'policy_report', title: '📜 政策分析', category: '分析师团队' },
+    { key: 'hot_money_report', title: '🔥 游资追踪', category: '分析师团队' },
+    { key: 'lockup_report', title: '🔓 解禁追踪', category: '分析师团队' },
 
     // 研究团队 (3个)
     { key: 'bull_researcher', title: '🐂 多头研究员', category: '研究团队' },
@@ -1689,86 +1532,6 @@ const getFileExtension = (format: string): string => {
   return extensions[format] || 'txt'
 }
 
-// 辅助函数：将字符串内容转换为 DebateRoundItem 数组
-const convertToDebateRounds = (content: string | string[] | any[] | undefined, index: number = 1): any[] => {
-  if (!content) return []
-  if (Array.isArray(content)) {
-    return content.map((item, i) => {
-      if (typeof item === 'string') {
-        return { round: i + 1, content: item, timestamp: '' }
-      } else if (item && typeof item === 'object') {
-        return { round: item.round || i + 1, content: item.content || JSON.stringify(item), timestamp: item.timestamp || '' }
-      }
-      return { round: i + 1, content: String(item), timestamp: '' }
-    })
-  }
-  if (typeof content === 'string') {
-    // 如果是字符串，尝试按 "Round" 或 "第X轮" 分割为多轮
-    let rounds: string[] = []
-    const roundPatterns = [
-      /\n\s*(第\s*\d+\s*轮|Round\s*\d+)\s*[:：]?\s*\n/gi,
-      /\n\s*(--+\s*\n|==+\s*\n)/g
-    ]
-
-    let splitted = false
-    for (const pattern of roundPatterns) {
-      if (pattern.test(content)) {
-        rounds = content.split(pattern).filter((r: string) => r.trim().length > 10)
-        splitted = true
-        break
-      }
-    }
-
-    if (!splitted) {
-      rounds = [content]
-    }
-
-    return rounds.map((text: string, i: number) => ({
-      round: i + 1,
-      content: text.trim(),
-      timestamp: ''
-    }))
-  }
-  return []
-}
-
-// 打开辩论抽屉
-const openDebateDrawer = () => {
-  // 从 reports 中提取辩论数据
-  const reports = analysisResults.value?.reports || {}
-  const state = analysisResults.value?.state || {}
-
-  debateData.value = {
-    // 多头研究员历史
-    bull_history: convertToDebateRounds(reports.bull_researcher || state.bull_researcher, 1),
-    // 空头研究员历史
-    bear_history: convertToDebateRounds(reports.bear_researcher || state.bear_researcher, 2),
-    // 激进分析师历史
-    risky_history: convertToDebateRounds(reports.risky_analyst || state.risky_analyst, 3),
-    // 保守分析师历史
-    safe_history: convertToDebateRounds(reports.safe_analyst || state.safe_analyst, 4),
-    // 中性分析师历史
-    neutral_history: convertToDebateRounds(reports.neutral_analyst || state.neutral_analyst, 5),
-    // 研究总监裁决
-    judge_decision: reports.research_team_decision || state.research_team_decision || '',
-    // 组合经理最终决策
-    final_decision: reports.risk_management_decision || state.risk_management_decision || ''
-  }
-
-  // 调试信息
-  console.log('🔥 辩论抽屉数据已加载:', {
-    bull_len: debateData.value?.bull_history?.length || 0,
-    bear_len: debateData.value?.bear_history?.length || 0,
-    risky_len: debateData.value?.risky_history?.length || 0,
-    safe_len: debateData.value?.safe_history?.length || 0,
-    neutral_len: debateData.value?.neutral_history?.length || 0,
-    has_judge: !!debateData.value?.judge_decision,
-    has_final: !!debateData.value?.final_decision
-  })
-
-  debateDrawerVisible.value = true
-}
-
 // 解析投资建议
 const parseRecommendation = () => {
   if (!analysisResults.value) return null
@@ -1795,17 +1558,11 @@ const parseRecommendation = () => {
   if (!action) return null
 
   // 解析目标价格
-  // 🔥 严格模式：只匹配明确的"目标价"或"目标价格"关键词，不匹配通用的"价格"或"当前价格"
-  // 排除：止损价格、当前价格、参考价格 等
   let targetPrice: number | null = null
-  const priceMatch = allText.match(/目标价[格]?[：:]\s*([0-9.]+)/)
+  const priceMatch = allText.match(/目标价[格]?[：:]\s*([0-9.]+)/) ||
+                     allText.match(/价格[：:]\s*([0-9.]+)/)
   if (priceMatch) {
-    const extracted = parseFloat(priceMatch[1])
-    // 验证：只接受合理范围内的价格（中国A股一般在 1-1000 元）
-    // 排除明显不合理的捏造价格（如 15.0 这种不合理的持有目标）
-    if (extracted > 0 && extracted < 10000) {
-      targetPrice = extracted
-    }
+    targetPrice = parseFloat(priceMatch[1])
   }
 
   // 解析置信度
@@ -2052,31 +1809,6 @@ onUnmounted(() => {
   }
 })
 
-// keep-alive 组件被缓存时：保持轮询，但记录状态
-onDeactivated(() => {
-  console.log('⏸️ 单股分析组件被缓存 (deactivated)')
-})
-
-// keep-alive 组件被重新激活：恢复轮询状态
-onActivated(() => {
-  console.log('▶️ 单股分析组件被激活 (activated)')
-  // 如果有正在运行的任务，立即查询一次状态
-  if (currentTaskId.value && analysisStatus.value === 'running') {
-    // 确保轮询仍在进行
-    startPollingTaskStatus()
-    // 立即查询一次状态
-    setTimeout(async () => {
-      try {
-        const response = await analysisApi.getTaskStatus(currentTaskId.value)
-        const status = response.data
-        updateProgressInfo(status)
-      } catch (e) {
-        console.error('激活时查询任务状态失败:', e)
-      }
-    }, 300)
-  }
-})
-
 // 页面可见性变化时的处理
 const handleVisibilityChange = () => {
   if (document.hidden) {
@@ -2104,12 +1836,6 @@ const handleVisibilityChange = () => {
 
 // 监听页面可见性变化
 document.addEventListener('visibilitychange', handleVisibilityChange)
-
-// 获取深度描述
-const getDepthDescription = (depth: number) => {
-  const descriptions = ['快速', '基础', '标准', '深度', '全面']
-  return descriptions[depth - 1] || '标准'
-}
 
 // 获取进度条状态
 const getProgressStatus = () => {
@@ -2390,90 +2116,17 @@ const isQuickAnalysisRole = (roles: string[] | undefined): boolean => {
 }
 
 /**
- * 判断是否适合深度分析
- */
-/**
- * 显示分析深度的模型推荐说明
+ * 显示模型配置说明
  */
 const checkModelSuitability = async () => {
-  const depthNames: Record<number, string> = {
-    1: '快速',
-    2: '基础',
-    3: '标准',
-    4: '深度',
-    5: '全面'
-  }
-  const depthName = depthNames[analysisForm.researchDepth] || '标准'
-
   try {
-    // 获取推荐模型
-    const recommendRes = await recommendModels(depthName)
-    const responseData = recommendRes?.data?.data
-
-    if (responseData) {
-      const quickModel = responseData.quick_model || '未知'
-      const deepModel = responseData.deep_model || '未知'
-
-      // 获取模型的显示名称
-      const quickModelInfo = availableModels.value.find(m => m.model_name === quickModel)
-      const deepModelInfo = availableModels.value.find(m => m.model_name === deepModel)
-
-      const quickDisplayName = quickModelInfo?.model_display_name || quickModel
-      const deepDisplayName = deepModelInfo?.model_display_name || deepModel
-
-      // 获取推荐理由
-      const reason = responseData.reason || ''
-
-      // 构建推荐说明
-      const depthDescriptions: Record<number, string> = {
-        1: '快速浏览，获取基本信息',
-        2: '基础分析，了解主要指标',
-        3: '标准分析，全面评估股票',
-        4: '深度研究，挖掘投资机会',
-        5: '全面分析，专业投资决策'
-      }
-
-      const message = `${depthDescriptions[analysisForm.researchDepth] || '标准分析'}\n\n推荐模型配置：\n• 快速模型：${quickDisplayName}\n• 深度模型：${deepDisplayName}\n\n${reason}`
-
-      modelRecommendation.value = {
-        title: '💡 模型推荐',
-        message,
-        type: 'info',
-        quickModel,
-        deepModel
-      }
-    } else {
-      // 如果没有推荐数据，显示通用说明
-      const generalDescriptions: Record<number, string> = {
-        1: '快速分析：使用基础模型即可，注重速度和成本',
-        2: '基础分析：快速模型用基础级，深度模型用标准级',
-        3: '标准分析：快速模型用基础级，深度模型用标准级以上',
-        4: '深度分析：快速模型用标准级，深度模型用高级以上，需要推理能力',
-        5: '全面分析：快速模型用标准级，深度模型用专业级以上，强推理能力'
-      }
-
-      modelRecommendation.value = {
-        title: '💡 模型推荐',
-        message: generalDescriptions[analysisForm.researchDepth] || generalDescriptions[3],
-        type: 'info'
-      }
-    }
-  } catch (error) {
-    console.error('获取模型推荐失败:', error)
-    // 显示通用说明
-    const generalDescriptions: Record<number, string> = {
-      1: '快速分析：使用基础模型即可，注重速度和成本',
-      2: '基础分析：快速模型用基础级，深度模型用标准级',
-      3: '标准分析：快速模型用基础级，深度模型用标准级以上',
-      4: '深度分析：快速模型用标准级，深度模型用高级以上，需要推理能力',
-      5: '全面分析：快速模型用标准级，深度模型用专业级以上，强推理能力'
-    }
-
     modelRecommendation.value = {
-      title: '💡 模型推荐',
-      message: generalDescriptions[analysisForm.researchDepth] || generalDescriptions[3],
+      title: '💡 模型配置',
+      message: `当前模型配置：\n• 快速模型：${modelSettings.value.quickAnalysisModel || '未设置'}\n• 深度模型：${modelSettings.value.deepAnalysisModel || '未设置'}`,
       type: 'info'
     }
+  } catch (error) {
+    console.error('检查模型配置失败:', error)
   }
 }
 
@@ -2489,12 +2142,6 @@ const applyRecommendedModels = () => {
     ElMessage.success('已应用推荐的模型配置')
   }
 }
-
-// 监听分析深度变化
-import { watch } from 'vue'
-watch(() => analysisForm.researchDepth, () => {
-  checkModelSuitability()
-})
 
 // 监听模型选择变化
 watch([() => modelSettings.value.quickAnalysisModel, () => modelSettings.value.deepAnalysisModel], () => {
@@ -2517,11 +2164,6 @@ onMounted(async () => {
       analysisForm.market = userPrefs.default_market as MarketType
     }
 
-    // 加载默认分析深度（转换为数字）
-    if (userPrefs.default_depth) {
-      analysisForm.researchDepth = parseInt(userPrefs.default_depth)
-    }
-
     // 加载默认分析师
     if (userPrefs.default_analysts && userPrefs.default_analysts.length > 0) {
       analysisForm.selectedAnalysts = [...userPrefs.default_analysts]
@@ -2529,16 +2171,12 @@ onMounted(async () => {
 
     console.log('✅ 已加载用户偏好设置:', {
       market: analysisForm.market,
-      depth: analysisForm.researchDepth,
       analysts: analysisForm.selectedAnalysts
     })
   } else {
     // 降级到 appStore.preferences
     if (appStore.preferences.defaultMarket) {
       analysisForm.market = appStore.preferences.defaultMarket as MarketType
-    }
-    if (appStore.preferences.defaultDepth) {
-      analysisForm.researchDepth = parseInt(appStore.preferences.defaultDepth)
     }
     console.log('✅ 已加载应用偏好设置（降级）')
   }
@@ -2593,7 +2231,7 @@ onMounted(async () => {
         align-items: center;
         font-size: 32px;
         font-weight: 700;
-        color: #1a202c;
+        color: var(--el-text-color-primary);
         margin: 0 0 8px 0;
 
         .title-icon {
@@ -2604,13 +2242,510 @@ onMounted(async () => {
 
       .page-description {
         font-size: 16px;
-        color: #64748b;
+        color: var(--el-text-color-secondary);
         margin: 0;
       }
     }
   }
 
+  // 分析流程介绍面板（美化版）
+  .pipeline-intro {
+    margin-top: 32px;
+    margin-bottom: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+
+    .pipeline-section {
+      background: var(--el-bg-color);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+
+      .section-header {
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--el-border-color);
+
+        h3 {
+          margin: 0 0 8px 0;
+          font-size: 18px;
+          font-weight: 700;
+          color: var(--el-text-color-primary);
+        }
+
+        .section-subtitle {
+          margin: 0;
+          font-size: 14px;
+          color: var(--el-text-color-secondary);
+        }
+      }
+
+      // 分析师团队样式
+      .analyst-teams {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+
+        .team-group {
+          .team-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--el-text-color-secondary);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+
+          .team-cards {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+          }
+        }
+
+        .analyst-chip {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 16px;
+          border-radius: 10px;
+          background: var(--el-fill-color-light);
+          border: 1px solid var(--el-border-color);
+          transition: all 0.2s ease;
+
+          &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+          }
+
+          .chip-icon {
+            font-size: 18px;
+          }
+
+          .chip-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--el-text-color-primary);
+          }
+
+          .chip-desc {
+            font-size: 12px;
+            color: var(--el-text-color-secondary);
+          }
+
+          // 短线博弈配色
+          &--market {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-color: #fbbf24;
+            .chip-icon { font-size: 20px; }
+            .chip-name { color: #92400e; }
+            .chip-desc { color: #b45309; }
+          }
+          &--social {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            border-color: #60a5fa;
+            .chip-name { color: #1e40af; }
+            .chip-desc { color: #2563eb; }
+          }
+          &--fund {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            border-color: #34d399;
+            .chip-name { color: #065f46; }
+            .chip-desc { color: #059669; }
+          }
+          &--unlock {
+            background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%);
+            border-color: #f472b6;
+            .chip-name { color: #9d174d; }
+            .chip-desc { color: #be185d; }
+          }
+          // 长线价值配色
+          &--fundamental {
+            background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+            border-color: #818cf8;
+            .chip-name { color: #3730a3; }
+            .chip-desc { color: #4f46e5; }
+          }
+          &--news {
+            background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+            border-color: #a78bfa;
+            .chip-name { color: #6b21a8; }
+            .chip-desc { color: #9333ea; }
+          }
+          &--policy {
+            background: linear-gradient(135deg, #ccfbf1 0%, #99f6e4 100%);
+            border-color: #2dd4bf;
+            .chip-name { color: #115e59; }
+            .chip-desc { color: #0d9488; }
+          }
+        }
+      }
+
+      // 暗色模式适配
+      @media (prefers-color-scheme: dark) {
+        .analyst-chip {
+          &--market {
+            background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+            border-color: #d97706;
+            .chip-name { color: #fef3c7; }
+            .chip-desc { color: #fde68a; }
+          }
+          &--social {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            border-color: #3b82f6;
+            .chip-name { color: #dbeafe; }
+            .chip-desc { color: #bfdbfe; }
+          }
+          &--fund {
+            background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
+            border-color: #10b981;
+            .chip-name { color: #d1fae5; }
+            .chip-desc { color: #a7f3d0; }
+          }
+          &--unlock {
+            background: linear-gradient(135deg, #831843 0%, #9d174d 100%);
+            border-color: #ec4899;
+            .chip-name { color: #fce7f3; }
+            .chip-desc { color: #fbcfe8; }
+          }
+          &--fundamental {
+            background: linear-gradient(135deg, #312e81 0%, #3730a3 100%);
+            border-color: #6366f1;
+            .chip-name { color: #e0e7ff; }
+            .chip-desc { color: #c7d2fe; }
+          }
+          &--news {
+            background: linear-gradient(135deg, #581c87 0%, #6b21a8 100%);
+            border-color: #a855f7;
+            .chip-name { color: #f3e8ff; }
+            .chip-desc { color: #e9d5ff; }
+          }
+          &--policy {
+            background: linear-gradient(135deg, #134e4a 0%, #115e59 100%);
+            border-color: #14b8a6;
+            .chip-name { color: #ccfbf1; }
+            .chip-desc { color: #99f6e4; }
+          }
+        }
+      }
+
+      // 辩论流程样式
+      .section--debate {
+        background: var(--el-bg-color);
+      }
+
+      .debate-timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+
+        .timeline-phase {
+          background: var(--el-bg-color);
+          border-radius: 12px;
+          padding: 16px;
+          border: 1px solid var(--el-border-color);
+
+          .phase-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--el-text-color-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+          }
+
+          .phase-flow {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+
+          &.phase--trade {
+            background: linear-gradient(135deg, #fef3c7 0%, #fff7ed 100%);
+            border-color: #fbbf24;
+          }
+        }
+
+        .debate-node {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 12px 16px;
+          border-radius: 10px;
+          min-width: 100px;
+          text-align: center;
+
+          .node-icon {
+            font-size: 24px;
+            margin-bottom: 6px;
+          }
+
+          .node-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--el-text-color-primary);
+            margin-bottom: 4px;
+          }
+
+          .node-desc {
+            font-size: 11px;
+            color: var(--el-text-color-secondary);
+            line-height: 1.4;
+          }
+
+          // 节点配色
+          &.node--bull {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            border: 1px solid #34d399;
+            .node-name { color: #065f46; }
+            .node-desc { color: #059669; }
+          }
+          &.node--bear {
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            border: 1px solid #f87171;
+            .node-name { color: #991b1b; }
+            .node-desc { color: #dc2626; }
+          }
+          &.node--debate {
+            background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+            border: 1px solid #a78bfa;
+            .node-name { color: #5b21b6; }
+            .node-desc { color: #7c3aed; }
+          }
+          &.node--manager {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            border: 1px solid #60a5fa;
+            .node-name { color: #1e40af; }
+            .node-desc { color: #2563eb; }
+          }
+        }
+
+        .timeline-arrow {
+          font-size: 16px;
+          color: #94a3b8;
+          font-weight: 700;
+
+          &--vs {
+            color: #ef4444;
+          }
+        }
+
+        .trade-node {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 16px;
+
+          .node-icon { font-size: 24px; }
+          .node-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #92400e;
+          }
+          .node-desc {
+            font-size: 12px;
+            color: #a16207;
+          }
+        }
+
+        .risk-perspectives {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+          margin-bottom: 12px;
+
+          .risk-card {
+            padding: 12px;
+            border-radius: 10px;
+            text-align: center;
+
+            .risk-icon {
+              font-size: 20px;
+              display: block;
+              margin-bottom: 6px;
+            }
+
+            .risk-name {
+              font-size: 13px;
+              font-weight: 600;
+              display: block;
+              margin-bottom: 4px;
+            }
+
+            .risk-desc {
+              font-size: 11px;
+              opacity: 0.8;
+            }
+
+            &.risk-card--aggressive {
+              background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+              color: #991b1b;
+            }
+            &.risk-card--neutral {
+              background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+              color: #92400e;
+            }
+            &.risk-card--conservative {
+              background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+              color: #3730a3;
+            }
+          }
+        }
+
+        .risk-manager {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 12px 16px;
+          background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%);
+          border-radius: 10px;
+          border: 1px solid #f472b6;
+
+          .node-icon { font-size: 20px; }
+          .node-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #9d174d;
+          }
+          .node-desc {
+            font-size: 12px;
+            color: #be185d;
+          }
+        }
+
+        // 暗色模式适配
+        @media (prefers-color-scheme: dark) {
+          .debate-node {
+            &.node--bull {
+              background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
+              border-color: #10b981;
+              .node-name { color: #d1fae5; }
+              .node-desc { color: #a7f3d0; }
+            }
+            &.node--bear {
+              background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+              border-color: #ef4444;
+              .node-name { color: #fee2e2; }
+              .node-desc { color: #fecaca; }
+            }
+            &.node--debate {
+              background: linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%);
+              border-color: #8b5cf6;
+              .node-name { color: #ede9fe; }
+              .node-desc { color: #ddd6fe; }
+            }
+            &.node--manager {
+              background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+              border-color: #3b82f6;
+              .node-name { color: #dbeafe; }
+              .node-desc { color: #bfdbfe; }
+            }
+          }
+
+          .timeline-arrow {
+            color: #64748b;
+            &--vs { color: #f87171; }
+          }
+
+          .trade-node {
+            .node-name { color: #fef3c7; }
+            .node-desc { color: #fde68a; }
+          }
+
+          .risk-perspectives .risk-card {
+            &.risk-card--aggressive {
+              background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+              color: #fee2e2;
+            }
+            &.risk-card--neutral {
+              background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+              color: #fef3c7;
+            }
+            &.risk-card--conservative {
+              background: linear-gradient(135deg, #312e81 0%, #3730a3 100%);
+              color: #e0e7ff;
+            }
+          }
+
+          .risk-manager {
+            background: linear-gradient(135deg, #831843 0%, #9d174d 100%);
+            border-color: #ec4899;
+            .node-name { color: #fce7f3; }
+            .node-desc { color: #fbcfe8; }
+          }
+        }
+      }
+
+      // 最终决策样式
+      .final-decision {
+        background: linear-gradient(135deg, #1e3a8a 0%, #312e81 100%);
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+
+        .decision-label {
+          font-size: 14px;
+          font-weight: 600;
+          color: #fbbf24;
+          margin-bottom: 12px;
+        }
+
+        .decision-options {
+          display: flex;
+          justify-content: center;
+          gap: 16px;
+          margin-bottom: 12px;
+        }
+
+        .decision-chip {
+          padding: 8px 24px;
+          border-radius: 8px;
+          font-size: 16px;
+          font-weight: 700;
+          letter-spacing: 1px;
+
+          &.decision-chip--buy {
+            background: #10b981;
+            color: white;
+          }
+          &.decision-chip--hold {
+            background: #f59e0b;
+            color: #1a202c;
+          }
+          &.decision-chip--sell {
+            background: #ef4444;
+            color: white;
+          }
+        }
+
+        .decision-desc {
+          margin: 0;
+          font-size: 13px;
+          color: #cbd5e1;
+        }
+      }
+    }
+  }
+
   .analysis-container {
+    // 让左右两侧卡片高度一致
+    .form-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+    }
+
+    .form-col {
+      display: flex;
+      flex-direction: column;
+
+      .el-card {
+        flex: 1;
+      }
+    }
+
     .main-form-card, .config-card {
       border-radius: 16px;
       border: none;
@@ -2650,10 +2785,10 @@ onMounted(async () => {
         .section-title {
           font-size: 16px;
           font-weight: 600;
-          color: #1a202c;
+          color: var(--el-text-color-primary);
           margin: 0 0 16px 0;
           padding-bottom: 8px;
-          border-bottom: 2px solid #e2e8f0;
+          border-bottom: 2px solid var(--el-border-color);
         }
       }
 
@@ -2695,137 +2830,6 @@ onMounted(async () => {
           font-size: 14px;
         }
       }
-
-      .depth-selector {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 12px;
-
-        .depth-option {
-          display: flex;
-          align-items: center;
-          padding: 16px;
-          border: 2px solid #e2e8f0;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.3s ease;
-
-          &:hover {
-            border-color: #3b82f6;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-          }
-
-          &.active {
-            border-color: #3b82f6;
-            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-            color: #1e40af;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
-          }
-
-          .depth-icon {
-            font-size: 24px;
-            margin-right: 12px;
-          }
-
-          .depth-info {
-            .depth-name {
-              font-weight: 600;
-              margin-bottom: 4px;
-            }
-
-            .depth-desc {
-              font-size: 12px;
-              opacity: 0.8;
-              margin-bottom: 2px;
-            }
-
-            .depth-time {
-              font-size: 11px;
-              opacity: 0.7;
-            }
-          }
-        }
-      }
-
-      .analysts-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 16px;
-
-        .analyst-card {
-          display: flex;
-          align-items: center;
-          padding: 16px;
-          border: 2px solid #e2e8f0;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.3s ease;
-
-          &:hover {
-            border-color: #3b82f6;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-          }
-
-          &.active {
-            border-color: #3b82f6;
-            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-            color: #1e40af;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
-          }
-
-          &.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-
-            &:hover {
-              transform: none;
-              box-shadow: none;
-              border-color: #e2e8f0;
-            }
-          }
-
-          .analyst-avatar {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 16px;
-            font-size: 20px;
-          }
-
-          .analyst-content {
-            flex: 1;
-
-            .analyst-name {
-              font-weight: 600;
-              margin-bottom: 4px;
-            }
-
-            .analyst-desc {
-              font-size: 12px;
-              opacity: 0.8;
-            }
-          }
-
-          .analyst-check {
-            .check-icon {
-              font-size: 20px;
-              color: #3b82f6;
-            }
-          }
-
-          &.active .analyst-check .check-icon {
-            color: #1e40af;
-          }
-        }
-      }
     }
 
     .config-card {
@@ -2836,7 +2840,7 @@ onMounted(async () => {
           .config-title {
             font-size: 14px;
             font-weight: 600;
-            color: #1a202c;
+            color: var(--el-text-color-primary);
             margin: 0 0 12px 0;
             display: flex;
             align-items: center;
@@ -2853,10 +2857,10 @@ onMounted(async () => {
                 justify-content: space-between;
                 margin-bottom: 8px;
                 font-size: 13px;
-                color: #374151;
+                color: var(--el-text-color-regular);
 
                 .help-icon {
-                  color: #9ca3af;
+                  color: var(--el-text-color-secondary);
                   cursor: help;
                 }
               }
@@ -2869,7 +2873,7 @@ onMounted(async () => {
               align-items: center;
               justify-content: space-between;
               padding: 12px 0;
-              border-bottom: 1px solid #f3f4f6;
+              border-bottom: 1px solid var(--el-border-color-lighter);
 
               &:last-child {
                 border-bottom: none;
@@ -2879,14 +2883,14 @@ onMounted(async () => {
                 .option-name {
                   font-size: 14px;
                   font-weight: 500;
-                  color: #374151;
+                  color: var(--el-text-color-regular);
                   display: block;
                   margin-bottom: 2px;
                 }
 
                 .option-desc {
                   font-size: 12px;
-                  color: #6b7280;
+                  color: var(--el-text-color-secondary);
                 }
               }
             }
@@ -3193,7 +3197,7 @@ onMounted(async () => {
 
 .progress-card .progress-header h4 {
   margin: 0;
-  color: #1f2937;
+  color: var(--el-text-color-primary);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3284,7 +3288,7 @@ onMounted(async () => {
   gap: 8px;
   font-size: 16px;
   font-weight: 600;
-  color: #1e40af;
+  color: var(--el-color-primary);
   margin-bottom: 8px;
 }
 
@@ -3294,7 +3298,7 @@ onMounted(async () => {
 
 .task-description {
   font-size: 14px;
-  color: #1e40af;
+  color: var(--el-color-primary);
   line-height: 1.5;
 }
 
@@ -3308,7 +3312,7 @@ onMounted(async () => {
 
 .steps-title {
   margin: 0 0 16px 0;
-  color: #1e293b;
+  color: var(--el-text-color-primary);
   font-size: 16px;
   font-weight: 600;
 }
@@ -3331,7 +3335,7 @@ onMounted(async () => {
 
 .results-card .results-header h3 {
   margin: 0;
-  color: #1f2937;
+  color: var(--el-text-color-primary);
 }
 
 .results-card .result-meta {
@@ -3411,7 +3415,7 @@ onMounted(async () => {
 }
 
 .decision-section h4 {
-  color: #1f2937;
+  color: var(--el-text-color-primary);
   margin-bottom: 16px;
 }
 
@@ -3437,7 +3441,7 @@ onMounted(async () => {
 
 .decision-action .label {
   font-weight: 600;
-  color: #374151;
+  color: var(--el-text-color-regular);
 }
 
 .decision-metrics {
@@ -3453,7 +3457,7 @@ onMounted(async () => {
 
 .metric-item .label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--el-text-color-secondary);
   margin-bottom: 4px;
 }
 
@@ -3461,205 +3465,6 @@ onMounted(async () => {
   font-size: 16px;
   font-weight: 600;
   color: var(--el-text-color-primary);
-}
-
-/* 🔹 核心洞察卡片（6 张彩色卡片 + 可选持仓周期） */
-.decision-insights {
-  margin-top: 16px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-}
-
-@media (max-width: 900px) {
-  .decision-insights {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 600px) {
-  .decision-insights {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* 通用卡片样式 */
-.insight-card {
-  position: relative;
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  transition: all 0.25s ease;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-height: 130px;
-}
-
-.insight-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  opacity: 0.8;
-}
-
-.insight-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
-}
-
-.insight-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.insight-icon {
-  font-size: 20px;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  font-weight: 600;
-}
-
-.insight-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.insight-card-body {
-  font-size: 13px;
-  line-height: 1.75;
-  color: #374151;
-  flex: 1;
-  word-break: break-word;
-  white-space: pre-wrap;
-}
-
-/* 每张卡片的专属配色 */
-.insight-card.insight-core {
-  background: linear-gradient(135deg, #fffbeb 0%, #ffffff 80%);
-  border-color: #fde68a;
-}
-.insight-card.insight-core::before { background: #f59e0b; }
-.insight-card.insight-core .insight-icon { background: #fef3c7; color: #f59e0b; }
-.insight-card.insight-core .insight-title { color: #b45309; }
-
-.insight-card.insight-investment {
-  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 80%);
-  border-color: #bfdbfe;
-}
-.insight-card.insight-investment::before { background: #3b82f6; }
-.insight-card.insight-investment .insight-icon { background: #dbeafe; color: #3b82f6; }
-.insight-card.insight-investment .insight-title { color: #1d4ed8; }
-
-.insight-card.insight-sentiment {
-  background: linear-gradient(135deg, #fdf2f8 0%, #ffffff 80%);
-  border-color: #fbcfe8;
-}
-.insight-card.insight-sentiment::before { background: #ec4899; }
-.insight-card.insight-sentiment .insight-icon { background: #fce7f3; color: #ec4899; }
-.insight-card.insight-sentiment .insight-title { color: #be185d; }
-
-.insight-card.insight-trend {
-  background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 80%);
-  border-color: #bbf7d0;
-}
-.insight-card.insight-trend::before { background: #10b981; }
-.insight-card.insight-trend .insight-icon { background: #d1fae5; color: #10b981; }
-.insight-card.insight-trend .insight-title { color: #047857; }
-
-.insight-card.insight-strategy {
-  background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 80%);
-  border-color: #ddd6fe;
-}
-.insight-card.insight-strategy::before { background: #8b5cf6; }
-.insight-card.insight-strategy .insight-icon { background: #ede9fe; color: #8b5cf6; }
-.insight-card.insight-strategy .insight-title { color: #6d28d9; }
-
-.insight-card.insight-risk {
-  background: linear-gradient(135deg, #fef2f2 0%, #ffffff 80%);
-  border-color: #fecaca;
-}
-.insight-card.insight-risk::before { background: #ef4444; }
-.insight-card.insight-risk .insight-icon { background: #fee2e2; color: #ef4444; }
-.insight-card.insight-risk .insight-title { color: #b91c1c; }
-
-.insight-card.insight-holding {
-  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 80%);
-  border-color: #bbf7d0;
-}
-.insight-card.insight-holding::before { background: #059669; }
-.insight-card.insight-holding .insight-icon { background: #d1fae5; color: #059669; }
-.insight-card.insight-holding .insight-title { color: #065f46; }
-
-/* 旧 insight-item 样式（向后兼容） */
-.insight-item {
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.85);
-  border-left: 3px solid #409EFF;
-  border-radius: 4px;
-}
-
-.insight-label {
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 6px;
-  padding: 2px 8px;
-  background: #e5f2ff;
-  border-radius: 4px;
-}
-
-.insight-value {
-  margin: 4px 0 0 0;
-  font-size: 13px;
-  color: #4b5563;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* 置信度/评分条 */
-.decision-confidence {
-  margin-top: 16px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 12px 16px;
-  background: rgba(255, 251, 235, 0.55);
-  border-radius: 8px;
-}
-
-.confidence-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 70px;
-}
-
-.confidence-item .label {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 4px;
-}
-
-.confidence-item .value {
-  font-size: 14px;
-  font-weight: 600;
-  color: #f59e0b;
 }
 
 .decision-reasoning h5 {
@@ -3704,7 +3509,7 @@ onMounted(async () => {
   gap: 12px;
   justify-content: center;
   padding-top: 24px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--el-border-color);
 }
 
 /* 分析报告标签页样式 */
@@ -3797,7 +3602,7 @@ onMounted(async () => {
   padding: 20px;
   background: var(--el-fill-color-light);
   border-radius: 15px;
-  border-left: 5px solid var(--el-color-primary);
+  border-left: 5px solid #667eea;
   box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 
   .report-title {
@@ -3866,7 +3671,7 @@ onMounted(async () => {
 
   /* 斜体文本 */
   em, i {
-    color: var(--el-text-color-regular) !important;
+    color: var(--el-text-color-secondary) !important;
     font-style: italic !important;
   }
 
@@ -3888,12 +3693,12 @@ onMounted(async () => {
     border-radius: 4px !important;
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
     font-size: 14px !important;
-    color: var(--el-color-danger) !important;
+    color: #e11d48 !important;
   }
 
   /* 引用样式 */
   blockquote {
-    border-left: 4px solid var(--el-color-primary) !important;
+    border-left: 4px solid #3b82f6 !important;
     padding-left: 16px !important;
     margin: 16px 0 !important;
     background: var(--el-fill-color-light) !important;

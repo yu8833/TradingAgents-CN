@@ -166,26 +166,16 @@
                 <el-option label="港股" value="港股" />
               </el-select>
             </el-form-item>
-            
-            <el-form-item label="默认分析深度">
-              <el-select v-model="analysisSettings.defaultDepth">
-                <el-option label="1级 - 快速分析" value="1" />
-                <el-option label="2级 - 基础分析" value="2" />
-                <el-option label="3级 - 标准分析（推荐）" value="3" />
-                <el-option label="4级 - 深度分析" value="4" />
-                <el-option label="5级 - 全面分析" value="5" />
-              </el-select>
-            </el-form-item>
 
             <el-form-item label="默认分析师">
               <el-checkbox-group v-model="analysisSettings.defaultAnalysts">
                 <el-checkbox label="市场分析师">市场分析师</el-checkbox>
                 <el-checkbox label="基本面分析师">基本面分析师</el-checkbox>
                 <el-checkbox label="新闻分析师">新闻分析师</el-checkbox>
-                <el-checkbox label="情绪分析师">情绪分析师</el-checkbox>
-                <el-checkbox label="技术分析师">技术分析师</el-checkbox>
+                <el-checkbox label="社交媒体分析师">社交媒体分析师</el-checkbox>
                 <el-checkbox label="政策分析师">政策分析师</el-checkbox>
                 <el-checkbox label="游资追踪师">游资追踪师</el-checkbox>
+                <el-checkbox label="解禁追踪师">解禁追踪师</el-checkbox>
               </el-checkbox-group>
             </el-form-item>
 
@@ -548,8 +538,7 @@ const appearanceSettings = ref({
 
 const analysisSettings = ref({
   defaultMarket: authStore.user?.preferences?.default_market || 'A股',
-  defaultDepth: authStore.user?.preferences?.default_depth || '3',
-  defaultAnalysts: authStore.user?.preferences?.default_analysts || ['市场分析师', '基本面分析师', '新闻分析师', '情绪分析师', '技术分析师', '政策分析师', '游资追踪师'],
+  defaultAnalysts: authStore.user?.preferences?.default_analysts || ['市场分析师', '基本面分析师', '新闻分析师', '社交媒体分析师', '政策分析师', '游资追踪师', '解禁追踪师'],
   autoRefresh: authStore.user?.preferences?.auto_refresh ?? true,
   refreshInterval: authStore.user?.preferences?.refresh_interval || 30
 })
@@ -566,8 +555,7 @@ const buildPreferencesPayload = (
   const current = authStore.user?.preferences
   return {
     default_market: current?.default_market || 'A股',
-    default_depth: current?.default_depth || '3',
-    default_analysts: current?.default_analysts || ['市场分析师', '基本面分析师', '新闻分析师', '情绪分析师', '技术分析师', '政策分析师', '游资追踪师'],
+    default_analysts: current?.default_analysts || ['市场分析师', '基本面分析师', '新闻分析师', '社交媒体分析师', '政策分析师', '游资追踪师', '解禁追踪师'],
     auto_refresh: current?.auto_refresh ?? true,
     refresh_interval: current?.refresh_interval || 30,
     ui_theme: current?.ui_theme || 'light',
@@ -596,8 +584,7 @@ watch(() => authStore.user, (newUser) => {
 
     // 更新分析偏好
     analysisSettings.value.defaultMarket = newUser.preferences?.default_market || 'A股'
-    analysisSettings.value.defaultDepth = newUser.preferences?.default_depth || '3'
-    analysisSettings.value.defaultAnalysts = newUser.preferences?.default_analysts || ['市场分析师', '基本面分析师', '新闻分析师', '情绪分析师', '技术分析师', '政策分析师', '游资追踪师']
+    analysisSettings.value.defaultAnalysts = newUser.preferences?.default_analysts || ['市场分析师', '基本面分析师', '新闻分析师', '社交媒体分析师', '政策分析师', '游资追踪师', '解禁追踪师']
     analysisSettings.value.autoRefresh = newUser.preferences?.auto_refresh ?? true
     analysisSettings.value.refreshInterval = newUser.preferences?.refresh_interval || 30
 
@@ -666,7 +653,6 @@ const saveAnalysisSettings = async () => {
     // 更新本地 store（立即生效）
     appStore.updatePreferences({
       defaultMarket: analysisSettings.value.defaultMarket as any,
-      defaultDepth: analysisSettings.value.defaultDepth as any,
       autoRefresh: analysisSettings.value.autoRefresh,
       refreshInterval: analysisSettings.value.refreshInterval
     })
@@ -675,7 +661,6 @@ const saveAnalysisSettings = async () => {
     const success = await authStore.updateUserInfo({
       preferences: buildPreferencesPayload({
         default_market: analysisSettings.value.defaultMarket,
-        default_depth: analysisSettings.value.defaultDepth,
         default_analysts: analysisSettings.value.defaultAnalysts,
         auto_refresh: analysisSettings.value.autoRefresh,
         refresh_interval: analysisSettings.value.refreshInterval
@@ -814,7 +799,6 @@ onMounted(() => {
   appearanceSettings.value.sidebarWidth = appStore.sidebarWidth
   
   analysisSettings.value.defaultMarket = appStore.preferences.defaultMarket
-  analysisSettings.value.defaultDepth = appStore.preferences.defaultDepth
   analysisSettings.value.autoRefresh = appStore.preferences.autoRefresh
   analysisSettings.value.refreshInterval = appStore.preferences.refreshInterval
 })

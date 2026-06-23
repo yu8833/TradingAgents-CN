@@ -1,22 +1,25 @@
-"""数据流工具（兼容层）"""
-
-from typing import Optional, Tuple
+"""数据流工具兼容层"""
 from datetime import datetime, timedelta
+from typing import Tuple
 
 
 def get_trading_date_range(
-    end_date: Optional[str] = None,
-    days: int = 90,
-    *args,
-    **kwargs
-) -> Tuple[Optional[str], Optional[str]]:
-    """获取交易日期范围（兼容层）"""
-    if end_date:
-        try:
-            end = datetime.strptime(str(end_date), "%Y-%m-%d")
-        except Exception:
-            end = datetime.now()
-    else:
+    analysis_date: str,
+    lookback_days: int = 10,
+) -> Tuple[str, str]:
+    """获取交易日范围
+
+    Args:
+        analysis_date: 分析日期 (YYYY-MM-DD)
+        lookback_days: 回溯天数
+
+    Returns:
+        (start_date, end_date)
+    """
+    try:
+        end = datetime.strptime(analysis_date, "%Y-%m-%d")
+    except (ValueError, TypeError):
         end = datetime.now()
-    start = end - timedelta(days=days)
+
+    start = end - timedelta(days=lookback_days)
     return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")

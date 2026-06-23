@@ -1,11 +1,15 @@
-"""优化版美国股票数据 Provider（兼容层）"""
+"""兼容层: 美股数据源占位"""
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class OptimizedUSDataProvider:
-    """OptimizedUSDataProvider（兼容层 - 空实现）"""
-
     def __init__(self, *args, **kwargs):
-        pass
+        logger.warning("⚠️ [OptimizedUSDataProvider] 占位类，未实现")
 
-    def get_data(self, *args, **kwargs):
-        return None
+    def get_stock_info(self, *args, **kwargs):
+        return {}
+
+    def get_historical_data(self, *args, **kwargs):
+        return []

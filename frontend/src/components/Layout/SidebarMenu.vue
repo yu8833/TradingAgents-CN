@@ -19,11 +19,11 @@
     <el-sub-menu index="/analysis">
       <template #title>
         <el-icon><TrendCharts /></el-icon>
-        <span>报告</span>
+        <span>分析</span>
       </template>
-      <el-menu-item index="/analysis/single">单股报告</el-menu-item>
-      <el-menu-item index="/analysis/batch">批量报告</el-menu-item>
-      <el-menu-item index="/reports">历史报告</el-menu-item>
+      <el-menu-item index="/analysis/single">单股分析</el-menu-item>
+      <el-menu-item index="/analysis/batch">批量分析</el-menu-item>
+      <el-menu-item index="/reports">分析报告</el-menu-item>
     </el-sub-menu>
 
     <el-menu-item index="/tasks">

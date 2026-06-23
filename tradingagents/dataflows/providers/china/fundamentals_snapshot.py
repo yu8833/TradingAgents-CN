@@ -1,5 +1,20 @@
-"""Fundamentals Snapshot 兼容层"""
+"""兼容层: A股 fundamentals_snapshot 占位"""
+import logging
+from typing import Dict, Any
 
-def get_cn_fund_snapshot(*args, **kwargs):
-    """获取中国股票基本面快照（兼容层 - 返回空）"""
-    return None
+logger = logging.getLogger(__name__)
+
+
+def fundamentals_snapshot(*args, **kwargs) -> Dict[str, Any]:
+    """占位 - 返回空 dict"""
+    return {}
+
+
+def fetch_fundamentals_snapshot(*args, **kwargs) -> Dict[str, Any]:
+    """占位 - 返回空 dict"""
+    return {}
+
+
+def get_cn_fund_snapshot(*args, **kwargs) -> Dict[str, Any]:
+    """占位 - 返回空 dict"""
+    return {}

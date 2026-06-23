@@ -20,21 +20,14 @@ def create_social_media_analyst(llm):
             "\n- **情绪指标**：关注以下情绪信号 - 连续涨停后的追涨情绪、业绩暴雷后的恐慌抛售、机构调研后的预期变化、热门概念炒作的跟风程度。"
             "\n- **反向指标**：当市场情绪一致性过高（极度乐观或极度悲观）时，往往是反转信号。散户一致看多可能是阶段顶部。"
             "\n- **时间维度**：区分短期情绪波动（1-3 天，由单一事件驱动）和中期情绪趋势（1-4 周，由基本面变化驱动）。"
-            "\n\n请使用 `get_news(query, start_date, end_date)` 工具获取公司相关新闻和市场讨论。"
-            "\n\n📊 量化情感评分要求（在报告末尾必须包含以下量化信息）："
-            "\n1. **情感评分（0.0~1.0）**：0.0=极度悲观，0.25=悲观，0.5=中性，0.75=乐观，1.0=极度乐观。用数字精确量化，不只是文字描述。"
-            "\n2. **情感强度（0.0~1.0）**：衡量情绪的激烈程度，0.0=极微弱，1.0=极度亢奋/恐慌。反映市场讨论的热度。"
-            "\n3. **一致性评分（0.0~1.0）**：衡量市场情绪的一致程度，0.0=完全分歧，1.0=高度一致。一致性过高时注意反转风险。"
-            "\n4. **舆情风险（高/中/低）**：评估当前舆情对股价的潜在风险级别。"
-            "\n5. **正面/负面/中性新闻数量及占比**"
-            "\n6. **排名前 3 的舆情主题及情绪方向**"
-            "\n\n报告末尾必须包含量化评分汇总表格，格式如下："
-            "\n| 指标 | 数值 | 说明 |"
-            "\n|------|------|------|"
-            "\n| 情感评分 | 0.75 | 整体偏乐观 |"
-            "\n| 情感强度 | 0.60 | 市场讨论热度中等 |"
-            "\n| 一致性 | 0.45 | 分歧较大 |"
-            "\n| 舆情风险 | 中 | 无重大负面舆情 |"
+            "\n\n请使用 `get_news(query, start_date, end_date)` 工具获取公司相关新闻和市场讨论。从新闻内容中推断市场情绪方向、强度和可能的转折点。"
+            "\n\n撰写详细的市场情绪分析报告，包含情绪评分（极度悲观/悲观/中性/乐观/极度乐观）和趋势判断。报告末尾附 Markdown 表格汇总情绪信号和结论。"
+            "\n\n📋 必采清单 — 以下数据点必须出现在报告中，无法获取时标注 [数据缺失: xxx]："
+            "\n1. 新闻检索条数和时间范围"
+            "\n2. 正面/负面/中性新闻比例"
+            "\n3. 排名前 3 的舆情主题"
+            "\n4. 情绪评分（极度悲观/悲观/中性/乐观/极度乐观）"
+            "\n5. 情绪趋势变化方向（升温/降温/平稳）"
             + get_language_instruction()
         )
 
@@ -42,13 +35,14 @@ def create_social_media_analyst(llm):
             [
                 (
                     "system",
-                    "你是一位专业的 A 股分析助手，正在与其他分析伙伴协作完成股票分析。"
-                    "使用提供的工具（如数据查询、新闻搜索）来回答问题。"
-                    "如果当前工具不足以完成完整回答也没关系，其他同事会从你停止的地方继续推进。"
-                    "在你能力范围内尽力完成分析即可。"
-                    "如果你或其他同事已有**最终交易建议（买入/持有/卖出）**，请在回答开头标注「最终交易建议」。"
-                    "你可以调用的工具有：{tool_names}。\n{system_message}"
-                    "参考日期：{current_date}。{instrument_context}",
+                    "You are a helpful AI assistant, collaborating with other assistants."
+                    " Use the provided tools to progress towards answering the question."
+                    " If you are unable to fully answer, that's OK; another assistant with different tools"
+                    " will help where you left off. Execute what you can to make progress."
+                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
+                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
+                    " You have access to the following tools: {tool_names}.\n{system_message}"
+                    "For your reference, the current date is {current_date}. {instrument_context}",
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]

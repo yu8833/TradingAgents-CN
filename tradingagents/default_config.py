@@ -37,15 +37,17 @@ DEFAULT_CONFIG = {
     "max_recur_limit": 100,
     # Data vendor configuration
     # Category-level configuration (default for all tools in category)
+    # 支持逗号分隔的多数据源配置，按优先级依次尝试（fallback）
+    # Available vendors: a_stock（自建多源聚合）、akshare（开源备用）
     "data_vendors": {
-        "core_stock_apis": "a_stock",        # Options: a_stock, alpha_vantage, yfinance
-        "technical_indicators": "a_stock",   # Options: a_stock, alpha_vantage, yfinance
-        "fundamental_data": "a_stock",       # Options: a_stock, alpha_vantage, yfinance
-        "news_data": "a_stock",              # Options: a_stock, alpha_vantage, yfinance
-        "signal_data": "a_stock",            # A-stock only: topic attribution, capital flow, consensus
+        "core_stock_apis": "a_stock,akshare",
+        "technical_indicators": "a_stock,akshare",
+        "fundamental_data": "a_stock,akshare",
+        "news_data": "a_stock,akshare",
+        "signal_data": "a_stock,akshare",
     },
     # Tool-level configuration (takes precedence over category-level)
     "tool_vendors": {
-        # Example: "get_stock_data": "alpha_vantage",  # Override category default
+        # Example: "get_stock_data": "akshare",
     },
 }

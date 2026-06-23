@@ -10,7 +10,6 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
 from pathlib import Path
-from app.utils.timezone import now_tz, to_config_tz
 import sys
 
 # 添加项目根目录到路径
@@ -18,16 +17,8 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # 初始化TradingAgents日志系统
-try:
-    from tradingagents.utils.logging_init import init_logging
-    init_logging()
-except ImportError:
-    import logging as _fallback_logging
-    _fallback_logging.getLogger(__name__).warning(
-        "tradingagents.utils.logging_init 不可用，使用标准 logging"
-    )
-    def init_logging() -> None:
-        pass
+from tradingagents.utils.logging_init import init_logging
+init_logging()
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -109,27 +100,12 @@ class AnalysisService:
         """同步执行分析任务（在线程池中运行，带进度跟踪）"""
         try:
             # 在线程中重新初始化日志系统
-            try:
-                from tradingagents.utils.logging_init import init_logging, get_logger
-            except ImportError:
-                import logging as _fallback_logging
-                def init_logging() -> None:
-                    pass
-                def get_logger(name: str):
-                    return _fallback_logging.getLogger(name)
+            from tradingagents.utils.logging_init import init_logging, get_logger
             init_logging()
             thread_logger = get_logger('analysis_thread')
 
             thread_logger.info(f"🔄 [线程池] 开始执行分析任务: {task.task_id} - {task.symbol}")
             logger.info(f"🔄 [线程池] 开始执行分析任务: {task.task_id} - {task.symbol}")
-
-            # 设置全局强制刷新标志（确保分析使用最新数据）
-            try:
-                from tradingagents.dataflows.optimized_china_data import set_force_refresh_global
-                set_force_refresh_global(True)
-                logger.info(f"✅ 已设置全局强制刷新标志")
-            except Exception as e:
-                logger.warning(f"⚠️ 设置全局强制刷新标志失败: {e}")
 
             # 环境检查
             progress_tracker.update_progress("🔧 检查环境配置")
@@ -202,14 +178,13 @@ class AnalysisService:
             # 使用标准配置函数创建完整配置
             from app.services.simple_analysis_service import create_analysis_config
             config = create_analysis_config(
-                research_depth=task.parameters.research_depth,
                 selected_analysts=task.parameters.selected_analysts or ["market", "fundamentals"],
                 quick_model=quick_model,
                 deep_model=deep_model,
                 llm_provider=llm_provider,
                 market_type=getattr(task.parameters, 'market_type', "A股"),
-                quick_model_config=quick_model_config,  # 传递模型配置
-                deep_model_config=deep_model_config     # 传递模型配置
+                quick_model_config=quick_model_config,
+                deep_model_config=deep_model_config
             )
 
             # 启动引擎
@@ -228,7 +203,8 @@ class AnalysisService:
                 progress_tracker.update_progress(message)
 
             # 调用现有的分析方法（同步调用，传递进度回调）
-            _, decision = trading_graph.propagate(task.symbol, analysis_date, progress_callback)
+            # 新接口 propagate(company_name, trade_date)，不再支持 progress_callback
+            _, decision = trading_graph.propagate(task.symbol, analysis_date)
 
             execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
 
@@ -238,19 +214,10 @@ class AnalysisService:
             # 从决策中提取模型信息
             model_info = decision.get('model_info', 'Unknown') if isinstance(decision, dict) else 'Unknown'
 
-            # 🔥 修复：前端展示的 summary 应来自 decision 中的 executive_summary 字段
-            # decision 可能包含 executive_summary（来自 render_pm_decision markdown 提取），
-            # 也可能包含 summary 或 reasoning，优先使用更完整的内容
-            summary_text = (
-                decision.get("executive_summary")
-                or decision.get("summary")
-                or decision.get("reasoning", "")
-            )
-
             # 构建结果
             result = AnalysisResult(
                 analysis_id=str(uuid.uuid4()),
-                summary=summary_text,
+                summary=decision.get("summary", ""),
                 recommendation=decision.get("recommendation", ""),
                 confidence_score=decision.get("confidence_score", 0.0),
                 risk_level=decision.get("risk_level", "中等"),
@@ -262,25 +229,9 @@ class AnalysisService:
             )
 
             logger.info(f"✅ [线程池] 分析任务完成: {task.task_id} - 耗时{execution_time:.2f}秒")
-            
-            # 重置全局强制刷新标志
-            try:
-                from tradingagents.dataflows.optimized_china_data import set_force_refresh_global
-                set_force_refresh_global(False)
-                logger.info(f"✅ 已重置全局强制刷新标志")
-            except Exception as e:
-                logger.warning(f"⚠️ 重置全局强制刷新标志失败: {e}")
-            
             return result
 
         except Exception as e:
-            # 重置全局强制刷新标志
-            try:
-                from tradingagents.dataflows.optimized_china_data import set_force_refresh_global
-                set_force_refresh_global(False)
-            except Exception:
-                pass
-            
             logger.error(f"❌ [线程池] 执行分析任务失败: {task.task_id} - {e}")
             raise
 
@@ -351,14 +302,13 @@ class AnalysisService:
             # 使用标准配置函数创建完整配置
             from app.services.simple_analysis_service import create_analysis_config
             config = create_analysis_config(
-                research_depth=task.parameters.research_depth,
                 selected_analysts=task.parameters.selected_analysts or ["market", "fundamentals"],
                 quick_model=quick_model,
                 deep_model=deep_model,
                 llm_provider=llm_provider,
                 market_type=getattr(task.parameters, 'market_type', "A股"),
-                quick_model_config=quick_model_config,  # 传递模型配置
-                deep_model_config=deep_model_config     # 传递模型配置
+                quick_model_config=quick_model_config,
+                deep_model_config=deep_model_config
             )
 
             # 获取TradingAgents实例
@@ -377,18 +327,10 @@ class AnalysisService:
             # 从决策中提取模型信息
             model_info = decision.get('model_info', 'Unknown') if isinstance(decision, dict) else 'Unknown'
 
-            # 🔥 修复：summary 优先取 executive_summary（来自 render_pm_decision markdown），
-            # 其次取 summary/reasoning
-            summary_text = (
-                decision.get("executive_summary")
-                or decision.get("summary")
-                or decision.get("reasoning", "")
-            )
-
             # 构建结果
             result = AnalysisResult(
                 analysis_id=str(uuid.uuid4()),
-                summary=summary_text,
+                summary=decision.get("summary", ""),
                 recommendation=decision.get("recommendation", ""),
                 confidence_score=decision.get("confidence_score", 0.0),
                 risk_level=decision.get("risk_level", "中等"),
@@ -400,25 +342,9 @@ class AnalysisService:
             )
 
             logger.info(f"✅ [线程池] 分析任务完成: {task.task_id} - 耗时{execution_time:.2f}秒")
-            
-            # 重置全局强制刷新标志
-            try:
-                from tradingagents.dataflows.optimized_china_data import set_force_refresh_global
-                set_force_refresh_global(False)
-                logger.info(f"✅ 已重置全局强制刷新标志")
-            except Exception as e:
-                logger.warning(f"⚠️ 重置全局强制刷新标志失败: {e}")
-            
             return result
 
         except Exception as e:
-            # 重置全局强制刷新标志
-            try:
-                from tradingagents.dataflows.optimized_china_data import set_force_refresh_global
-                set_force_refresh_global(False)
-            except Exception:
-                pass
-            
             logger.error(f"❌ [线程池] 执行分析任务失败: {task.task_id} - {e}")
             raise
 
@@ -432,7 +358,6 @@ class AnalysisService:
             progress_tracker = RedisProgressTracker(
                 task_id=task.task_id,
                 analysts=task.parameters.selected_analysts or ["market", "fundamentals"],
-                research_depth=task.parameters.research_depth or "标准",
                 llm_provider="dashscope"
             )
 
@@ -742,14 +667,13 @@ class AnalysisService:
 
             # 使用标准配置函数创建完整配置
             config = create_analysis_config(
-                research_depth=task.parameters.research_depth,
                 selected_analysts=task.parameters.selected_analysts or ["market", "fundamentals"],
                 quick_model=quick_model,
                 deep_model=deep_model,
                 llm_provider=llm_provider,
                 market_type=getattr(task.parameters, 'market_type', "A股"),
-                quick_model_config=quick_model_config,  # 传递模型配置
-                deep_model_config=deep_model_config     # 传递模型配置
+                quick_model_config=quick_model_config,
+                deep_model_config=deep_model_config
             )
             
             if progress_callback:
@@ -773,18 +697,13 @@ class AnalysisService:
             if progress_callback:
                 progress_callback(80, "处理分析结果...")
 
-            # 🔥 修复：summary 优先取 executive_summary（来自 render_pm_decision markdown），
-            # 其次取 summary/reasoning
-            summary_text = (
-                decision.get("executive_summary")
-                or decision.get("summary")
-                or decision.get("reasoning", "")
-            )
+            # 从决策中提取模型信息
+            model_info = decision.get('model_info', 'Unknown') if isinstance(decision, dict) else 'Unknown'
 
             # 构建结果
             result = AnalysisResult(
                 analysis_id=str(uuid.uuid4()),
-                summary=summary_text,
+                summary=decision.get("summary", ""),
                 recommendation=decision.get("recommendation", ""),
                 confidence_score=decision.get("confidence_score", 0.0),
                 risk_level=decision.get("risk_level", "中等"),
@@ -931,8 +850,8 @@ class AnalysisService:
                     "elapsed_time": elapsed_time,
                     "remaining_time": remaining_time,
                     "estimated_total_time": estimated_total_time,
-                    "start_time": to_config_tz(task.get("started_at")).isoformat() if task.get("started_at") else None,
-                    "updated_at": to_config_tz(task.get("updated_at")).isoformat() if task.get("updated_at") else None,
+                    "start_time": task.get("started_at").isoformat() if task.get("started_at") else None,
+                    "updated_at": task.get("updated_at", "").isoformat() if task.get("updated_at") else None,
                     "result_data": task.get("result")
                 }
 

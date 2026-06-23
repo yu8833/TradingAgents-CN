@@ -9,7 +9,7 @@ export interface Analyst {
   icon?: string
 }
 
-// 系统支持的分析师列表
+// 系统支持的分析师列表（与后端 setup.py 保持同步）
 export const ANALYSTS: Analyst[] = [
   {
     id: 'market',
@@ -18,10 +18,10 @@ export const ANALYSTS: Analyst[] = [
     icon: 'TrendCharts'
   },
   {
-    id: 'fundamentals',
-    name: '基本面分析师',
-    description: '分析公司财务状况、业务模式和竞争优势',
-    icon: 'DataAnalysis'
+    id: 'social',
+    name: '社交媒体分析师',
+    description: '分析社交媒体情绪、投资者心理和舆论导向',
+    icon: 'ChatDotRound'
   },
   {
     id: 'news',
@@ -30,16 +30,10 @@ export const ANALYSTS: Analyst[] = [
     icon: 'Document'
   },
   {
-    id: 'sentiment',
-    name: '情绪分析师',
-    description: '分析市场情绪、投资者心理和舆论导向',
-    icon: 'ChatDotRound'
-  },
-  {
-    id: 'technical',
-    name: '技术分析师',
-    description: '分析K线图、技术指标和量价关系',
-    icon: 'DataLine'
+    id: 'fundamentals',
+    name: '基本面分析师',
+    description: '分析公司财务状况、业务模式和竞争优势',
+    icon: 'DataAnalysis'
   },
   {
     id: 'policy',
@@ -52,14 +46,20 @@ export const ANALYSTS: Analyst[] = [
     name: '游资追踪师',
     description: '追踪主力资金动向、龙虎榜和热点板块轮动',
     icon: 'Flame'
+  },
+  {
+    id: 'lockup',
+    name: '解禁追踪师',
+    description: '追踪解禁股、减持公告对股价的影响',
+    icon: 'Clock'
   }
 ]
 
 // 分析师名称列表（用于表单选项）
 export const ANALYST_NAMES = ANALYSTS.map(analyst => analyst.name)
 
-// 默认选中的分析师
-export const DEFAULT_ANALYSTS = ['市场分析师', '基本面分析师', '新闻分析师', '情绪分析师', '技术分析师', '政策分析师', '游资追踪师']
+// 默认选中的分析师（与后端支持的分析师保持同步）
+export const DEFAULT_ANALYSTS = ['市场分析师', '基本面分析师', '新闻分析师', '社交媒体分析师', '政策分析师', '游资追踪师', '解禁追踪师']
 
 // 根据名称获取分析师信息
 export const getAnalystByName = (name: string): Analyst | undefined => {
@@ -76,15 +76,15 @@ export const isValidAnalyst = (name: string): boolean => {
   return ANALYST_NAMES.includes(name)
 }
 
-// 中文名称到英文 ID 的映射
+// 中文名称到英文 ID 的映射（与后端 setup.py 保持同步）
 export const ANALYST_NAME_TO_ID_MAP: Record<string, string> = {
   '市场分析师': 'market',
-  '基本面分析师': 'fundamentals',
+  '社交媒体分析师': 'social',
   '新闻分析师': 'news',
-  '情绪分析师': 'sentiment',
-  '技术分析师': 'technical',
+  '基本面分析师': 'fundamentals',
   '政策分析师': 'policy',
-  '游资追踪师': 'hot_money'
+  '游资追踪师': 'hot_money',
+  '解禁追踪师': 'lockup'
 }
 
 // 将中文分析师名称转换为英文ID

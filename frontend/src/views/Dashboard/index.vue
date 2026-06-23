@@ -57,17 +57,6 @@
       <el-col :span="16">
         <el-card class="quick-actions-card" header="快速操作">
           <div class="quick-actions">
-            <div class="action-item" @click="goToSingleAnalysis">
-              <div class="action-icon">
-                <el-icon><Document /></el-icon>
-              </div>
-              <div class="action-content">
-                <h3>单股分析</h3>
-                <p>深度分析单只股票的投资价值</p>
-              </div>
-              <el-icon class="action-arrow"><ArrowRight /></el-icon>
-            </div>
-
             <div class="action-item" @click="goToBatchAnalysis">
               <div class="action-icon">
                 <el-icon><Files /></el-icon>
@@ -356,11 +345,7 @@ const getCurrencyAmount = (
 
 // 方法
 const quickAnalysis = () => {
-  router.push('/analysis/single')
-}
-
-const goToSingleAnalysis = () => {
-  router.push('/analysis/single')
+  router.push('/analysis/batch')
 }
 
 const goToBatchAnalysis = () => {
@@ -470,8 +455,8 @@ const goToFavorites = () => {
 }
 
 const viewStockDetail = (stock: any) => {
-  // 可以跳转到股票详情页或分析页
-  router.push(`/analysis/single?stock_code=${stock.stock_code}`)
+  // 跳转到批量分析页并带入股票代码
+  router.push(`/analysis/batch?stock=${stock.stock_code}`)
 }
 
 const getPriceChangeClass = (changePercent: number) => {

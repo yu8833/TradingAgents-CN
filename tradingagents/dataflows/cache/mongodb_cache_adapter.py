@@ -1,31 +1,24 @@
-"""MongoDB 缓存适配器（兼容层）"""
+"""兼容层: MongoDB 缓存适配器占位"""
+import logging
+from typing import Optional, Dict, Any
 
-from typing import Any, Optional
-
-
-class MongoDBMemoryCache:
-    """基于内存的 MongoDB 风格缓存（兼容层）"""
-
-    def __init__(self):
-        self._store: dict = {}
-
-    def get(self, key: str) -> Optional[Any]:
-        return self._store.get(key)
-
-    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
-        self._store[key] = value
-
-    def delete(self, key: str) -> None:
-        if key in self._store:
-            del self._store[key]
+logger = logging.getLogger(__name__)
 
 
-_cache_adapter_instance: Optional[MongoDBMemoryCache] = None
+class _DummyMongoCache:
+    def get_historical_data(self, *args, **kwargs):
+        return None
+
+    def get_stock_basic_info(self, *args, **kwargs):
+        return None
+
+    def get_financial_data(self, *args, **kwargs):
+        return None
+
+    def get_news(self, *args, **kwargs):
+        return []
 
 
-def get_mongodb_cache_adapter(*args, **kwargs) -> MongoDBMemoryCache:
-    """获取 MongoDB 缓存适配器（兼容层）"""
-    global _cache_adapter_instance
-    if _cache_adapter_instance is None:
-        _cache_adapter_instance = MongoDBMemoryCache()
-    return _cache_adapter_instance
+def get_mongodb_cache_adapter(*args, **kwargs) -> _DummyMongoCache:
+    """获取 MongoDB 缓存适配器（占位）"""
+    return _DummyMongoCache()

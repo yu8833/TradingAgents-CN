@@ -233,81 +233,21 @@ def run_stock_analysis(stock_symbol, analysis_date, analysts, research_depth, ll
         config["llm_provider"] = llm_provider
         config["deep_think_llm"] = llm_model
         config["quick_think_llm"] = llm_model
-        # 根据研究深度调整配置
-        if research_depth == 1:  # 1级 - 快速分析
-            config["max_debate_rounds"] = 1
-            config["max_risk_discuss_rounds"] = 1
-            # 禁用记忆以加速
-            config["memory_enabled"] = False
-
-            # 统一使用在线工具，避免离线工具的各种问题
-            config["online_tools"] = True  # 所有市场都使用统一工具
-            logger.info(f"🔧 [快速分析] {market_type}使用统一工具，确保数据源正确和稳定性")
-            if llm_provider == "dashscope":
-                config["quick_think_llm"] = "qwen-turbo"  # 使用最快模型
-                config["deep_think_llm"] = "qwen-plus"
-            elif llm_provider == "deepseek":
-                config["quick_think_llm"] = "deepseek-chat"  # DeepSeek只有一个模型
-                config["deep_think_llm"] = "deepseek-chat"
-        elif research_depth == 2:  # 2级 - 基础分析
-            config["max_debate_rounds"] = 1
-            config["max_risk_discuss_rounds"] = 1
-            config["memory_enabled"] = True
-            config["online_tools"] = True
-            if llm_provider == "dashscope":
-                config["quick_think_llm"] = "qwen-plus"
-                config["deep_think_llm"] = "qwen-plus"
-            elif llm_provider == "deepseek":
-                config["quick_think_llm"] = "deepseek-chat"
-                config["deep_think_llm"] = "deepseek-chat"
-            elif llm_provider == "openai":
-                config["quick_think_llm"] = llm_model
-                config["deep_think_llm"] = llm_model
-            elif llm_provider == "openai":
-                config["quick_think_llm"] = llm_model
-                config["deep_think_llm"] = llm_model
-            elif llm_provider == "openai":
-                config["quick_think_llm"] = llm_model
-                config["deep_think_llm"] = llm_model
-            elif llm_provider == "openai":
-                config["quick_think_llm"] = llm_model
-                config["deep_think_llm"] = llm_model
-            elif llm_provider == "openai":
-                config["quick_think_llm"] = llm_model
-                config["deep_think_llm"] = llm_model
-        elif research_depth == 3:  # 3级 - 标准分析 (默认)
-            config["max_debate_rounds"] = 1
-            config["max_risk_discuss_rounds"] = 2
-            config["memory_enabled"] = True
-            config["online_tools"] = True
-            if llm_provider == "dashscope":
-                config["quick_think_llm"] = "qwen-plus"
-                config["deep_think_llm"] = "qwen3-max"
-            elif llm_provider == "deepseek":
-                config["quick_think_llm"] = "deepseek-chat"
-                config["deep_think_llm"] = "deepseek-chat"
-        elif research_depth == 4:  # 4级 - 深度分析
-            config["max_debate_rounds"] = 2
-            config["max_risk_discuss_rounds"] = 2
-            config["memory_enabled"] = True
-            config["online_tools"] = True
-            if llm_provider == "dashscope":
-                config["quick_think_llm"] = "qwen-plus"
-                config["deep_think_llm"] = "qwen3-max"
-            elif llm_provider == "deepseek":
-                config["quick_think_llm"] = "deepseek-chat"
-                config["deep_think_llm"] = "deepseek-chat"
-        else:  # 5级 - 全面分析
-            config["max_debate_rounds"] = 3
-            config["max_risk_discuss_rounds"] = 3
-            config["memory_enabled"] = True
-            config["online_tools"] = True
-            if llm_provider == "dashscope":
-                config["quick_think_llm"] = "qwen3-max"
-                config["deep_think_llm"] = "qwen3-max"
-            elif llm_provider == "deepseek":
-                config["quick_think_llm"] = "deepseek-chat"
-                config["deep_think_llm"] = "deepseek-chat"
+        # 固定使用完整流程分析
+        config["max_debate_rounds"] = 1
+        config["max_risk_discuss_rounds"] = 1
+        config["memory_enabled"] = True
+        config["online_tools"] = True
+        logger.info(f"🔧 [完整流程] {market_type}7个分析师+1轮辩论+1轮风险讨论+启用记忆")
+        if llm_provider == "dashscope":
+            config["quick_think_llm"] = "qwen-plus"
+            config["deep_think_llm"] = "qwen3-max"
+        elif llm_provider == "deepseek":
+            config["quick_think_llm"] = "deepseek-chat"
+            config["deep_think_llm"] = "deepseek-chat"
+        elif llm_provider == "openai":
+            config["quick_think_llm"] = llm_model
+            config["deep_think_llm"] = llm_model
 
         # 根据LLM提供商设置不同的配置
         if llm_provider == "dashscope":
@@ -317,40 +257,16 @@ def run_stock_analysis(stock_symbol, analysis_date, analysts, research_depth, ll
         elif llm_provider == "qianfan":
             # 千帆（文心一言）配置
             config["backend_url"] = "https://aip.baidubce.com"
-            # 根据研究深度设置千帆模型
-            if research_depth <= 2:  # 快速和基础分析
-                config["quick_think_llm"] = "ernie-3.5-8k"
-                config["deep_think_llm"] = "ernie-3.5-8k"
-            elif research_depth <= 4:  # 标准和深度分析
-                config["quick_think_llm"] = "ernie-3.5-8k"
-                config["deep_think_llm"] = "ernie-4.0-turbo-8k"
-            else:  # 全面分析
-                config["quick_think_llm"] = "ernie-4.0-turbo-8k"
-                config["deep_think_llm"] = "ernie-4.0-turbo-8k"
+            config["quick_think_llm"] = "ernie-3.5-8k"
+            config["deep_think_llm"] = "ernie-4.0-turbo-8k"
             
             logger.info(f"🤖 [千帆] 快速模型: {config['quick_think_llm']}")
             logger.info(f"🤖 [千帆] 深度模型: {config['deep_think_llm']}")
         elif llm_provider == "google":
             # Google AI不需要backend_url，使用默认的OpenAI格式
             config["backend_url"] = "https://api.openai.com/v1"
-            
-            # 根据研究深度优化Google模型选择
-            if research_depth == 1:  # 快速分析 - 使用最快模型
-                config["quick_think_llm"] = "gemini-2.5-flash-lite-preview-06-17"  # 1.45s
-                config["deep_think_llm"] = "gemini-2.0-flash"  # 1.87s
-            elif research_depth == 2:  # 基础分析 - 使用快速模型
-                config["quick_think_llm"] = "gemini-2.0-flash"  # 1.87s
-                config["deep_think_llm"] = "gemini-1.5-pro"  # 2.25s
-            elif research_depth == 3:  # 标准分析 - 平衡性能
-                config["quick_think_llm"] = "gemini-1.5-pro"  # 2.25s
-                config["deep_think_llm"] = "gemini-2.5-flash"  # 2.73s
-            elif research_depth == 4:  # 深度分析 - 使用强大模型
-                config["quick_think_llm"] = "gemini-2.5-flash"  # 2.73s
-                config["deep_think_llm"] = "gemini-2.5-pro"  # 16.68s
-            else:  # 全面分析 - 使用最强模型
-                config["quick_think_llm"] = "gemini-2.5-pro"  # 16.68s
-                config["deep_think_llm"] = "gemini-2.5-pro"  # 16.68s
-            
+            config["quick_think_llm"] = "gemini-1.5-pro"
+            config["deep_think_llm"] = "gemini-2.5-pro"
             logger.info(f"🤖 [Google AI] 快速模型: {config['quick_think_llm']}")
             logger.info(f"🤖 [Google AI] 深度模型: {config['deep_think_llm']}")
         elif llm_provider == "openai":

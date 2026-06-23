@@ -777,12 +777,10 @@ const formatAnalysts = (analysts: string[]) => {
     'market': '市场分析师',
     'fundamentals': '基本面分析师',
     'news': '新闻分析师',
-    'social': '社媒分析师',
-    'sentiment': '情绪分析师',
-    'technical': '技术分析师',
+    'social': '社交媒体分析师',
     'policy': '政策分析师',
     'hot_money': '游资追踪师',
-    'lockup': '解禁监控师'
+    'lockup': '解禁追踪师'
   }
 
   return analysts.map(analyst => analystNameMap[analyst] || analyst).join('、')

@@ -60,7 +60,7 @@ class TradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "sentiment", "news", "fundamentals", "policy", "hot_money", "technical"],
+        selected_analysts=["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"],
         debug=False,
         config: Dict[str, Any] = None,
         callbacks: Optional[List] = None,
@@ -86,10 +86,6 @@ class TradingAgentsGraph:
 
         # Initialize LLMs with provider-specific thinking configuration
         llm_kwargs = self._get_provider_kwargs()
-
-        # Add callbacks to kwargs if provided (passed to LLM constructor)
-        if self.callbacks:
-            llm_kwargs["callbacks"] = self.callbacks
 
         deep_client = create_llm_client(
             provider=self.config["llm_provider"],
@@ -165,17 +161,21 @@ class TradingAgentsGraph:
         return {
             "market": ToolNode(
                 [
+                    # Core stock data tools
                     get_stock_data,
+                    # Technical indicators
                     get_indicators,
                 ]
             ),
-            "sentiment": ToolNode(
+            "social": ToolNode(
                 [
+                    # News tools for social media analysis
                     get_news,
                 ]
             ),
             "news": ToolNode(
                 [
+                    # News and insider information
                     get_news,
                     get_global_news,
                     get_insider_transactions,
@@ -210,10 +210,12 @@ class TradingAgentsGraph:
                     get_industry_comparison,
                 ]
             ),
-            "technical": ToolNode(
+            "lockup": ToolNode(
                 [
-                    get_stock_data,
-                    get_indicators,
+                    get_insider_transactions,
+                    get_news,
+                    get_fundamentals,
+                    get_lockup_expiry,
                 ]
             ),
         }
@@ -299,64 +301,69 @@ class TradingAgentsGraph:
         with a per-ticker SqliteSaver so a crashed run can resume from the last
         successful node on a subsequent invocation with the same ticker+date.
         """
+        return self._run_graph(company_name, trade_date)
+
+    def prepare_graph_run(
+        self,
+        company_name,
+        trade_date,
+        callbacks: Optional[List] = None,
+    ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any], Optional[int]]:
+        """Prepare graph input/args for a fresh or resumed run.
+
+        Returns ``(initial_state, args, checkpoint_step)``. When a checkpoint
+        already exists, ``initial_state`` is ``None`` so LangGraph resumes the
+        existing thread instead of replaying completed nodes.
+        """
         self.ticker = company_name
 
         # Resolve any pending memory-log entries for this ticker before the pipeline runs.
         self._resolve_pending_entries(company_name)
 
+        checkpoint_enabled = self.config.get("checkpoint_enabled")
+        resume_step = None
+
         # Recompile with a checkpointer if the user opted in.
-        if self.config.get("checkpoint_enabled"):
+        if checkpoint_enabled:
             self._checkpointer_ctx = get_checkpointer(
                 self.config["data_cache_dir"], company_name
             )
             saver = self._checkpointer_ctx.__enter__()
             self.graph = self.workflow.compile(checkpointer=saver)
 
-            step = checkpoint_step(
+            resume_step = checkpoint_step(
                 self.config["data_cache_dir"], company_name, str(trade_date)
             )
-            if step is not None:
+            if resume_step is not None:
                 logger.info(
-                    "Resuming from step %d for %s on %s", step, company_name, trade_date
+                    "Resuming from step %d for %s on %s",
+                    resume_step,
+                    company_name,
+                    trade_date,
                 )
             else:
                 logger.info("Starting fresh for %s on %s", company_name, trade_date)
 
-        try:
-            return self._run_graph(company_name, trade_date)
-        finally:
-            if self._checkpointer_ctx is not None:
-                self._checkpointer_ctx.__exit__(None, None, None)
-                self._checkpointer_ctx = None
-                self.graph = self.workflow.compile()
+        args = self.propagator.get_graph_args(callbacks=callbacks)
 
-    def _run_graph(self, company_name, trade_date):
-        """Execute the graph and write the resulting state to disk and memory log."""
-        # Initialize state — inject memory log context for PM.
+        # Inject thread_id so same ticker+date resumes, different date starts fresh.
+        if checkpoint_enabled:
+            tid = thread_id(company_name, str(trade_date))
+            args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = tid
+
+        if checkpoint_enabled and resume_step is not None:
+            return None, args, resume_step
+
+        # Initialize state only for fresh runs. Passing a new initial state to
+        # LangGraph would start a new run and replay completed nodes.
         past_context = self.memory_log.get_past_context(company_name)
         init_agent_state = self.propagator.create_initial_state(
             company_name, trade_date, past_context=past_context
         )
-        args = self.propagator.get_graph_args()
+        return init_agent_state, args, resume_step
 
-        # Inject thread_id so same ticker+date resumes, different date starts fresh.
-        if self.config.get("checkpoint_enabled"):
-            tid = thread_id(company_name, str(trade_date))
-            args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = tid
-
-        if self.debug:
-            trace = []
-            for chunk in self.graph.stream(init_agent_state, **args):
-                if len(chunk["messages"]) == 0:
-                    pass
-                else:
-                    chunk["messages"][-1].pretty_print()
-                    trace.append(chunk)
-            final_state = trace[-1]
-        else:
-            final_state = self.graph.invoke(init_agent_state, **args)
-
-        # Store current state for reflection.
+    def finalize_graph_run(self, company_name, trade_date, final_state):
+        """Persist a completed run and clear its checkpoint."""
         self.curr_state = final_state
 
         # Log state to disk.
@@ -375,7 +382,121 @@ class TradingAgentsGraph:
                 self.config["data_cache_dir"], company_name, str(trade_date)
             )
 
-        return final_state, self.process_signal(final_state["final_trade_decision"])
+        return self.process_signal(final_state["final_trade_decision"])
+
+    def close_graph_run(self) -> None:
+        """Close the active checkpointer context, if any."""
+        if self._checkpointer_ctx is not None:
+            self._checkpointer_ctx.__exit__(None, None, None)
+            self._checkpointer_ctx = None
+            self.graph = self.workflow.compile()
+
+    def _run_graph(self, company_name, trade_date):
+        """Execute the graph and write the resulting state to disk and memory log."""
+        init_agent_state, args, _ = self.prepare_graph_run(company_name, trade_date, callbacks=self.callbacks)
+
+        try:
+            if self.debug:
+                trace = []
+                for chunk in self.graph.stream(init_agent_state, **args):
+                    if len(chunk["messages"]) == 0:
+                        pass
+                    else:
+                        chunk["messages"][-1].pretty_print()
+                        trace.append(chunk)
+                final_state = trace[-1]
+            else:
+                # 使用普通 invoke，传入 config 参数
+                # 注意：LangChain invoke 不支持 stream_mode，需要使用 stream 才能获取流式输出
+                config = args.get("config", {})
+                # 移除可能导致问题的 callbacks
+                if "callbacks" in config:
+                    del config["callbacks"]
+                final_state = self.graph.invoke(init_agent_state, config=config)
+
+            signal = self.finalize_graph_run(company_name, trade_date, final_state)
+            return final_state, signal
+        finally:
+            self.close_graph_run()
+
+    def _send_progress_update(self, state):
+        """Send progress updates based on state field completion.
+
+        Works with stream_mode="values" by detecting newly-completed report fields.
+        """
+        try:
+            if not isinstance(state, dict):
+                return
+
+            if not hasattr(self, '_progress_sent'):
+                self._progress_sent = set()
+
+            analyst_labels = [
+                ("market_report", "📊 市场分析师"),
+                ("sentiment_report", "💬 社交媒体分析师"),
+                ("news_report", "📰 新闻分析师"),
+                ("fundamentals_report", "💼 基本面分析师"),
+                ("policy_report", "📜 政策分析师"),
+                ("hot_money_report", "💰 游资追踪师"),
+                ("lockup_report", "🔓 解禁追踪师"),
+            ]
+
+            for report_key, label in analyst_labels:
+                if report_key in self._progress_sent:
+                    continue
+                report_val = state.get(report_key, "")
+                if report_val and isinstance(report_val, str) and len(report_val.strip()) > 10:
+                    self._progress_sent.add(report_key)
+                    for callback in self.callbacks:
+                        try:
+                            callback(label)
+                        except Exception as cb_err:
+                            logger.warning(f"Progress callback failed: {cb_err}")
+
+            if state.get("data_quality_summary") and 'quality_gate' not in self._progress_sent:
+                self._progress_sent.add('quality_gate')
+                for callback in self.callbacks:
+                    try:
+                        callback("✅ 数据质量审核")
+                    except Exception as cb_err:
+                        logger.warning(f"Progress callback failed: {cb_err}")
+
+            if state.get("final_trade_decision") and 'final' not in self._progress_sent:
+                self._progress_sent.add('final')
+                for callback in self.callbacks:
+                    try:
+                        callback("🎯 最终决策")
+                    except Exception as cb_err:
+                        logger.warning(f"Progress callback failed: {cb_err}")
+
+        except Exception as e:
+            logger.error(f"Progress update failed: {e}", exc_info=True)
+
+    def _run_with_progress(self, init_agent_state, args):
+        """Run graph in stream mode with progress tracking and return final state.
+
+        Uses stream_mode="values" where each chunk is the complete state.
+        The last chunk is the final state (no manual accumulation needed).
+        """
+        if hasattr(self, '_progress_sent'):
+            delattr(self, '_progress_sent')
+
+        final_state = dict(init_agent_state)
+        chunk_count = 0
+        for chunk in self.graph.stream(init_agent_state, **args):
+            chunk_count += 1
+            if isinstance(chunk, dict):
+                final_state = chunk
+                self._send_progress_update(final_state)
+
+        report_fields = ['market_report', 'sentiment_report', 'news_report',
+                        'fundamentals_report', 'policy_report', 'hot_money_report', 'lockup_report']
+        logger.info(f"📊 [Final State Reports] Total chunks processed: {chunk_count}")
+        for rf in report_fields:
+            val = final_state.get(rf, '')
+            logger.info(f"  ↳ {rf}: length={len(val) if isinstance(val, str) else 'NOT_STR'}, empty={not val if isinstance(val, str) else True}")
+
+        return final_state
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""

@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 from app.services.model_capability_service import get_model_capability_service
 from app.constants.model_capabilities import (
     DEFAULT_MODEL_CAPABILITIES,
-    ANALYSIS_DEPTH_REQUIREMENTS,
     CAPABILITY_DESCRIPTIONS,
     ModelRole,
     ModelFeature,
@@ -34,14 +33,8 @@ class ModelCapabilityInfo(BaseModel):
     capability_level: int
     suitable_roles: List[str]
     features: List[str]
-    recommended_depths: List[str]
     performance_metrics: Optional[Dict[str, Any]] = None
     description: Optional[str] = None
-
-
-class ModelRecommendationRequest(BaseModel):
-    """模型推荐请求"""
-    research_depth: str = Field(..., description="研究深度：快速/基础/标准/深度/全面")
 
 
 class ModelRecommendationResponse(BaseModel):
@@ -57,7 +50,6 @@ class ModelValidationRequest(BaseModel):
     """模型验证请求"""
     quick_model: str
     deep_model: str
-    research_depth: str
 
 
 class ModelValidationResponse(BaseModel):
@@ -82,7 +74,6 @@ async def get_default_model_configs():
     返回预定义的常见模型能力配置，用于参考和初始化。
     """
     try:
-        # 转换为可序列化的格式
         configs = {}
         for model_name, config in DEFAULT_MODEL_CAPABILITIES.items():
             configs[model_name] = {
@@ -90,7 +81,6 @@ async def get_default_model_configs():
                 "capability_level": config["capability_level"],
                 "suitable_roles": [str(role) for role in config["suitable_roles"]],
                 "features": [str(feature) for feature in config["features"]],
-                "recommended_depths": config["recommended_depths"],
                 "performance_metrics": config.get("performance_metrics"),
                 "description": config.get("description")
             }
@@ -102,31 +92,6 @@ async def get_default_model_configs():
         }
     except Exception as e:
         logger.error(f"获取默认模型配置失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/depth-requirements", response_model=dict)
-async def get_depth_requirements():
-    """
-    获取分析深度要求
-
-    返回各个分析深度对模型的最低要求。
-    """
-    try:
-        # 转换为可序列化的格式
-        requirements = {}
-        for depth, req in ANALYSIS_DEPTH_REQUIREMENTS.items():
-            requirements[depth] = {
-                "min_capability": req["min_capability"],
-                "quick_model_min": req["quick_model_min"],
-                "deep_model_min": req["deep_model_min"],
-                "required_features": [str(f) for f in req["required_features"]],
-                "description": req["description"]
-            }
-
-        return ok(requirements, "获取分析深度要求成功")
-    except Exception as e:
-        logger.error(f"获取分析深度要求失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -170,35 +135,24 @@ async def get_all_badges():
 
 
 @router.post("/recommend", response_model=dict)
-async def recommend_models(request: ModelRecommendationRequest):
+async def recommend_models():
     """
     推荐模型
 
-    根据分析深度推荐最合适的模型对。
+    推荐最合适的模型对（快速模型 + 深度模型）。
     """
     try:
         capability_service = get_model_capability_service()
 
-        # 获取推荐模型
-        quick_model, deep_model = capability_service.recommend_models_for_depth(
-            request.research_depth
-        )
+        quick_model, deep_model = capability_service.recommend_models()
 
         logger.info(f"🔍 推荐模型: quick={quick_model}, deep={deep_model}")
 
-        # 获取模型详细信息
         quick_info = capability_service.get_model_config(quick_model)
         deep_info = capability_service.get_model_config(deep_model)
 
         logger.info(f"🔍 模型详细信息: quick_info={quick_info}, deep_info={deep_info}")
 
-        # 生成推荐理由
-        depth_req = ANALYSIS_DEPTH_REQUIREMENTS.get(
-            request.research_depth,
-            ANALYSIS_DEPTH_REQUIREMENTS["标准"]
-        )
-
-        # 获取能力等级描述
         capability_desc = {
             1: "基础级",
             2: "标准级",
@@ -236,16 +190,14 @@ async def validate_models(request: ModelValidationRequest):
     """
     验证模型对
 
-    验证选择的模型对是否适合指定的分析深度。
+    验证选择的模型对是否满足基本要求。
     """
     try:
         capability_service = get_model_capability_service()
 
-        # 验证模型对
         validation = capability_service.validate_model_pair(
             request.quick_model,
-            request.deep_model,
-            request.research_depth
+            request.deep_model
         )
 
         return ok(validation, "模型验证完成")
@@ -262,7 +214,6 @@ async def batch_init_capabilities(request: BatchInitRequest):
     为数据库中的模型配置自动填充能力参数。
     """
     try:
-        # 获取所有LLM配置
         llm_configs = unified_config.get_llm_configs()
 
         updated_count = 0
@@ -271,26 +222,20 @@ async def batch_init_capabilities(request: BatchInitRequest):
         for config in llm_configs:
             model_name = config.model_name
 
-            # 检查是否已有能力配置
             has_capability = hasattr(config, 'capability_level') and config.capability_level is not None
 
             if has_capability and not request.overwrite:
                 skipped_count += 1
                 continue
 
-            # 从默认配置获取能力参数
             if model_name in DEFAULT_MODEL_CAPABILITIES:
                 default_config = DEFAULT_MODEL_CAPABILITIES[model_name]
 
-                # 更新配置
                 config.capability_level = default_config["capability_level"]
                 config.suitable_roles = [str(role) for role in default_config["suitable_roles"]]
                 config.features = [str(feature) for feature in default_config["features"]]
-                config.recommended_depths = default_config["recommended_depths"]
                 config.performance_metrics = default_config.get("performance_metrics")
 
-                # 保存到数据库
-                # TODO: 实现保存逻辑
                 updated_count += 1
                 logger.info(f"已初始化模型 {model_name} 的能力参数")
             else:
@@ -326,4 +271,3 @@ async def get_model_capability(model_name: str):
     except Exception as e:
         logger.error(f"获取模型能力信息失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

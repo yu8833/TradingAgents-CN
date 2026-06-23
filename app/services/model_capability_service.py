@@ -6,7 +6,6 @@
 
 from typing import Tuple, Dict, Optional, List, Any
 from app.constants.model_capabilities import (
-    ANALYSIS_DEPTH_REQUIREMENTS,
     DEFAULT_MODEL_CAPABILITIES,
     CAPABILITY_DESCRIPTIONS,
     ModelRole,
@@ -196,7 +195,6 @@ class ModelCapabilityService:
                             "capability_level": cap_level,
                             "suitable_roles": roles_enum,
                             "features": features_enum,
-                            "recommended_depths": config_dict.get('recommended_depths', default_cfg.get('recommended_depths', ["快速", "基础", "标准"])),
                             "performance_metrics": config_dict.get('performance_metrics', default_cfg.get('performance_metrics'))
                         }
 
@@ -227,31 +225,25 @@ class ModelCapabilityService:
             "capability_level": 2,
             "suitable_roles": [ModelRole.BOTH],
             "features": [ModelFeature.TOOL_CALLING],
-            "recommended_depths": ["快速", "基础", "标准"],
             "performance_metrics": {"speed": 3, "cost": 3, "quality": 3}
         }
     
     def validate_model_pair(
         self,
         quick_model: str,
-        deep_model: str,
-        research_depth: str
+        deep_model: str
     ) -> Dict[str, Any]:
         """
-        验证模型对是否适合当前分析深度
+        验证模型对是否满足基本要求
 
         Args:
             quick_model: 快速分析模型名称
             deep_model: 深度分析模型名称
-            research_depth: 研究深度（快速/基础/标准/深度/全面）
 
         Returns:
             验证结果字典，包含 valid, warnings, recommendations
         """
-        logger.info(f"🔍 开始验证模型对: quick={quick_model}, deep={deep_model}, depth={research_depth}")
-
-        requirements = ANALYSIS_DEPTH_REQUIREMENTS.get(research_depth, ANALYSIS_DEPTH_REQUIREMENTS["标准"])
-        logger.info(f"🔍 分析深度要求: {requirements}")
+        logger.info(f"🔍 开始验证模型对: quick={quick_model}, deep={deep_model}")
 
         quick_config = self.get_model_config(quick_model)
         deep_config = self.get_model_config(deep_model)
@@ -264,14 +256,6 @@ class ModelCapabilityService:
             "warnings": [],
             "recommendations": []
         }
-        
-        # 检查快速模型
-        quick_level = quick_config["capability_level"]
-        logger.info(f"🔍 检查快速模型能力等级: {quick_level} >= {requirements['quick_model_min']}?")
-        if quick_level < requirements["quick_model_min"]:
-            warning = f"⚠️ 快速模型 {quick_model} (能力等级{quick_level}) 低于 {research_depth} 分析的建议等级({requirements['quick_model_min']})"
-            result["warnings"].append(warning)
-            logger.warning(warning)
 
         # 检查快速模型角色适配
         quick_roles = quick_config.get("suitable_roles", [])
@@ -290,18 +274,6 @@ class ModelCapabilityService:
             result["warnings"].append(warning)
             logger.error(warning)
 
-        # 检查深度模型
-        deep_level = deep_config["capability_level"]
-        logger.info(f"🔍 检查深度模型能力等级: {deep_level} >= {requirements['deep_model_min']}?")
-        if deep_level < requirements["deep_model_min"]:
-            result["valid"] = False
-            warning = f"❌ 深度模型 {deep_model} (能力等级{deep_level}) 不满足 {research_depth} 分析的最低要求(等级{requirements['deep_model_min']})"
-            result["warnings"].append(warning)
-            logger.error(warning)
-            result["recommendations"].append(
-                self._recommend_model("deep", requirements["deep_model_min"])
-            )
-
         # 检查深度模型角色适配
         deep_roles = deep_config.get("suitable_roles", [])
         logger.info(f"🔍 检查深度模型角色: {deep_roles}")
@@ -310,71 +282,56 @@ class ModelCapabilityService:
             result["warnings"].append(warning)
             logger.warning(warning)
 
-        # 检查必需特性
-        logger.info(f"🔍 检查必需特性: {requirements['required_features']}")
-        for feature in requirements["required_features"]:
-            if feature == ModelFeature.REASONING:
-                deep_features = deep_config.get("features", [])
-                logger.info(f"🔍 检查深度模型推理能力: {deep_features}")
-                if feature not in deep_features:
-                    warning = f"💡 {research_depth} 分析建议使用具有强推理能力的深度模型"
-                    result["warnings"].append(warning)
-                    logger.warning(warning)
-
         logger.info(f"🔍 验证结果: valid={result['valid']}, warnings={len(result['warnings'])}条")
         logger.info(f"🔍 警告详情: {result['warnings']}")
 
         return result
-    
-    def recommend_models_for_depth(
-        self,
-        research_depth: str
-    ) -> Tuple[str, str]:
+
+    def recommend_default_models(self) -> Tuple[str, str]:
         """
-        根据分析深度推荐合适的模型对
-        
-        Args:
-            research_depth: 研究深度（快速/基础/标准/深度/全面）
-            
+        推荐默认模型对
+
         Returns:
             (quick_model, deep_model) 元组
         """
-        requirements = ANALYSIS_DEPTH_REQUIREMENTS.get(research_depth, ANALYSIS_DEPTH_REQUIREMENTS["标准"])
-        
+        return self._get_default_models()
+
+    def recommend_models(self) -> Tuple[str, str]:
+        """
+        推荐合适的模型对（从已启用的模型中筛选最佳组合）
+
+        Returns:
+            (quick_model, deep_model) 元组
+        """
         # 获取所有启用的模型
         try:
             llm_configs = unified_config.get_llm_configs()
             enabled_models = [c for c in llm_configs if c.enabled]
         except Exception as e:
             logger.error(f"获取模型配置失败: {e}")
-            # 使用默认模型
             return self._get_default_models()
-        
+
         if not enabled_models:
             logger.warning("没有启用的模型，使用默认配置")
             return self._get_default_models()
-        
+
         # 筛选适合快速分析的模型
         quick_candidates = []
         for m in enabled_models:
             roles = getattr(m, 'suitable_roles', [ModelRole.BOTH])
-            level = getattr(m, 'capability_level', 2)
             features = getattr(m, 'features', [])
 
-            # 🔧 如果 features 为空，从默认配置中获取
             if not features:
                 default_cfg = DEFAULT_MODEL_CAPABILITIES.get(m.model_name, {})
                 if default_cfg and 'features' in default_cfg:
                     features = default_cfg['features']
                 else:
-                    features = [ModelFeature.TOOL_CALLING]  # 默认支持工具调用
+                    features = [ModelFeature.TOOL_CALLING]
 
-            # 🔧 确保 roles 有默认值
             if not roles:
                 roles = [ModelRole.BOTH]
 
             if (ModelRole.QUICK_ANALYSIS in roles or ModelRole.BOTH in roles) and \
-               level >= requirements["quick_model_min"] and \
                ModelFeature.TOOL_CALLING in features:
                 quick_candidates.append(m)
 
@@ -382,17 +339,14 @@ class ModelCapabilityService:
         deep_candidates = []
         for m in enabled_models:
             roles = getattr(m, 'suitable_roles', [ModelRole.BOTH])
-            level = getattr(m, 'capability_level', 2)
 
-            # 🔧 确保 roles 有默认值
             if not roles:
                 roles = [ModelRole.BOTH]
 
-            if (ModelRole.DEEP_ANALYSIS in roles or ModelRole.BOTH in roles) and \
-               level >= requirements["deep_model_min"]:
+            if ModelRole.DEEP_ANALYSIS in roles or ModelRole.BOTH in roles:
                 deep_candidates.append(m)
-        
-        # 按性价比排序（能力等级 vs 成本）
+
+        # 按性价比排序
         quick_candidates.sort(
             key=lambda x: (
                 getattr(x, 'capability_level', 2),
@@ -400,7 +354,7 @@ class ModelCapabilityService:
             ),
             reverse=True
         )
-        
+
         deep_candidates.sort(
             key=lambda x: (
                 getattr(x, 'capability_level', 2),
@@ -408,21 +362,17 @@ class ModelCapabilityService:
             ),
             reverse=True
         )
-        
-        # 选择最佳模型
+
         quick_model = quick_candidates[0].model_name if quick_candidates else None
         deep_model = deep_candidates[0].model_name if deep_candidates else None
-        
-        # 如果没找到合适的，使用系统默认
+
         if not quick_model or not deep_model:
             return self._get_default_models()
-        
+
         logger.info(
-            f"🤖 为 {research_depth} 分析推荐模型: "
-            f"quick={quick_model} (角色:快速分析), "
-            f"deep={deep_model} (角色:深度推理)"
+            f"🤖 推荐模型: quick={quick_model}, deep={deep_model}"
         )
-        
+
         return quick_model, deep_model
     
     def _get_default_models(self) -> Tuple[str, str]:

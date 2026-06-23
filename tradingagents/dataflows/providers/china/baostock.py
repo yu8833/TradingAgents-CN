@@ -1,13 +1,31 @@
-"""Baostock Provider 兼容层"""
+"""兼容层: BaoStock 数据源占位"""
+import logging
 
-def get_baostock_provider(*args, **kwargs):
-    """获取Baostock提供者（兼容层 - 返回空对象）"""
-    return BaoStockProvider()
+logger = logging.getLogger(__name__)
+
 
 class BaoStockProvider:
-    """Baostock数据提供者（兼容层 - 空实现）"""
-    def __init__(self, *args, **kwargs):
-        pass
+    """BaoStock 数据源占位（兼容层）"""
 
-    def get_data(self, *args, **kwargs):
-        return None
+    def __init__(self, *args, **kwargs):
+        logger.warning("⚠️ [BaoStockProvider] 已迁移到 a_stock.py，本占位类仅用于 import 兼容")
+
+    def get_stock_basic(self, *args, **kwargs):
+        return []
+
+    def get_daily(self, *args, **kwargs):
+        return []
+
+    def get_financial(self, *args, **kwargs):
+        return {}
+
+
+_default_baostock = None
+
+
+def get_baostock_provider(*args, **kwargs):
+    """获取 BaoStockProvider 单例（占位）"""
+    global _default_baostock
+    if _default_baostock is None:
+        _default_baostock = BaoStockProvider(*args, **kwargs)
+    return _default_baostock

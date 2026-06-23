@@ -64,14 +64,7 @@ MACD 类：
 2. 近 30 日累计涨跌幅
 3. 近 5 日平均成交量 vs 近 20 日平均成交量（判断放量/缩量）
 4. 至少 3 个技术指标的当前数值和多空信号
-5. **关键支撑位和阻力位（必须给出具体价格数值，如支撑位 18.50，阻力位 20.00）**
-6. **潜在入场价和止损价建议（基于支撑/阻力位）**
-
-📌 格式提示：
-- 请用中文撰写报告
-- 在报告开头概述当前技术形态和趋势方向
-- **支撑位和阻力位请给出具体数字**（以标的当前计价货币为准）
-- 给出清晰的短期（1-2 周）和中期（1-3 个月）技术判断"""
+5. 关键支撑位和阻力位"""
             + get_language_instruction()
         )
 
@@ -79,13 +72,14 @@ MACD 类：
             [
                 (
                     "system",
-                    "你是一位专业的 A 股分析助手，正在与其他分析伙伴协作完成股票分析。"
-                    "使用提供的工具（如数据查询、新闻搜索）来回答问题。"
-                    "如果当前工具不足以完成完整回答也没关系，其他同事会从你停止的地方继续推进。"
-                    "在你能力范围内尽力完成分析即可。"
-                    "如果你或其他同事已有**最终交易建议（买入/持有/卖出）**，请在回答开头标注「最终交易建议」。"
-                    "你可以调用的工具有：{tool_names}。\n{system_message}"
-                    "参考日期：{current_date}。{instrument_context}",
+                    "You are a helpful AI assistant, collaborating with other assistants."
+                    " Use the provided tools to progress towards answering the question."
+                    " If you are unable to fully answer, that's OK; another assistant with different tools"
+                    " will help where you left off. Execute what you can to make progress."
+                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
+                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
+                    " You have access to the following tools: {tool_names}.\n{system_message}"
+                    "For your reference, the current date is {current_date}. {instrument_context}",
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]

@@ -6,10 +6,10 @@
 import asyncio
 import uuid
 import logging
-from datetime import datetime, timedelta
+import re
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 from pathlib import Path
-from app.utils.timezone import now_tz, to_config_tz
 import sys
 
 # 添加项目根目录到路径
@@ -17,101 +17,14 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # 初始化TradingAgents日志系统
-try:
-    from tradingagents.utils.logging_init import init_logging
-    init_logging()
-except Exception:
-    pass
+from tradingagents.utils.logging_init import init_logging
+init_logging()
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 from app.models.analysis import (
     AnalysisTask, AnalysisStatus, SingleAnalysisRequest, AnalysisParameters
 )
-
-# provider_keys 兼容层：新 tradingagents 可能没有这个模块
-try:
-    from tradingagents.llm_clients.provider_keys import (
-        normalize_provider_key as _normalize_provider_key,
-        default_backend_url as _default_backend_url,
-        env_key_for_provider as _env_key_for_provider,
-    )
-    _provider_keys_available = True
-except Exception:
-    _provider_keys_available = False
-
-    def _normalize_provider_key(provider):
-        """简单的 provider 名称标准化"""
-        if not provider:
-            return "openai"
-        p = str(provider).lower().strip()
-        # 常见名称映射
-        mapping = {
-            "dashscope": "dashscope",
-            "阿里": "dashscope",
-            "alibabacloud": "dashscope",
-            "qianwen": "dashscope",
-            "qwen": "dashscope",
-            "openai": "openai",
-            "gpt": "openai",
-            "google": "google",
-            "gemini": "google",
-            "anthropic": "anthropic",
-            "claude": "anthropic",
-            "deepseek": "deepseek",
-            "zhipu": "glm",
-            "glm": "glm",
-            "智谱": "glm",
-            "302ai": "302ai",
-            "aihubmix": "aihubmix",
-            "moonshot": "kimi",
-            "kimi": "kimi",
-        }
-        for k, v in mapping.items():
-            if k in p:
-                return v
-        return p
-
-    def _default_backend_url(provider_key):
-        """默认的 backend_url"""
-        urls = {
-            "openai": "https://api.openai.com/v1",
-            "google": "https://generativelanguage.googleapis.com/v1beta",
-            "anthropic": "https://api.anthropic.com/v1",
-            "deepseek": "https://api.deepseek.com/v1",
-            "dashscope": "https://dashscope.aliyuncs.com/api/v1",
-            "glm": "https://open.bigmodel.cn/api/paas/v4",
-            "kimi": "https://api.moonshot.cn/v1",
-            "302ai": "https://api.302.ai/v1",
-            "aihubmix": "https://aihubmix.com/v1",
-        }
-        return urls.get(str(provider_key).lower(), "https://api.openai.com/v1")
-
-    def _env_key_for_provider(provider_key):
-        """获取对应 provider 的 API key 环境变量名称"""
-        if not provider_key:
-            return "OPENAI_API_KEY"
-        p = str(provider_key).lower()
-        if p == "openai":
-            return "OPENAI_API_KEY"
-        elif p == "google":
-            return "GOOGLE_API_KEY"
-        elif p == "anthropic":
-            return "ANTHROPIC_API_KEY"
-        elif p == "deepseek":
-            return "DEEPSEEK_API_KEY"
-        elif p == "dashscope":
-            return "DASHSCOPE_API_KEY"
-        elif p == "glm":
-            return "ZHIPUAI_API_KEY"
-        elif p == "kimi":
-            return "MOONSHOT_API_KEY"
-        elif p == "302ai":
-            return "AI302_API_KEY"
-        elif p == "aihubmix":
-            return "AIHUBMIX_API_KEY"
-        else:
-            return f"{p.upper()}_API_KEY"
 from app.models.user import PyObjectId
 from app.models.notification import NotificationCreate
 from bson import ObjectId
@@ -125,47 +38,11 @@ from app.services.progress_log_handler import register_analysis_tracker, unregis
 try:
     from tradingagents.dataflows.data_source_manager import get_data_source_manager
     _data_source_manager = get_data_source_manager()
-    if _data_source_manager is not None and hasattr(_data_source_manager, 'get_stock_basic_info'):
-        def _get_stock_info_safe(stock_code: str):
-            """获取股票基础信息的安全封装"""
-            try:
-                return _data_source_manager.get_stock_basic_info(stock_code)
-            except Exception:
-                return None
-    else:
-        # 新 tradingagents 的回退方案：使用 a_stock 模块的 resolve_ticker
-        try:
-            from tradingagents.dataflows.a_stock import resolve_ticker
-            def _get_stock_info_safe(stock_code: str):
-                """获取股票基础信息（新接口回退）"""
-                try:
-                    info = resolve_ticker(stock_code)
-                    if isinstance(info, dict):
-                        return {"name": info.get("name", ""), "code": info.get("code", stock_code)}
-                    if isinstance(info, str):
-                        return {"name": info, "code": stock_code}
-                    return None
-                except Exception:
-                    return None
-        except Exception:
-            _get_stock_info_safe = None
+    def _get_stock_info_safe(stock_code: str):
+        """获取股票基础信息的安全封装"""
+        return _data_source_manager.get_stock_basic_info(stock_code)
 except Exception:
-    # 新 tradingagents 的回退方案：使用 a_stock 模块的 resolve_ticker
-    try:
-        from tradingagents.dataflows.a_stock import resolve_ticker
-        def _get_stock_info_safe(stock_code: str):
-            """获取股票基础信息（新接口回退）"""
-            try:
-                info = resolve_ticker(stock_code)
-                if isinstance(info, dict):
-                    return {"name": info.get("name", ""), "code": info.get("code", stock_code)}
-                if isinstance(info, str):
-                    return {"name": info, "code": stock_code}
-                return None
-            except Exception:
-                return None
-    except Exception:
-        _get_stock_info_safe = None
+    _get_stock_info_safe = None
 
 # 设置日志
 logger = logging.getLogger("app.services.simple_analysis_service")
@@ -258,28 +135,15 @@ def get_provider_and_url_by_model_sync(model_name: str) -> dict:
                     provider_doc = providers_collection.find_one({"name": provider})
 
                     # 🔥 确定 API Key（优先级：模型配置 > 厂家配置 > 环境变量）
-                    def _is_valid_key(key: str) -> bool:
-                        """检查 API Key 是否有效（不是占位符）"""
-                        if not key or not key.strip():
-                            return False
-                        stripped = key.strip().strip('"').strip("'")
-                        # 检查常见的占位符格式
-                        if (stripped.startswith('your_') or stripped.startswith('your-') or
-                                stripped.startswith('xxx') or stripped.startswith('XXX') or
-                                'example' in stripped.lower() or 'placeholder' in stripped.lower()):
-                            return False
-                        # 最小长度检查
-                        if len(stripped) <= 10:
-                            return False
-                        return True
-
                     api_key = None
-                    if model_api_key and _is_valid_key(model_api_key):
+                    if model_api_key and model_api_key.strip() and model_api_key != "your-api-key":
                         api_key = model_api_key
                         logger.info(f"✅ [同步查询] 使用模型配置的 API Key")
-                    elif provider_doc and provider_doc.get("api_key") and _is_valid_key(provider_doc["api_key"]):
-                        api_key = provider_doc["api_key"]
-                        logger.info(f"✅ [同步查询] 使用厂家配置的 API Key")
+                    elif provider_doc and provider_doc.get("api_key"):
+                        provider_api_key = provider_doc["api_key"]
+                        if provider_api_key and provider_api_key.strip() and provider_api_key != "your-api-key":
+                            api_key = provider_api_key
+                            logger.info(f"✅ [同步查询] 使用厂家配置的 API Key")
 
                     # 如果数据库中没有有效的 API Key，尝试从环境变量获取
                     if not api_key:
@@ -301,9 +165,11 @@ def get_provider_and_url_by_model_sync(model_name: str) -> dict:
                         backend_url = _get_default_backend_url(provider)
                         logger.warning(f"⚠️ [同步查询] 厂家 {provider} 没有配置 default_base_url，使用硬编码默认值")
 
-                    provider_key = _normalize_provider_key(provider)
+                    from tradingagents.llm_clients.provider_keys import normalize_provider_key, default_backend_url
+
+                    provider_key = normalize_provider_key(provider)
                     if provider_key == "qwen" and backend_url == "https://dashscope.aliyuncs.com/api/v1":
-                        backend_url = _default_backend_url(provider_key)
+                        backend_url = default_backend_url(provider_key)
 
                     client.close()
                     return {
@@ -345,9 +211,11 @@ def get_provider_and_url_by_model_sync(model_name: str) -> dict:
                 if api_key:
                     logger.info(f"✅ [同步查询] 使用环境变量的 API Key")
 
-            provider_key = _normalize_provider_key(provider)
+            from tradingagents.llm_clients.provider_keys import normalize_provider_key, default_backend_url
+
+            provider_key = normalize_provider_key(provider)
             if provider_key == "qwen" and backend_url == "https://dashscope.aliyuncs.com/api/v1":
-                backend_url = _default_backend_url(provider_key)
+                backend_url = default_backend_url(provider_key)
 
             client.close()
             return {
@@ -359,7 +227,9 @@ def get_provider_and_url_by_model_sync(model_name: str) -> dict:
             logger.warning(f"⚠️ [同步查询] 无法查询厂家配置: {e}")
 
         # 最后回退到硬编码的默认 URL 和环境变量 API Key
-        provider_key = _normalize_provider_key(provider)
+        from tradingagents.llm_clients.provider_keys import normalize_provider_key
+
+        provider_key = normalize_provider_key(provider)
         return {
             "provider": provider_key,
             "backend_url": _get_default_backend_url(provider_key),
@@ -427,8 +297,10 @@ def _get_env_api_key_for_provider(provider: str) -> str:
     """
     import os
 
-    provider_key = _normalize_provider_key(provider)
-    env_key_name = _env_key_for_provider(provider_key)
+    from tradingagents.llm_clients.provider_keys import env_key_for_provider, normalize_provider_key
+
+    provider_key = normalize_provider_key(provider)
+    env_key_name = env_key_for_provider(provider_key)
     if not env_key_name and provider_key == "302ai":
         env_key_name = "AI302_API_KEY"
     if not env_key_name and provider_key == "aihubmix":
@@ -451,13 +323,15 @@ def _get_default_backend_url(provider: str) -> str:
     Returns:
         str: 默认的 backend_url
     """
-    provider_key = _normalize_provider_key(provider)
+    from tradingagents.llm_clients.provider_keys import default_backend_url, normalize_provider_key
+
+    provider_key = normalize_provider_key(provider)
     if provider_key == "302ai":
         url = "https://api.302.ai/v1"
     elif provider_key == "aihubmix":
         url = "https://aihubmix.com/v1"
     else:
-        url = _default_backend_url(provider_key)
+        url = default_backend_url(provider_key)
 
     logger.info(f"🔧 [默认URL] {provider} -> {url}")
     return url
@@ -505,179 +379,56 @@ def _get_default_provider_by_model(model_name: str) -> str:
 
 
 def create_analysis_config(
-    research_depth,  # 支持数字(1-5)或字符串("快速", "标准", "深度")
     selected_analysts: list,
     quick_model: str,
     deep_model: str,
     llm_provider: str,
     market_type: str = "A股",
-    quick_model_config: dict = None,  # 新增：快速模型的完整配置
-    deep_model_config: dict = None    # 新增：深度模型的完整配置
+    quick_model_config: dict = None,
+    deep_model_config: dict = None
 ) -> dict:
     """
-    创建分析配置 - 支持数字等级和中文等级
+    创建分析配置
 
     Args:
-        research_depth: 研究深度，支持数字(1-5)或中文("快速", "基础", "标准", "深度", "全面")
         selected_analysts: 选中的分析师列表
         quick_model: 快速分析模型
         deep_model: 深度分析模型
         llm_provider: LLM供应商
         market_type: 市场类型
-        quick_model_config: 快速模型的完整配置（包含 max_tokens、temperature、timeout 等）
-        deep_model_config: 深度模型的完整配置（包含 max_tokens、temperature、timeout 等）
+        quick_model_config: 快速模型的完整配置
+        deep_model_config: 深度模型的完整配置
 
     Returns:
         dict: 完整的分析配置
     """
-    # 🔍 [调试] 记录接收到的原始参数
-    logger.info(f"🔍 [配置创建] 接收到的research_depth参数: {research_depth} (类型: {type(research_depth).__name__})")
-
-    # 数字等级到中文等级的映射
-    numeric_to_chinese = {
-        1: "快速",
-        2: "基础",
-        3: "标准",
-        4: "深度",
-        5: "全面"
-    }
-
-    # 标准化研究深度：支持数字输入
-    if isinstance(research_depth, (int, float)):
-        research_depth = int(research_depth)
-        if research_depth in numeric_to_chinese:
-            chinese_depth = numeric_to_chinese[research_depth]
-            logger.info(f"🔢 [等级转换] 数字等级 {research_depth} → 中文等级 '{chinese_depth}'")
-            research_depth = chinese_depth
-        else:
-            logger.warning(f"⚠️ 无效的数字等级: {research_depth}，使用默认标准分析")
-            research_depth = "标准"
-    elif isinstance(research_depth, str):
-        # 如果是字符串形式的数字，转换为整数
-        if research_depth.isdigit():
-            numeric_level = int(research_depth)
-            if numeric_level in numeric_to_chinese:
-                chinese_depth = numeric_to_chinese[numeric_level]
-                logger.info(f"🔢 [等级转换] 字符串数字 '{research_depth}' → 中文等级 '{chinese_depth}'")
-                research_depth = chinese_depth
-            else:
-                logger.warning(f"⚠️ 无效的字符串数字等级: {research_depth}，使用默认标准分析")
-                research_depth = "标准"
-        # 如果已经是中文等级，直接使用
-        elif research_depth in ["快速", "基础", "标准", "深度", "全面"]:
-            logger.info(f"📝 [等级确认] 使用中文等级: '{research_depth}'")
-        else:
-            logger.warning(f"⚠️ 未知的研究深度: {research_depth}，使用默认标准分析")
-            research_depth = "标准"
-    else:
-        logger.warning(f"⚠️ 无效的研究深度类型: {type(research_depth)}，使用默认标准分析")
-        research_depth = "标准"
-
-    # 从DEFAULT_CONFIG开始，构建新的配置结构（适配新 tradingagents）
     config = DEFAULT_CONFIG.copy()
     config["llm_provider"] = llm_provider
     config["deep_think_llm"] = deep_model
     config["quick_think_llm"] = quick_model
 
-    # 🔧 新结构：确保 data_vendors 和 tool_vendors 存在（A 股配置）
-    if "data_vendors" not in config or not isinstance(config.get("data_vendors"), dict):
-        config["data_vendors"] = {
-            "core_stock_apis": "a_stock",
-            "technical_indicators": "a_stock",
-            "fundamental_data": "a_stock",
-            "news_data": "a_stock",
-            "signal_data": "a_stock",
-        }
-    if "tool_vendors" not in config or not isinstance(config.get("tool_vendors"), dict):
-        config["tool_vendors"] = {}
-    if "output_language" not in config:
-        config["output_language"] = "Chinese"
-    if "checkpoint_enabled" not in config:
-        config["checkpoint_enabled"] = False
-
-    # 根据研究深度调整配置 - 支持5个级别（与Web界面保持一致）
-    if research_depth == "快速":
-        # 1级 - 快速分析
-        config["max_debate_rounds"] = 1
-        config["max_risk_discuss_rounds"] = 1
-        config["memory_enabled"] = False  # 禁用记忆以加速
-        config["online_tools"] = True  # 统一使用在线工具，避免离线工具的各种问题
-        logger.info(f"🔧 [1级-快速分析] {market_type}使用统一工具，确保数据源正确和稳定性")
-        logger.info(f"🔧 [1级-快速分析] 使用用户配置的模型: quick={quick_model}, deep={deep_model}")
-
-    elif research_depth == "基础":
-        # 2级 - 基础分析
-        config["max_debate_rounds"] = 1
-        config["max_risk_discuss_rounds"] = 1
-        config["memory_enabled"] = True
-        config["online_tools"] = True
-        logger.info(f"🔧 [2级-基础分析] {market_type}使用在线工具，获取最新数据")
-        logger.info(f"🔧 [2级-基础分析] 使用用户配置的模型: quick={quick_model}, deep={deep_model}")
-
-    elif research_depth == "标准":
-        # 3级 - 标准分析（推荐）
-        config["max_debate_rounds"] = 1
-        config["max_risk_discuss_rounds"] = 2
-        config["memory_enabled"] = True
-        config["online_tools"] = True
-        logger.info(f"🔧 [3级-标准分析] {market_type}平衡速度和质量（推荐）")
-        logger.info(f"🔧 [3级-标准分析] 使用用户配置的模型: quick={quick_model}, deep={deep_model}")
-
-    elif research_depth == "深度":
-        # 4级 - 深度分析
-        config["max_debate_rounds"] = 2
-        config["max_risk_discuss_rounds"] = 2
-        config["memory_enabled"] = True
-        config["online_tools"] = True
-        logger.info(f"🔧 [4级-深度分析] {market_type}多轮辩论，深度研究")
-        logger.info(f"🔧 [4级-深度分析] 使用用户配置的模型: quick={quick_model}, deep={deep_model}")
-
-    elif research_depth == "全面":
-        # 5级 - 全面分析
-        config["max_debate_rounds"] = 3
-        config["max_risk_discuss_rounds"] = 3
-        config["memory_enabled"] = True
-        config["online_tools"] = True
-        logger.info(f"🔧 [5级-全面分析] {market_type}最全面的分析，最高质量")
-        logger.info(f"🔧 [5级-全面分析] 使用用户配置的模型: quick={quick_model}, deep={deep_model}")
-
-    else:
-        # 默认使用标准分析
-        logger.warning(f"⚠️ 未知的研究深度: {research_depth}，使用标准分析")
-        config["max_debate_rounds"] = 1
-        config["max_risk_discuss_rounds"] = 2
-        config["memory_enabled"] = True
-        config["online_tools"] = True
-
     # 🔧 获取 backend_url 和 API Key（优先级：模型配置 > 厂家配置 > 环境变量）
     try:
-        # 1️⃣ 优先从数据库获取（包含模型配置的 api_base、API Key 和厂家的 default_base_url、API Key）
         quick_provider_info = get_provider_and_url_by_model_sync(quick_model)
         deep_provider_info = get_provider_and_url_by_model_sync(deep_model)
 
-        # 新结构：backend_url 可以为 None（代表使用 provider 默认值）
-        backend_from_db = quick_provider_info.get("backend_url")
-        if backend_from_db:
-            config["backend_url"] = backend_from_db
-        # 保存快速/深度模型的 API Key（即使新框架没用也保留用于扩展性）
+        config["backend_url"] = quick_provider_info["backend_url"]
         config["quick_api_key"] = quick_provider_info.get("api_key")
         config["deep_api_key"] = deep_provider_info.get("api_key")
 
-        logger.info(f"✅ 使用数据库配置的 backend_url: {config.get('backend_url')}")
+        logger.info(f"✅ 使用数据库配置的 backend_url: {quick_provider_info['backend_url']}")
         logger.info(f"   来源: 模型 {quick_model} 的配置或厂家 {quick_provider_info['provider']} 的默认地址")
-        logger.info(f"🔑 快速模型 API Key: {'已配置' if config.get('quick_api_key') else '未配置（将使用环境变量）'}")
-        logger.info(f"🔑 深度模型 API Key: {'已配置' if config.get('deep_api_key') else '未配置（将使用环境变量）'}")
+        logger.info(f"🔑 快速模型 API Key: {'已配置' if config['quick_api_key'] else '未配置（将使用环境变量）'}")
+        logger.info(f"🔑 深度模型 API Key: {'已配置' if config['deep_api_key'] else '未配置（将使用环境变量）'}")
     except Exception as e:
         logger.warning(f"⚠️  无法从数据库获取 backend_url 和 API Key: {e}")
-        config["backend_url"] = _default_backend_url(llm_provider)
+        config["backend_url"] = _get_default_backend_url(llm_provider)
+
         logger.info(f"⚠️  使用回退的 backend_url: {config['backend_url']}")
 
     # 添加分析师配置
     config["selected_analysts"] = selected_analysts
     config["debug"] = False
-
-    # 🔧 添加research_depth到配置中，使工具函数能够访问分析级别信息
-    config["research_depth"] = research_depth
 
     # 🔧 添加模型配置参数（max_tokens、temperature、timeout、retry_times）
     if quick_model_config:
@@ -695,11 +446,8 @@ def create_analysis_config(
                    f"retry_times={deep_model_config.get('retry_times')}")
 
     logger.info(f"📋 ========== 创建分析配置完成 ==========")
-    logger.info(f"   🎯 研究深度: {research_depth}")
     logger.info(f"   🔥 辩论轮次: {config['max_debate_rounds']}")
     logger.info(f"   ⚖️ 风险讨论轮次: {config['max_risk_discuss_rounds']}")
-    logger.info(f"   💾 记忆功能: {config['memory_enabled']}")
-    logger.info(f"   🌐 在线工具: {config['online_tools']}")
     logger.info(f"   🤖 LLM供应商: {llm_provider}")
     logger.info(f"   ⚡ 快速模型: {config['quick_think_llm']}")
     logger.info(f"   🧠 深度模型: {config['deep_think_llm']}")
@@ -738,15 +486,6 @@ class SimpleAnalysisService:
         except ImportError:
             logger.warning("⚠️ WebSocket 管理器不可用")
 
-        # 💰 Token 使用统计服务（用于记录分析消耗的 Token 数量）
-        try:
-            from app.services.usage_statistics_service import usage_statistics_service
-            self.usage_service = usage_statistics_service
-            logger.info(f"🔧 [服务初始化] Token 使用统计服务已启用")
-        except ImportError:
-            logger.warning("⚠️ Token 使用统计服务不可用")
-            self.usage_service = None
-
     async def _update_progress_async(self, task_id: str, progress: int, message: str):
         """异步更新进度（内存和MongoDB）"""
         try:
@@ -761,6 +500,7 @@ class SimpleAnalysisService:
 
             # 更新 MongoDB
             from app.core.database import get_mongo_db
+            from datetime import datetime
             db = get_mongo_db()
             await db.analysis_tasks.update_one(
                 {"task_id": task_id},
@@ -769,7 +509,7 @@ class SimpleAnalysisService:
                         "progress": progress,
                         "current_step": message,
                         "message": message,
-                        "updated_at": now_tz()
+                        "updated_at": datetime.utcnow()
                     }
                 }
             )
@@ -802,8 +542,7 @@ class SimpleAnalysisService:
         """为任务列表补齐股票名称(就地更新)"""
         try:
             for t in tasks:
-                # 兼容多种股票代码字段名
-                code = t.get("stock_code") or t.get("stock_symbol") or t.get("symbol")
+                code = t.get("stock_code") or t.get("stock_symbol")
                 name = t.get("stock_name")
                 if not name and code:
                     t["stock_name"] = self._resolve_stock_name(code)
@@ -833,7 +572,7 @@ class SimpleAnalysisService:
             logger.warning(f"⚠️ 生成新的用户ID: {new_object_id}")
             return PyObjectId(new_object_id)
 
-    def _get_trading_graph(self, config: Dict[str, Any]) -> TradingAgentsGraph:
+    def _get_trading_graph(self, config: Dict[str, Any], callbacks: Optional[List] = None) -> TradingAgentsGraph:
         """获取或创建TradingAgents实例
 
         ⚠️ 注意：为了避免并发执行时的数据混淆，每次都创建新实例
@@ -841,74 +580,21 @@ class SimpleAnalysisService:
 
         TradingAgentsGraph 实例包含可变状态（self.ticker, self.curr_state等），
         如果多个线程共享同一个实例，会导致数据混淆。
+        
+        Args:
+            config: 配置字典
+            callbacks: 可选的回调函数列表，用于接收 LangGraph 的进度更新
         """
         # 🔧 [并发安全] 每次都创建新实例，避免多线程共享状态
         # 不再使用缓存，因为 TradingAgentsGraph 有可变的实例变量
         logger.info(f"🔧 创建新的TradingAgents实例（并发安全模式）...")
-
-        # 🔧 关键修复：将 API Key 设置到环境变量中
-        # TradingAgents 的 LLM 客户端只从环境变量读取 API Key
-        # 优先级：环境变量中有效的 Key > 数据库中的 Key > 任何有效 Key
-        import os
-        llm_provider = config.get("llm_provider", "").lower()
-        quick_api_key = config.get("quick_api_key")
-        deep_api_key = config.get("deep_api_key")
-
-        def _is_valid_key(key: str) -> bool:
-            """检查 API Key 是否有效（不是占位符）"""
-            if not key or not key.strip():
-                return False
-            stripped = key.strip().strip('"').strip("'")
-            if (stripped.startswith('your_') or stripped.startswith('your-') or
-                    stripped.startswith('xxx') or stripped.startswith('XXX') or
-                    'example' in stripped.lower() or 'placeholder' in stripped.lower()):
-                return False
-            if len(stripped) <= 10:
-                return False
-            return True
-
-        env_var_map = {
-            "openai": "OPENAI_API_KEY",
-            "xai": "XAI_API_KEY",
-            "deepseek": "DEEPSEEK_API_KEY",
-            "qwen": "DASHSCOPE_API_KEY",
-            "dashscope": "DASHSCOPE_API_KEY",
-            "glm": "ZHIPU_API_KEY",
-            "zhipu": "ZHIPU_API_KEY",
-            "ollama": "OLLAMA_API_KEY",
-            "openrouter": "OPENROUTER_API_KEY",
-            "minimax": "MINIMAX_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY",
-            "google": "GOOGLE_API_KEY",
-            "302ai": "AI302_API_KEY",
-            "aihubmix": "AIHUBMIX_API_KEY",
-            "siliconflow": "SILICONFLOW_API_KEY",
-            "oneapi": "ONEAPI_API_KEY",
-            "newapi": "NEWAPI_API_KEY",
-        }
-
-        if llm_provider in env_var_map:
-            env_var = env_var_map[llm_provider]
-            # 🔧 优先级：环境变量中已有的有效 Key > 从数据库获取的 Key
-            existing_env_key = os.environ.get(env_var)
-            if existing_env_key and _is_valid_key(existing_env_key):
-                logger.info(f"🔑 使用环境变量中已有的 API Key: {env_var}")
-            elif quick_api_key and _is_valid_key(quick_api_key):
-                os.environ[env_var] = quick_api_key
-                logger.info(f"🔑 已设置环境变量 {env_var}（长度: {len(quick_api_key)}）")
-            else:
-                # 所有 Key 都是无效的，记录警告
-                logger.warning(f"⚠️ 未找到有效的 {env_var} API Key（数据库/环境变量均为无效占位符）")
-                logger.warning(f"   请更新 MongoDB 的 system_configs 集合中的 llm_configs.api_key 为有效值")
-
-        # 如果深度模型有独立的 API Key，也设置一下
-        if deep_api_key and quick_api_key != deep_api_key and _is_valid_key(deep_api_key):
-            logger.info(f"🔑 深度模型有独立的 API Key 配置")
+        logger.info(f"🔍 [_get_trading_graph] config中的selected_analysts: {config.get('selected_analysts')}")
 
         trading_graph = TradingAgentsGraph(
             selected_analysts=config.get("selected_analysts", ["market", "fundamentals"]),
             debug=config.get("debug", False),
-            config=config
+            config=config,
+            callbacks=callbacks
         )
 
         logger.info(f"✅ TradingAgents实例创建成功（实例ID: {id(trading_graph)}）")
@@ -967,7 +653,7 @@ class SimpleAnalysisService:
                         "stock_name": name,
                         "status": "pending",
                         "progress": 0,
-                        "created_at": now_tz(),
+                        "created_at": datetime.utcnow(),
                     }},
                     upsert=True
                 )
@@ -1004,20 +690,6 @@ class SimpleAnalysisService:
         # 🔧 使用 get_symbol() 方法获取股票代码（兼容 symbol 和 stock_code 字段）
         stock_code = request.get_symbol()
 
-        # 🔧 参数安全访问：确保 parameters 始终有默认值，避免 NoneType 错误
-        try:
-            if request.parameters is None:
-                request.parameters = AnalysisParameters()
-            elif not isinstance(request.parameters, AnalysisParameters):
-                # 如果是 dict 类型，转换为 AnalysisParameters 对象
-                if isinstance(request.parameters, dict):
-                    request.parameters = AnalysisParameters(**request.parameters)
-                else:
-                    request.parameters = AnalysisParameters()
-        except Exception as _e:
-            logger.warning(f"⚠️ 参数标准化失败，使用默认参数: {_e}")
-            request.parameters = AnalysisParameters()
-
         # 添加最外层的异常捕获，确保所有异常都被记录
         try:
             logger.info(f"🎯🎯🎯 [ENTRY] execute_analysis_background 方法被调用: {task_id}")
@@ -1031,69 +703,49 @@ class SimpleAnalysisService:
         try:
             logger.info(f"🚀 开始后台执行分析任务: {task_id}")
 
+            # 🔍 验证股票代码是否存在
+            logger.info(f"🔍 开始验证股票代码: {stock_code}")
+            from tradingagents.utils.stock_validator import prepare_stock_data_async
+            from datetime import datetime
+
             # 获取市场类型
-            market_type = request.parameters.market_type or "A股"
+            market_type = request.parameters.market_type if request.parameters else "A股"
 
             # 获取分析日期并转换为字符串格式
             analysis_date = request.parameters.analysis_date if request.parameters else None
             if analysis_date:
+                # 如果是 datetime 对象，转换为字符串
                 if isinstance(analysis_date, datetime):
                     analysis_date = analysis_date.strftime('%Y-%m-%d')
+                # 如果是字符串，确保格式正确
                 elif isinstance(analysis_date, str):
+                    # 尝试解析并重新格式化，确保格式统一
                     try:
                         parsed_date = datetime.strptime(analysis_date, '%Y-%m-%d')
                         analysis_date = parsed_date.strftime('%Y-%m-%d')
                     except ValueError:
+                        # 如果格式不对，使用今天
                         analysis_date = datetime.now().strftime('%Y-%m-%d')
                         logger.warning(f"⚠️ 分析日期格式不正确，使用今天: {analysis_date}")
 
-            # 🔍 验证股票代码是否存在
-            logger.info(f"🔍 开始验证股票代码: {stock_code}")
-            # 股票代码验证：优先使用 stock_validator，否则回退到简单验证
-            _validation_error = None
-            validation_result = None
-            try:
-                from tradingagents.utils.stock_validator import prepare_stock_data_async
-                validation_result = await prepare_stock_data_async(
-                    stock_code=stock_code,
-                    market_type=market_type,
-                    period_days=30,
-                    analysis_date=analysis_date
-                )
-                if validation_result is None:
-                    _is_valid = True
-                    _error_msg = ""
-                    _suggestion = ""
-                    _stock_name_resolved = None
-                else:
-                    _is_valid = getattr(validation_result, "is_valid", True)
-                    _error_msg = getattr(validation_result, "error_message", "")
-                    _suggestion = getattr(validation_result, "suggestion", "")
-                    _stock_name_resolved = getattr(validation_result, "stock_name", None)
-            except Exception as _e:
-                logger.warning(f"⚠️ stock_validator 不可用，使用简单股票代码验证: {_e}")
-                # 简单的股票代码验证回退
-                class _SimpleResult:
-                    pass
-                _is_valid = True
-                _error_msg = ""
-                _suggestion = ""
-                _stock_name_resolved = None
-                if not stock_code or not str(stock_code).strip():
-                    _is_valid = False
-                    _error_msg = "股票代码不能为空"
-                    _suggestion = "请输入有效的股票代码"
+            # 🔥 使用异步版本，直接 await，避免事件循环冲突
+            validation_result = await prepare_stock_data_async(
+                stock_code=stock_code,
+                market_type=market_type,
+                period_days=30,
+                analysis_date=analysis_date
+            )
 
-            if not _is_valid:
-                error_msg = f"❌ 股票代码验证失败: {_error_msg}"
+            if not validation_result.get("success", False):
+                error_msg = f"❌ 股票代码验证失败: {validation_result.get('error', '未知错误')}"
                 logger.error(error_msg)
-                logger.error(f"💡 建议: {_suggestion}")
+                logger.error(f"💡 建议: {validation_result.get('warning', '请检查股票代码是否正确')}")
 
                 # 构建用户友好的错误消息
                 user_friendly_error = (
                     f"❌ 股票代码无效\n\n"
-                    f"{_error_msg}\n\n"
-                    f"💡 {_suggestion}"
+                    f"{validation_result.get('error', '未知错误')}\n\n"
+                    f"💡 {validation_result.get('warning', '请检查股票代码是否正确')}"
                 )
 
                 # 更新任务状态为失败
@@ -1114,21 +766,17 @@ class SimpleAnalysisService:
 
                 return
 
-            logger.info(f"✅ 股票代码验证通过: {stock_code} - {_stock_name_resolved or '股票'+stock_code}")
-            logger.info(f"📊 市场类型: {getattr(validation_result, 'market_type', market_type) if validation_result is not None else market_type}")
-            logger.info(f"📈 历史数据: {'有' if (validation_result is not None and getattr(validation_result, 'has_historical_data', False)) else '无'}")
-            logger.info(f"📋 基本信息: {'有' if (validation_result is not None and getattr(validation_result, 'has_basic_info', False)) else '无'}")
+            logger.info(f"✅ 股票代码验证通过: {stock_code} - {validation_result.get('stock_name', '')}")
+            logger.info(f"📊 市场类型: {validation_result.get('market_type', 'unknown')}")
+            logger.info(f"📈 数据信息: {validation_result.get('data', {})}")
 
             # 在线程池中创建Redis进度跟踪器（避免阻塞事件循环）
             def create_progress_tracker():
                 """在线程中创建进度跟踪器"""
                 logger.info(f"📊 [线程] 创建进度跟踪器: {task_id}")
-                _analysts = (request.parameters.selected_analysts if request.parameters and hasattr(request.parameters, 'selected_analysts') else None) or ["market", "fundamentals"]
-                _research_depth = (request.parameters.research_depth if request.parameters and hasattr(request.parameters, 'research_depth') else None) or "标准"
                 tracker = RedisProgressTracker(
                     task_id=task_id,
-                    analysts=_analysts,
-                    research_depth=_research_depth,
+                    analysts=request.parameters.selected_analysts or ["market", "fundamentals"],
                     llm_provider="dashscope"
                 )
                 logger.info(f"✅ [线程] 进度跟踪器创建完成: {task_id}")
@@ -1197,68 +845,6 @@ class SimpleAnalysisService:
                 logger.error(f"❌ 保存分析结果失败: {task_id} - {save_error}")
                 # 保存失败不影响分析完成状态
 
-            # 💰 记录 Token 使用情况（在后台异步执行，不阻塞主流程）
-            try:
-                if self.usage_service:
-                    # 从 result 中提取 token 信息
-                    tokens_used = result.get("tokens_used", 0)
-                    stock_code = result.get("stock_code", result.get("stock_symbol", "UNKNOWN"))
-
-                    # 从 request 或 result 中获取模型/供应商信息
-                    provider = None
-                    model_name = None
-
-                    # 优先从 result 中获取（如 analysis_completed 消息中的字段）
-                    if result.get("model_info"):
-                        model_info = result.get("model_info", {})
-                        if isinstance(model_info, str):
-                            model_name = model_info
-                        else:
-                            model_name = model_info.get("model") if isinstance(model_info, dict) else str(model_info)
-
-                    # 从 request parameters 中获取模型信息
-                    if not model_name and request and hasattr(request, "parameters") and request.parameters:
-                        if hasattr(request.parameters, "quick_model"):
-                            model_name = request.parameters.quick_model
-                            provider = None  # 稍后通过模型名推断
-                        if hasattr(request.parameters, "deep_model") and not model_name:
-                            model_name = request.parameters.deep_model
-
-                    # 从 model_provider_map 推断 provider
-                    if model_name and not provider:
-                        model_provider_map = {
-                            'qwen-plus': 'qwen',
-                            'qwen-turbo': 'qwen',
-                            'qwen2.5-72b-instruct': 'qwen',
-                            'glm-4-flash': 'zhipu',
-                            'glm-4-air': 'zhipu',
-                            'glm-4-0520': 'zhipu',
-                            'glm-4-long': 'zhipu',
-                            'deepseek-v3': 'deepseek',
-                            'deepseek-chat': 'deepseek',
-                            'deepseek-v4-flash': 'deepseek',
-                            'deepseek-v4-pro': 'deepseek',
-                            'yi-large': 'lingyi',
-                            'yi-lightning': 'lingyi',
-                            'gpt-4o': 'openai',
-                            'gpt-4o-mini': 'openai',
-                        }
-                        provider = model_provider_map.get(model_name, "unknown")
-
-                    # 记录使用情况
-                    await self._record_token_usage(
-                        task_id=task_id,
-                        user_id=str(user_id),
-                        stock_code=stock_code,
-                        tokens_used=tokens_used,
-                        provider=provider or "unknown",
-                        model_name=model_name or "unknown"
-                    )
-                else:
-                    logger.debug(f"💰 usage_service 未初始化，跳过记录: {task_id}")
-            except Exception as usage_err:
-                logger.error(f"💰 记录 Token 使用失败(忽略): {usage_err}")
-
             # 🔍 调试：检查即将保存到内存的result
             logger.info(f"🔍 [DEBUG] 即将保存到内存的result键: {list(result.keys())}")
             logger.info(f"🔍 [DEBUG] 即将保存到内存的decision: {bool(result.get('decision'))}")
@@ -1287,9 +873,9 @@ class SimpleAnalysisService:
                     payload=NotificationCreate(
                         user_id=str(user_id),
                         type='analysis',
-                        title=f"{stock_code} 分析完成",
+                        title=f"{request.stock_code} 分析完成",
                         content=summary,
-                        link=f"/stocks/{stock_code}",
+                        link=f"/stocks/{request.stock_code}",
                         source='analysis'
                     )
                 )
@@ -1354,12 +940,10 @@ class SimpleAnalysisService:
         progress_tracker: Optional[RedisProgressTracker] = None
     ) -> Dict[str, Any]:
         """同步执行分析（在共享线程池中运行）"""
-        # 🔧 确保股票代码正确（兼容 symbol 字段）
-        stock_code = request.get_symbol()
         # 🔧 使用共享线程池，支持多个任务并发执行
         # 不再每次创建新的线程池，避免串行执行
         loop = asyncio.get_event_loop()
-        logger.info(f"🚀 [线程池] 提交分析任务到共享线程池: {task_id} - {stock_code}")
+        logger.info(f"🚀 [线程池] 提交分析任务到共享线程池: {task_id} - {request.stock_code}")
         result = await loop.run_in_executor(
             self._thread_pool,  # 使用共享线程池
             self._run_analysis_sync,
@@ -1379,19 +963,14 @@ class SimpleAnalysisService:
         progress_tracker: Optional[RedisProgressTracker] = None
     ) -> Dict[str, Any]:
         """同步执行分析的具体实现"""
-        # 🔧 确保股票代码正确获取（兼容 symbol 字段）
-        stock_code = request.get_symbol()
-        if not stock_code:
-            raise ValueError("股票代码不能为空，symbol 字段必须提供")
-
         try:
             # 在线程中重新初始化日志系统
             from tradingagents.utils.logging_init import init_logging, get_logger
             init_logging()
             thread_logger = get_logger('analysis_thread')
 
-            thread_logger.info(f"🔄 [线程池] 开始执行分析: {task_id} - {stock_code}")
-            logger.info(f"🔄 [线程池] 开始执行分析: {task_id} - {stock_code}")
+            thread_logger.info(f"🔄 [线程池] 开始执行分析: {task_id} - {request.stock_code}")
+            logger.info(f"🔄 [线程池] 开始执行分析: {task_id} - {request.stock_code}")
 
             # 🔧 根据 RedisProgressTracker 的步骤权重计算准确的进度
             # 基础准备阶段 (10%): 0.03 + 0.02 + 0.01 + 0.02 + 0.02 = 0.10
@@ -1429,6 +1008,7 @@ class SimpleAnalysisService:
                     # 2. 更新 MongoDB（使用同步客户端，避免事件循环冲突）
                     from pymongo import MongoClient
                     from app.core.config import settings
+                    from datetime import datetime
 
                     sync_client = MongoClient(settings.MONGO_URI)
                     sync_db = sync_client[settings.MONGO_DB]
@@ -1440,7 +1020,7 @@ class SimpleAnalysisService:
                                 "progress": progress,
                                 "current_step": step,
                                 "message": message,
-                                "updated_at": now_tz()
+                                "updated_at": datetime.utcnow()
                             }
                         }
                     )
@@ -1456,8 +1036,6 @@ class SimpleAnalysisService:
             from app.services.model_capability_service import get_model_capability_service
             capability_service = get_model_capability_service()
 
-            research_depth = request.parameters.research_depth if request.parameters else "标准"
-
             # 1. 检查前端是否指定了模型
             if (request.parameters and
                 hasattr(request.parameters, 'quick_analysis_model') and
@@ -1470,115 +1048,14 @@ class SimpleAnalysisService:
                 deep_model = request.parameters.deep_analysis_model
 
                 logger.info(f"📝 [分析服务] 用户指定模型: quick={quick_model}, deep={deep_model}")
-
-                # 验证模型是否合适
-                validation = capability_service.validate_model_pair(
-                    quick_model, deep_model, research_depth
-                )
-
-                if not validation["valid"]:
-                    # 记录警告
-                    for warning in validation["warnings"]:
-                        logger.warning(warning)
-
-                    # 如果模型不合适，自动切换到推荐模型
-                    logger.info(f"🔄 自动切换到推荐模型...")
-                    quick_model, deep_model = capability_service.recommend_models_for_depth(
-                        research_depth
-                    )
-                    logger.info(f"✅ 已切换: quick={quick_model}, deep={deep_model}")
-                else:
-                    # 即使验证通过，也记录警告信息
-                    for warning in validation["warnings"]:
-                        logger.info(warning)
-                    logger.info(f"✅ 用户选择的模型验证通过: quick={quick_model}, deep={deep_model}")
-
             else:
-                # 2. 自动推荐模型
-                quick_model, deep_model = capability_service.recommend_models_for_depth(
-                    research_depth
-                )
+                # 2. 自动推荐默认模型
+                quick_model, deep_model = capability_service.recommend_default_models()
                 logger.info(f"🤖 自动推荐模型: quick={quick_model}, deep={deep_model}")
 
             # 🔧 根据快速模型和深度模型分别查找对应的供应商和 API URL
             quick_provider_info = get_provider_and_url_by_model_sync(quick_model)
             deep_provider_info = get_provider_and_url_by_model_sync(deep_model)
-
-            # 🔧 [关键修复] 智能 API Key 验证和回退
-            # 如果选定模型的 API Key 无效（占位符/空），自动切换到有有效 Key 的模型
-            def _has_valid_api_key(provider_info):
-                api_key = provider_info.get("api_key")
-                if not api_key or not api_key.strip():
-                    return False
-                stripped = api_key.strip()
-                if (stripped.startswith('your_') or stripped.startswith('your-') or
-                        stripped.startswith('xxx') or 'example' in stripped.lower() or
-                        'placeholder' in stripped.lower()):
-                    return False
-                if len(stripped) <= 10:
-                    return False
-                return True
-
-            quick_has_valid_key = _has_valid_api_key(quick_provider_info)
-            deep_has_valid_key = _has_valid_api_key(deep_provider_info)
-
-            if not quick_has_valid_key or not deep_has_valid_key:
-                logger.warning(f"⚠️ [API Key检查] 快速模型={quick_model} Key有效={quick_has_valid_key}, "
-                              f"深度模型={deep_model} Key有效={deep_has_valid_key}")
-
-                # 从数据库查找有有效 API Key 的模型
-                try:
-                    from pymongo import MongoClient
-                    from app.core.config import settings as _settings
-                    client = MongoClient(_settings.MONGO_URI)
-                    db = client[_settings.MONGO_DB]
-                    config_doc = db.system_configs.find_one({"is_active": True}, sort=[("version", -1)])
-
-                    fallback_quick = None
-                    fallback_deep = None
-                    if config_doc and "llm_configs" in config_doc:
-                        for cfg in config_doc["llm_configs"]:
-                            if not cfg.get("enabled"):
-                                continue
-                            if _has_valid_api_key({"api_key": cfg.get("api_key")}):
-                                model_name = cfg.get("model_name")
-                                # 优先选择 deepseek（已知有效 Key）
-                                if "deepseek" in (cfg.get("provider") or "") or "deepseek" in model_name:
-                                    if not fallback_quick:
-                                        fallback_quick = model_name
-                                    if not fallback_deep or "-pro" in model_name:
-                                        fallback_deep = model_name
-                                elif not fallback_quick:
-                                    fallback_quick = model_name
-
-                        # 如果还没找到，尝试从环境变量中查找
-                        import os as _os
-                        if not fallback_quick:
-                            if _os.environ.get("DEEPSEEK_API_KEY") and _has_valid_api_key({"api_key": _os.environ["DEEPSEEK_API_KEY"]}):
-                                fallback_quick = "deepseek-v4-flash"
-                                fallback_deep = "deepseek-v4-pro"
-                            elif _os.environ.get("OPENAI_API_KEY") and _has_valid_api_key({"api_key": _os.environ["OPENAI_API_KEY"]}):
-                                fallback_quick = "gpt-3.5-turbo"
-                                fallback_deep = "gpt-4"
-
-                    client.close()
-
-                    if fallback_quick and fallback_deep:
-                        if not quick_has_valid_key:
-                            logger.info(f"🔄 [API Key回退] 快速模型 {quick_model} -> {fallback_quick}")
-                            quick_model = fallback_quick
-                        if not deep_has_valid_key:
-                            logger.info(f"🔄 [API Key回退] 深度模型 {deep_model} -> {fallback_deep}")
-                            deep_model = fallback_deep
-
-                        # 🔄 重新获取回退后的供应商信息
-                        quick_provider_info = get_provider_and_url_by_model_sync(quick_model)
-                        deep_provider_info = get_provider_and_url_by_model_sync(deep_model)
-                        logger.info(f"✅ [API Key回退] 已切换到有有效 API Key 的模型: quick={quick_model}, deep={deep_model}")
-                    else:
-                        logger.error(f"❌ [API Key回退] 无法找到任何有有效 API Key 的模型！分析可能失败")
-                except Exception as _fallback_err:
-                    logger.warning(f"⚠️ [API Key回退] 回退逻辑执行出错: {_fallback_err}")
 
             quick_provider = quick_provider_info["provider"]
             deep_provider = deep_provider_info["provider"]
@@ -1600,10 +1077,54 @@ class SimpleAnalysisService:
             market_type = request.parameters.market_type if request.parameters else "A股"
             logger.info(f"📊 [市场类型] 使用市场类型: {market_type}")
 
+            # 🧹 [过滤] 只保留 setup.py 支持的 7 种分析师
+            # 支持的: market, social, news, fundamentals, policy, hot_money, lockup
+            supported_analysts = {"market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"}
+            raw_analysts = request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
+
+            # 中文名到英文 key 的映射（兼容前端发送中文的情况）
+            cn_to_en = {
+                "市场分析师": "market",
+                "技术分析师": "market",
+                "社交媒体分析师": "social",
+                "情绪分析师": "social",
+                "新闻分析师": "news",
+                "基本面分析师": "fundamentals",
+                "政策分析师": "policy",
+                "游资追踪师": "hot_money",
+                "资金追踪师": "hot_money",
+                "解禁追踪师": "lockup",
+                "限售解禁师": "lockup",
+            }
+
+            filtered_analysts = []
+            for a in raw_analysts:
+                # 已经是英文 key
+                if a in supported_analysts:
+                    if a not in filtered_analysts:
+                        filtered_analysts.append(a)
+                # 中文名称，尝试映射
+                elif a in cn_to_en:
+                    en_key = cn_to_en[a]
+                    if en_key not in filtered_analysts:
+                        filtered_analysts.append(en_key)
+                else:
+                    logger.warning(f"⚠️  跳过不支持的分析师: {a}")
+
+            # 🔧 强制使用全部7个分析师（用户需求：7个分析师是都要选择的）
+            # 无论前端传什么，都确保包含全部7个分析师
+            all_analysts = ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
+            for analyst in all_analysts:
+                if analyst not in filtered_analysts:
+                    filtered_analysts.append(analyst)
+                    logger.info(f"📊 [分析师] 补全缺失的分析师: {analyst}")
+
+            logger.info(f"📊 [分析师] 原始: {raw_analysts}")
+            logger.info(f"📊 [分析师] 过滤后: {filtered_analysts}")
+
             # 创建分析配置（支持混合模式）
             config = create_analysis_config(
-                research_depth=research_depth,
-                selected_analysts=request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"],
+                selected_analysts=filtered_analysts,
                 quick_model=quick_model,
                 deep_model=deep_model,
                 llm_provider=quick_provider,  # 主要使用快速模型的供应商
@@ -1622,232 +1143,30 @@ class SimpleAnalysisService:
             logger.info(f"🔍 [模型验证] 配置中的深度模型: {config.get('deep_think_llm')}")
             logger.info(f"🔍 [模型验证] 配置中的LLM供应商: {config.get('llm_provider')}")
 
-            # 初始化分析引擎 - 对应步骤4 "🚀 启动引擎" (8-10%)
-            update_progress_sync(9, "🚀 初始化AI分析引擎", "engine_initialization")
-            trading_graph = self._get_trading_graph(config)
-
-            # 🔍 验证TradingGraph实例中的配置
-            logger.info(f"🔍 [引擎验证] TradingGraph配置中的快速模型: {trading_graph.config.get('quick_think_llm')}")
-            logger.info(f"🔍 [引擎验证] TradingGraph配置中的深度模型: {trading_graph.config.get('deep_think_llm')}")
-
-            # 准备分析数据
-            start_time = datetime.now()
-
-            # 🔧 使用前端传递的分析日期，如果没有则使用当前日期
-            if request.parameters and hasattr(request.parameters, 'analysis_date') and request.parameters.analysis_date:
-                # 前端传递的是 datetime 对象或字符串
-                if isinstance(request.parameters.analysis_date, datetime):
-                    analysis_date = request.parameters.analysis_date.strftime("%Y-%m-%d")
-                elif isinstance(request.parameters.analysis_date, str):
-                    analysis_date = request.parameters.analysis_date
-                else:
-                    analysis_date = datetime.now().strftime("%Y-%m-%d")
-                logger.info(f"📅 使用前端指定的分析日期: {analysis_date}")
-            else:
-                analysis_date = datetime.now().strftime("%Y-%m-%d")
-                logger.info(f"📅 使用当前日期作为分析日期: {analysis_date}")
-
-            # 🔧 智能日期范围处理：获取最近10天的数据，自动处理周末/节假日
-            # 这样可以确保即使是周末或节假日，也能获取到最后一个交易日的数据
-            try:
-                from tradingagents.utils.dataflow_utils import get_trading_date_range
-                data_start_date, data_end_date = get_trading_date_range(analysis_date, lookback_days=10)
-            except Exception:
-                # 回退：直接用 analysis_date 作为 end，往前推 10 天
-                try:
-                    _end = datetime.strptime(analysis_date, "%Y-%m-%d")
-                except Exception:
-                    _end = datetime.now()
-                _start = _end - timedelta(days=10)
-                data_start_date = _start.strftime("%Y-%m-%d")
-                data_end_date = _end.strftime("%Y-%m-%d")
-
-            logger.info(f"📅 分析目标日期: {analysis_date}")
-            logger.info(f"📅 数据查询范围: {data_start_date} 至 {data_end_date} (最近10天)")
-            logger.info(f"💡 说明: 获取10天数据可自动处理周末、节假日和数据延迟问题")
-
-            # 开始分析 - 进度10%，即将进入分析师阶段
-            # 注意：不要手动设置过高的进度，让 graph_progress_callback 来更新实际的分析进度
-            update_progress_sync(10, "🤖 开始多智能体协作分析", "agent_analysis")
-
-            # 🔧 实时进度更新线程（同步更新进度百分比和消息到内存/MongoDB）
-            import threading
-            import time
-
-            def _update_progress_with_pct(percentage: int, message: str) -> None:
-                """更新进度：同时更新 progress_tracker、内存任务状态和 MongoDB"""
-                try:
-                    # 1. 更新 progress_tracker（字典形式，确保 progress_percentage 更新）
-                    progress_tracker.update_progress({
-                        'progress_percentage': percentage,
-                        'last_message': message,
-                        'last_update': time.time()
-                    })
-
-                    # 2. 同步更新内存中的任务状态（使用新事件循环避免阻塞事件循环）
-                    import asyncio
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(
-                            self.memory_manager.update_task_status(
-                                task_id=task_id,
-                                status=TaskStatus.RUNNING,
-                                progress=percentage,
-                                message=message,
-                                current_step=message
-                            )
-                        )
-                    finally:
-                        loop.close()
-
-                    # 3. 同步更新 MongoDB
-                    from pymongo import MongoClient
-                    from app.core.config import settings
-                    from datetime import datetime
-                    sync_client = MongoClient(settings.MONGO_URI)
-                    sync_db = sync_client[settings.MONGO_DB]
-                    sync_db.analysis_tasks.update_one(
-                        {"task_id": task_id},
-                        {
-                            "$set": {
-                                "progress": percentage,
-                                "current_step": message,
-                                "message": message,
-                                "updated_at": datetime.now()
-                            }
-                        }
-                    )
-                    sync_client.close()
-                    logger.info(f"📊 [进度更新] {task_id}: {percentage}% - {message}")
-                except Exception as e:
-                    logger.warning(f"⚠️ 进度更新失败 ({percentage}%): {e}")
-
-            def simulate_progress():
-                """实时更新分析进度 - 与 trading_graph.propagate 并行执行
-                使用平滑增量更新：每 2 秒更新一次小进度（1-2%），
-                到达阶段边界时更新阶段消息。"""
-                try:
-                    if not progress_tracker:
-                        return
-
-                    # 获取配置参数
-                    analysts = request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
-                    research_depth = request.parameters.research_depth if request.parameters else "标准"
-
-                    # 根据研究深度确定辩论轮次
-                    if research_depth in ("快速", "基础", "标准"):
-                        debate_rounds = 1
-                    elif research_depth == "深度":
-                        debate_rounds = 2
-                    elif research_depth == "全面":
-                        debate_rounds = 3
-                    else:
-                        debate_rounds = 1
-
-                    # 📊 阶段进度配置（使用更细粒度的阶段）
-                    # 进度范围：10% → 25% → 45% → 55% → 65% → 70% → 78% → 83% → 87% → 91% → 93% → 97%
-                    stage_messages = [
-                        (12, "🤖 AI分析引擎启动中"),
-                        (15, "📊 市场分析师正在分析"),
-                        (18, "📊 市场分析师正在分析"),
-                        (22, "💼 基本面分析师正在分析"),
-                        (28, "📰 新闻分析师正在分析"),
-                        (32, "💬 社交媒体分析师正在分析"),
-                        (36, "🏛️ 政策分析师正在分析"),
-                        (40, "💰 游资追踪师正在分析"),
-                        (44, "🔒 解禁监控师正在分析"),
-                        (48, "📊 多分析师协作分析中"),
-                        (52, "🐂 看涨研究员构建论据"),
-                        (56, "🐻 看跌研究员识别风险"),
-                        (60, "🎯 研究辩论中"),
-                        (65, "🎯 研究辩论深化中"),
-                        (70, "👔 研究经理形成共识"),
-                        (74, "💼 交易员制定策略"),
-                        (78, "💼 交易员优化策略"),
-                        (82, "🔥 激进风险评估"),
-                        (86, "🛡️ 保守风险评估"),
-                        (90, "⚖️ 中性风险评估"),
-                        (93, "🎯 风险经理制定策略"),
-                        (95, "📡 信号处理中"),
-                        (97, "📡 信号处理中"),
-                    ]
-
-                    # ⚡ 平滑进度更新机制
-                    start_time_inner = time.time()
-                    # 预估总耗时 = (research_depth * 60秒) + (analysts数 * 20秒)
-                    # 简化：基于研究深度的预估时间
-                    depth_time_map = {
-                        "快速": 90,
-                        "基础": 120,
-                        "标准": 180,
-                        "深度": 240,
-                        "全面": 300,
-                    }
-                    estimated_total = depth_time_map.get(research_depth, 180)
-
-                    current_stage_idx = 0
-                    last_progress_pct = 10
-
-                    # 🔄 主循环：每 2 秒更新一次小进度，避免用户看到进度卡住
-                    while last_progress_pct < 97:
-                        time.sleep(2)  # 每 2 秒更新一次进度（不是 20 秒！）
-
-                        elapsed = time.time() - start_time_inner
-                        # 基于已用时间计算目标进度（从10%增加到97%，在 estimated_total 时间内）
-                        progress_by_time = 10 + (elapsed / estimated_total) * (97 - 10)
-
-                        # 选择当前阶段的消息（不超过进度百分比）
-                        while (current_stage_idx < len(stage_messages) - 1 and
-                               progress_by_time >= stage_messages[current_stage_idx + 1][0]):
-                            current_stage_idx += 1
-
-                        target_pct = min(int(progress_by_time), 97)
-                        # 确保每次至少增加 1%（避免进度回退或停滞）
-                        if target_pct <= last_progress_pct:
-                            target_pct = last_progress_pct + 1
-                        target_pct = min(target_pct, 97)
-
-                        current_msg = stage_messages[current_stage_idx][1]
-                        _update_progress_with_pct(target_pct, current_msg)
-                        last_progress_pct = target_pct
-
-                    logger.info(f"📊 [进度线程] 进度已达到 97%，停止更新，等待实际分析完成")
-
-                except Exception as e:
-                    logger.warning(f"⚠️ 进度模拟线程异常: {e}")
-                    import traceback
-                    logger.debug(f"⚠️ 进度线程异常详情: {traceback.format_exc()}")
-
-            # 启动进度模拟线程
-            progress_thread = threading.Thread(target=simulate_progress, daemon=True)
-            progress_thread.start()
-
             # 定义进度回调函数，用于接收 LangGraph 的实时进度
             # 节点进度映射表（与 RedisProgressTracker 的步骤权重对应）
             node_progress_map = {
-                # 分析师阶段 (10% → 45%)
-                "📊 市场分析师": 27.5,
-                "💼 基本面分析师": 45,
-                "📰 新闻分析师": 27.5,
-                "💬 社交媒体分析师": 27.5,
-                "🏛️ 政策分析师": 27.5,
-                "💰 游资追踪师": 27.5,
-                "🔒 解禁监控师": 27.5,
+                # 分析师阶段 (10% → 45%) - 7个分析师
+                "📊 市场分析师": 15,        # 10% + 5%
+                "💬 社交媒体分析师": 20,    # 10% + 10%
+                "📰 新闻分析师": 25,        # 10% + 15%
+                "💼 基本面分析师": 30,      # 10% + 20%
+                "📜 政策分析师": 35,        # 10% + 25%
+                "💰 游资追踪师": 40,        # 10% + 30%
+                "🔓 解禁追踪师": 45,        # 10% + 35%
                 # 研究辩论阶段 (45% → 70%)
-                "🐂 看涨研究员": 51.25,
-                "🐻 看跌研究员": 57.5,
-                "👔 研究经理": 70,
+                "🐂 看涨研究员": 51.25,      # 45% + 6.25%
+                "🐻 看跌研究员": 57.5,       # 45% + 12.5%
+                "👔 研究经理": 70,           # 45% + 25%
                 # 交易员阶段 (70% → 78%)
-                "💼 交易员决策": 78,
+                "💼 交易员决策": 78,         # 70% + 8%
                 # 风险评估阶段 (78% → 93%)
-                "🔥 激进风险评估": 81.75,
-                "🛡️ 保守风险评估": 85.5,
-                "⚖️ 中性风险评估": 89.25,
-                "🎯 风险经理": 93,
+                "🔥 激进风险评估": 81.75,    # 78% + 3.75%
+                "🛡️ 保守风险评估": 85.5,    # 78% + 7.5%
+                "⚖️ 中性风险评估": 89.25,   # 78% + 11.25%
+                "🎯 风险经理": 93,           # 78% + 15%
                 # 最终阶段 (93% → 100%)
-                "📡 信号处理": 97,
-                "📊 生成报告": 97,
+                "📊 生成报告": 97,           # 93% + 4%
             }
 
             def graph_progress_callback(message: str):
@@ -1858,7 +1177,9 @@ class SimpleAnalysisService:
                 """
                 try:
                     logger.info(f"🎯🎯🎯 [Graph进度回调被调用] message={message}")
-                    if not progress_tracker:
+                    # 动态从缓存中获取 progress_tracker
+                    progress_tracker_local = self._progress_trackers.get(task_id)
+                    if not progress_tracker_local:
                         logger.warning(f"⚠️ progress_tracker 为 None，无法更新进度")
                         return
 
@@ -1867,12 +1188,12 @@ class SimpleAnalysisService:
 
                     if progress_pct is not None:
                         # 获取当前进度（使用 progress_data 属性）
-                        current_progress = progress_tracker.progress_data.get('progress_percentage', 0)
+                        current_progress = progress_tracker_local.progress_data.get('progress_percentage', 0)
 
                         # 只在进度增加时更新，避免覆盖虚拟步骤的进度
                         if int(progress_pct) > current_progress:
                             # 更新 Redis 进度跟踪器
-                            progress_tracker.update_progress({
+                            progress_tracker_local.update_progress({
                                 'progress_percentage': int(progress_pct),
                                 'last_message': message
                             })
@@ -1881,6 +1202,7 @@ class SimpleAnalysisService:
                             # 🔥 同时更新内存和 MongoDB
                             try:
                                 import asyncio
+                                from datetime import datetime
 
                                 # 尝试获取当前运行的事件循环
                                 try:
@@ -1907,7 +1229,7 @@ class SimpleAnalysisService:
                                                 "progress": int(progress_pct),
                                                 "current_step": message,
                                                 "message": message,
-                                                "updated_at": now_tz()
+                                                "updated_at": datetime.utcnow()
                                             }
                                         }
                                     )
@@ -1934,28 +1256,134 @@ class SimpleAnalysisService:
                                 logger.warning(f"⚠️ [Graph进度] 同步更新失败: {sync_err}")
                         else:
                             # 进度没有增加，只更新消息
-                            progress_tracker.update_progress({
+                            progress_tracker_local.update_progress({
                                 'last_message': message
                             })
                             logger.info(f"📊 [Graph进度] 进度未变化({current_progress}% >= {int(progress_pct)}%)，仅更新消息: {message}")
                     else:
                         # 未知节点，只更新消息
                         logger.warning(f"⚠️ [Graph进度] 未知节点: {message}，仅更新消息")
-                        progress_tracker.update_progress({
+                        progress_tracker_local.update_progress({
                             'last_message': message
                         })
 
                 except Exception as e:
                     logger.error(f"❌ Graph进度回调失败: {e}", exc_info=True)
 
-            logger.info(f"🚀 准备调用 trading_graph.propagate（新签名：company_name, trade_date）")
+            # 初始化分析引擎 - 对应步骤4 "🚀 启动引擎" (8-10%)
+            update_progress_sync(9, "🚀 初始化AI分析引擎", "engine_initialization")
+            trading_graph = self._get_trading_graph(config, callbacks=[graph_progress_callback])
 
-            # 新签名：propagate(company_name, trade_date) - 不支持 progress_callback / task_id
-            # 进度更新由之前的 update_progress_sync 已经做了基础状态，后续的 graph_progress_callback
-            # 不再被 tradingagents 内部调用，但我们保留这个函数对象以减少代码差异。
-            _ = graph_progress_callback  # 保留引用避免未使用警告
+            # 🔍 验证TradingGraph实例中的配置
+            logger.info(f"🔍 [引擎验证] TradingGraph配置中的快速模型: {trading_graph.config.get('quick_think_llm')}")
+            logger.info(f"🔍 [引擎验证] TradingGraph配置中的深度模型: {trading_graph.config.get('deep_think_llm')}")
+
+            # 准备分析数据
+            start_time = datetime.now()
+
+            # 🔧 使用前端传递的分析日期，如果没有则使用当前日期
+            if request.parameters and hasattr(request.parameters, 'analysis_date') and request.parameters.analysis_date:
+                # 前端传递的是 datetime 对象或字符串
+                if isinstance(request.parameters.analysis_date, datetime):
+                    analysis_date = request.parameters.analysis_date.strftime("%Y-%m-%d")
+                elif isinstance(request.parameters.analysis_date, str):
+                    analysis_date = request.parameters.analysis_date
+                else:
+                    analysis_date = datetime.now().strftime("%Y-%m-%d")
+                logger.info(f"📅 使用前端指定的分析日期: {analysis_date}")
+            else:
+                analysis_date = datetime.now().strftime("%Y-%m-%d")
+                logger.info(f"📅 使用当前日期作为分析日期: {analysis_date}")
+
+            # 🔧 智能日期范围处理：获取最近10天的数据，自动处理周末/节假日
+            # 这样可以确保即使是周末或节假日，也能获取到最后一个交易日的数据
+            from tradingagents.utils.dataflow_utils import get_trading_date_range
+            data_start_date, data_end_date = get_trading_date_range(analysis_date, lookback_days=10)
+
+            logger.info(f"📅 分析目标日期: {analysis_date}")
+            logger.info(f"📅 数据查询范围: {data_start_date} 至 {data_end_date} (最近10天)")
+            logger.info(f"💡 说明: 获取10天数据可自动处理周末、节假日和数据延迟问题")
+
+            # 开始分析 - 进度10%，即将进入分析师阶段
+            # 注意：不要手动设置过高的进度，让 graph_progress_callback 来更新实际的分析进度
+            update_progress_sync(10, "🤖 开始多智能体协作分析", "agent_analysis")
+
+            # 启动一个异步任务来模拟进度更新
+            import threading
+            import time
+
+            def simulate_progress():
+                """模拟TradingAgents内部进度"""
+                try:
+                    if not progress_tracker:
+                        return
+
+                    # 分析师阶段 - 根据选择的分析师数量动态调整
+                    analysts = request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
+
+                    # 模拟分析师执行
+                    for i, analyst in enumerate(analysts):
+                        time.sleep(15)  # 每个分析师大约15秒
+                        if analyst == "market":
+                            progress_tracker.update_progress("📊 市场分析师正在分析")
+                        elif analyst == "fundamentals":
+                            progress_tracker.update_progress("💼 基本面分析师正在分析")
+                        elif analyst == "news":
+                            progress_tracker.update_progress("📰 新闻分析师正在分析")
+                        elif analyst == "social":
+                            progress_tracker.update_progress("💬 社交媒体分析师正在分析")
+
+                    # 研究团队阶段
+                    time.sleep(10)
+                    progress_tracker.update_progress("🐂 看涨研究员构建论据")
+
+                    time.sleep(8)
+                    progress_tracker.update_progress("🐻 看跌研究员识别风险")
+
+                    # 辩论阶段 - 使用默认配置的辩论轮次
+                    debate_rounds = 1
+
+                    for round_num in range(debate_rounds):
+                        time.sleep(12)
+                        progress_tracker.update_progress(f"🎯 研究辩论 第{round_num+1}轮")
+
+                    time.sleep(8)
+                    progress_tracker.update_progress("👔 研究经理形成共识")
+
+                    # 交易员阶段
+                    time.sleep(10)
+                    progress_tracker.update_progress("💼 交易员制定策略")
+
+                    # 风险管理阶段
+                    time.sleep(8)
+                    progress_tracker.update_progress("🔥 激进风险评估")
+
+                    time.sleep(6)
+                    progress_tracker.update_progress("🛡️ 保守风险评估")
+
+                    time.sleep(6)
+                    progress_tracker.update_progress("⚖️ 中性风险评估")
+
+                    time.sleep(8)
+                    progress_tracker.update_progress("🎯 风险经理制定策略")
+
+                    # 最终阶段
+                    time.sleep(5)
+                    progress_tracker.update_progress("📡 信号处理")
+
+                except Exception as e:
+                    logger.warning(f"⚠️ 进度模拟失败: {e}")
+
+            # 启动进度模拟线程
+            progress_thread = threading.Thread(target=simulate_progress, daemon=True)
+            progress_thread.start()
+
+            logger.info(f"🚀 准备调用 trading_graph.propagate（适配新接口，不再传 progress_callback）")
+
+            # 执行实际分析 - 新接口 propagate(company_name, trade_date)
+            # 进度回调通过 LangChain callbacks 注入到 TradingAgentsGraph.__init__ 中
             state, decision = trading_graph.propagate(
-                stock_code,
+                request.stock_code,
                 analysis_date,
             )
 
@@ -1979,15 +1407,6 @@ class SimpleAnalysisService:
             # 从state中提取reports字段
             reports = {}
             try:
-                # 📊 调试日志：检查 state 的类型和内容
-                logger.info(f"📊 [REPORTS-DEBUG] state 类型: {type(state)}")
-                if isinstance(state, dict):
-                    logger.info(f"📊 [REPORTS-DEBUG] state 键列表: {list(state.keys())}")
-                elif hasattr(state, '__dict__'):
-                    logger.info(f"📊 [REPORTS-DEBUG] state 属性列表: {list(state.__dict__.keys())}")
-                else:
-                    logger.info(f"📊 [REPORTS-DEBUG] state 类型未知: {type(state)}")
-
                 # 定义所有可能的报告字段
                 report_fields = [
                     'market_report',
@@ -2006,19 +1425,15 @@ class SimpleAnalysisService:
                 for field in report_fields:
                     if hasattr(state, field):
                         value = getattr(state, field, "")
-                        logger.info(f"📊 [REPORTS-DEBUG] {field}: 通过 hasattr 获取，类型={type(value)}")
                     elif isinstance(state, dict) and field in state:
                         value = state[field]
-                        logger.info(f"📊 [REPORTS-DEBUG] {field}: 通过字典获取，类型={type(value)}")
                     else:
                         value = ""
-                        logger.info(f"📊 [REPORTS-DEBUG] {field}: 未找到，跳过")
 
                     if isinstance(value, str) and len(value.strip()) > 10:  # 只保存有实际内容的报告
                         reports[field] = value.strip()
-                        logger.info(f"📊 [REPORTS] ✅ 提取报告: {field} - 长度: {len(value.strip())}")
+                        logger.info(f"📊 [REPORTS] 提取报告: {field} - 长度: {len(value.strip())}")
                     else:
-                        logger.info(f"📊 [REPORTS] ⚠️ 跳过报告: {field} - 值类型={type(value)}, 长度={len(str(value)) if value else 0}")
                         logger.debug(f"⚠️ [REPORTS] 跳过报告: {field} - 内容为空或太短")
 
                 # 处理研究团队辩论状态报告
@@ -2065,12 +1480,8 @@ class SimpleAnalysisService:
                 if hasattr(state, 'risk_debate_state') or (isinstance(state, dict) and 'risk_debate_state' in state):
                     risk_state = getattr(state, 'risk_debate_state', None) if hasattr(state, 'risk_debate_state') else state.get('risk_debate_state')
                     if risk_state:
-                        # 提取激进分析师历史（新字段名: aggressive_history，兼容旧字段 risky_history）
-                        if hasattr(risk_state, 'aggressive_history'):
-                            risky_content = getattr(risk_state, 'aggressive_history', "")
-                        elif isinstance(risk_state, dict) and 'aggressive_history' in risk_state:
-                            risky_content = risk_state['aggressive_history']
-                        elif hasattr(risk_state, 'risky_history'):
+                        # 提取激进分析师历史
+                        if hasattr(risk_state, 'risky_history'):
                             risky_content = getattr(risk_state, 'risky_history', "")
                         elif isinstance(risk_state, dict) and 'risky_history' in risk_state:
                             risky_content = risk_state['risky_history']
@@ -2081,12 +1492,8 @@ class SimpleAnalysisService:
                             reports['risky_analyst'] = risky_content.strip()
                             logger.info(f"📊 [REPORTS] 提取报告: risky_analyst - 长度: {len(risky_content.strip())}")
 
-                        # 提取保守分析师历史（新字段名: conservative_history，兼容旧字段 safe_history）
-                        if hasattr(risk_state, 'conservative_history'):
-                            safe_content = getattr(risk_state, 'conservative_history', "")
-                        elif isinstance(risk_state, dict) and 'conservative_history' in risk_state:
-                            safe_content = risk_state['conservative_history']
-                        elif hasattr(risk_state, 'safe_history'):
+                        # 提取保守分析师历史
+                        if hasattr(risk_state, 'safe_history'):
                             safe_content = getattr(risk_state, 'safe_history', "")
                         elif isinstance(risk_state, dict) and 'safe_history' in risk_state:
                             safe_content = risk_state['safe_history']
@@ -2135,260 +1542,65 @@ class SimpleAnalysisService:
                 except Exception as fallback_error:
                     logger.warning(f"⚠️ 降级提取也失败: {fallback_error}")
 
-            # 🔥 格式化decision数据（daily_stock_analysis 风格中文字段：理想买入/止损价格/止盈目标/二次买入/评级/核心洞察）
+            # 🔥 格式化decision数据（参考web目录的实现）
+            # 注意：propagate返回的decision是评级字符串(如"Buy")，不是字典
+            # 需要从final_trade_decision markdown中解析完整信息
             formatted_decision = {}
             try:
-                # 动作翻译（兼容中英文）
-                action_translation = {
-                    'BUY': '买入', 'SELL': '卖出', 'HOLD': '持有',
-                    'Overweight': '增持', 'Underweight': '减持',
-                    'OVERWEIGHT': '增持', 'UNDERWEIGHT': '减持',
-                    'Buy': '买入', 'Sell': '卖出', 'Hold': '持有',
-                    '强烈买入': '强烈买入', '买入': '买入', '持有': '持有',
-                    '减仓': '减仓', '卖出': '卖出',
+                # 从final_trade_decision markdown中解析信息
+                final_decision_markdown = ""
+                if hasattr(state, 'final_trade_decision'):
+                    final_decision_markdown = getattr(state, 'final_trade_decision', "")
+                elif isinstance(state, dict) and 'final_trade_decision' in state:
+                    final_decision_markdown = state.get('final_trade_decision', "")
+
+                # 解析目标价格 (Price Target)
+                target_price = None
+                if final_decision_markdown:
+                    price_match = re.search(r'\*\*Price Target\*\*:\s*([0-9.]+)', final_decision_markdown, re.IGNORECASE)
+                    if price_match:
+                        try:
+                            target_price = float(price_match.group(1))
+                            logger.info(f"🎯 [DEBUG] 从final_trade_decision解析到目标价: {target_price}")
+                        except (ValueError, TypeError):
+                            target_price = None
+
+                # 解析评级 (Rating)
+                action = '持有'
+                if final_decision_markdown:
+                    rating_match = re.search(r'\*\*Rating\*\*:\s*(\w+)', final_decision_markdown, re.IGNORECASE)
+                    if rating_match:
+                        rating = rating_match.group(1).lower()
+                        action_translation = {
+                            'buy': '买入', 'overweight': '增持', 'hold': '持有',
+                            'underweight': '减持', 'sell': '卖出'
+                        }
+                        action = action_translation.get(rating, '持有')
+
+                # 如果final_decision_markdown为空，使用decision字符串
+                if not final_decision_markdown and isinstance(decision, str):
+                    action_translation = {
+                        'buy': '买入', 'overweight': '增持', 'hold': '持有',
+                        'underweight': '减持', 'sell': '卖出'
+                    }
+                    action = action_translation.get(decision.lower(), decision)
+
+                # 解析executive_summary作为reasoning
+                reasoning = '暂无分析推理'
+                if final_decision_markdown:
+                    exec_match = re.search(r'\*\*Executive Summary\*\*:\s*([\s\S]+?)(?:\n\*\*|\Z)', final_decision_markdown, re.IGNORECASE)
+                    if exec_match:
+                        reasoning = exec_match.group(1).strip()[:500]  # 限制长度
+
+                formatted_decision = {
+                    'action': action,
+                    'confidence': 0.7,  # 默认置信度
+                    'risk_score': 0.3,  # 默认风险评分
+                    'target_price': target_price,
+                    'reasoning': reasoning
                 }
 
-                # 兼容工具函数：从 decision (dict) 中提取字段（尝试中文/英文两种字段名）
-                def _pick(d, *candidates, default=None):
-                    for c in candidates:
-                        if c in d and d.get(c) not in (None, '', 'None', 'N/A'):
-                            return d.get(c)
-                    return default
-
-                def _to_price(val):
-                    if val is None:
-                        return None
-                    if isinstance(val, (int, float)):
-                        return float(val)
-                    if isinstance(val, str):
-                        try:
-                            cleaned = val.replace('¥', '').replace('$', '').replace('￥', '').strip()
-                            import re as _re
-                            m = _re.search(r"\d+(\.\d+)?", cleaned)
-                            return float(m.group()) if m else None
-                        except (ValueError, TypeError):
-                            return None
-                    return None
-
-                if isinstance(decision, dict):
-                    # 提取价格（中文新字段优先，旧英文字段兜底）
-                    ideal_buy = _to_price(_pick(decision, '理想买入', '理想买入价', 'ideal_buy', 'entry_price'))
-                    second_buy = _to_price(_pick(decision, '二次买入', 'secondary_buy'))
-                    stop_loss = _to_price(_pick(decision, '止损价格', 'stop_loss', 'stop_loss_price'))
-                    target = _to_price(_pick(decision, '止盈目标', 'price_target', 'target_price'))
-
-                    # 提取评级/操作方向（中文优先，英文兜底）
-                    action_raw = _pick(
-                        decision,
-                        '评级', '操作建议', 'action', 'rating', 'recommendation',
-                        default='持有',
-                    )
-                    if isinstance(action_raw, str):
-                        action_clean = action_raw.strip()
-                        chinese_action = action_translation.get(action_clean, action_clean)
-                    else:
-                        chinese_action = '持有'
-
-                    # 置信度（中文优先，英文兜底）
-                    confidence_val = _pick(decision, '置信度', 'confidence_score', 'confidence')
-                    if confidence_val is not None:
-                        try:
-                            confidence_score = float(confidence_val)
-                        except (ValueError, TypeError):
-                            confidence_score = 0.5
-                    else:
-                        confidence_score = 0.5
-
-                    # 风险等级（中文优先）
-                    risk_level_val = _pick(decision, '风险等级', 'risk_level', default='中等')
-                    if isinstance(risk_level_val, str) and 'value' in dir(risk_level_val):
-                        risk_level_display = risk_level_val
-                    else:
-                        risk_level_display = str(risk_level_val) if risk_level_val else '中等'
-
-                    # 核心洞察（中文优先，英文兜底）
-                    core_insight = _pick(
-                        decision,
-                        '核心洞察', '投资逻辑', '趋势预测', '策略点位',
-                        'executive_summary', 'investment_thesis', 'reasoning',
-                        default='暂无核心洞察',
-                    )
-                    core_insight = str(core_insight) if core_insight else ''
-
-                    formatted_decision = {
-                        'action': chinese_action,
-                        'confidence': confidence_score,
-                        'risk_score': decision.get('risk_score', 0.3),
-                        'target_price': target,
-                        'stop_loss': stop_loss,
-                        'ideal_buy': ideal_buy,
-                        'second_buy': second_buy,
-                        '核心洞察': core_insight,
-                        '投资逻辑': _pick(decision, '投资逻辑', 'investment_thesis', default=''),
-                        '趋势预测': _pick(decision, '趋势预测', default=''),
-                        '策略点位': _pick(decision, '策略点位', default=''),
-                        '风险提示': _pick(decision, '风险提示', default=''),
-                        '持仓周期': _pick(decision, '持仓周期', 'time_horizon', default=''),
-                        '技术面评分': _pick(decision, '技术面评分', 'technical_score', default=None),
-                        '基本面评分': _pick(decision, '基本面评分', 'fundamental_score', default=None),
-                        '情绪面评分': _pick(decision, '情绪面评分', 'sentiment_score', default=None),
-                        '政策面评分': _pick(decision, '政策面评分', 'policy_score', default=None),
-                        '支撑位': _to_price(_pick(decision, '支撑位', 'support_level')),
-                        '阻力位': _to_price(_pick(decision, '阻力位', 'resistance_level')),
-                        'reasoning': core_insight[:500] if core_insight else '暂无分析推理',
-                    }
-                    logger.info(f"🎯 [DEBUG] 格式化后的decision (dict, 中文字段): "
-                                f"action={chinese_action}, ideal_buy={ideal_buy}, "
-                                f"second_buy={second_buy}, stop_loss={stop_loss}, target={target}")
-
-                elif isinstance(decision, str):
-                    # decision 是字符串（如 "Hold"），从 final_trade_decision markdown 解析
-                    action = decision.strip()
-                    chinese_action = action_translation.get(action, action)
-
-                    # 从 final_trade_decision markdown 中提取
-                    final_decision_text_str = reports.get('final_trade_decision', '') if isinstance(reports, dict) else ''
-                    final_decision_text_str = str(final_decision_text_str)
-
-                    # 🔧 解析 **理想买入价** / **止损价格** 等中文字段
-                    import re as _re2
-                    def _extract_field_cn(text, *field_names):
-                        for fn in field_names:
-                            # 1) **字段名**：内容  2) 字段名：内容 —— 每行匹配到换行符为止
-                            patterns = [
-                                rf"\*\*{_re2.escape(fn)}\*\*\s*[:：]\s*([^\n]+)",
-                                rf"{_re2.escape(fn)}\s*[:：]\s*([^\n]+)",
-                                rf"\*\*{_re2.escape(fn)}\*\*\s*\n+\s*([^\n]+(?:\n\s+[^\n]+)*)",
-                            ]
-                            for pat in patterns:
-                                m = _re2.search(pat, text)
-                                if m:
-                                    return m.group(1).strip()
-                        return None
-
-                    def _extract_price_cn(text, *field_names):
-                        value = _extract_field_cn(text, *field_names)
-                        if value is not None:
-                            try:
-                                cleaned = str(value).replace('¥', '').replace('$', '').replace('￥', '').strip()
-                                m_price = _re2.search(r"\d+(\.\d+)?", cleaned)
-                                if m_price:
-                                    return float(m_price.group())
-                            except (ValueError, TypeError):
-                                return None
-                        return None
-
-                    ideal_buy = _extract_price_cn(final_decision_text_str, '理想买入价', '理想买入', 'Entry Price')
-                    second_buy = _extract_price_cn(final_decision_text_str, '二次买入价', '二次买入')
-                    target_price = _extract_price_cn(final_decision_text_str, '止盈目标', 'Price Target', 'Target Price')
-                    stop_loss_price = _extract_price_cn(final_decision_text_str, '止损价格', 'Stop Loss', 'Stop loss')
-
-                    formatted_decision = {
-                        'action': chinese_action,
-                        'confidence': 0.5,
-                        'risk_score': 0.3,
-                        'target_price': target_price,
-                        'stop_loss': stop_loss_price,
-                        'ideal_buy': ideal_buy,
-                        'second_buy': second_buy,
-                        'reasoning': final_decision_text_str[:500] if final_decision_text_str else '暂无分析推理',
-                    }
-                    logger.info(f"🎯 [DEBUG] 格式化后的decision (str): {formatted_decision}")
-                    if not target_price:
-                        target_price = self._parse_price_from_text(
-                            final_decision_text_str, ['目标价格', '目标价', 'Price Target', 'Target Price', 'target']
-                        )
-                    if not stop_loss_price:
-                        stop_loss_price = self._parse_price_from_text(
-                            final_decision_text_str, ['止损', '止损价', 'Stop Loss', 'Stop-Loss', 'stop loss', 'stop']
-                        )
-
-                    # 提取 Confidence / Risk Level
-                    confidence_text = _extract_field_cn(final_decision_text_str, 'Confidence', '置信度')
-                    confidence = 0.5
-                    if confidence_text:
-                        try:
-                            confidence = float(confidence_text)
-                        except (ValueError, TypeError):
-                            confidence = self._calculate_confidence(chinese_action, final_decision_text_str)
-                    else:
-                        confidence = self._calculate_confidence(chinese_action, final_decision_text_str)
-
-                    risk_text = _extract_field_cn(final_decision_text_str, 'Risk Level', '风险等级')
-                    risk_score = 0.3
-                    if risk_text:
-                        risk_score_dict = {'低': 0.2, '中': 0.5, '高': 0.8}
-                        risk_score = risk_score_dict.get(str(risk_text).strip(), 0.3)
-                    else:
-                        risk_score = self._calculate_risk_score(chinese_action, confidence, final_decision_text_str)
-
-                    # 提取支撑/阻力位
-                    support_level = _extract_price_cn(final_decision_text_str, 'Support Level', '支撑位')
-                    resistance_level = _extract_price_cn(final_decision_text_str, 'Resistance Level', '阻力位')
-                    time_horizon_text = _extract_field_cn(final_decision_text_str, 'Time Horizon', '持仓周期')
-
-                    # 🔄 同时提取中文长文本字段（给 ReportDetail.vue 的核心洞察/趋势预测区块使用）
-                    core_insight_cn = _extract_field_cn(
-                        final_decision_text_str, '核心洞察', '核心矛盾', '投资逻辑', '市场定位', '核心矛盾与催化'
-                    )
-                    trend_cn = _extract_field_cn(
-                        final_decision_text_str, '趋势预测', '趋势展望', '走势判断', '中期展望'
-                    )
-                    strategy_cn = _extract_field_cn(
-                        final_decision_text_str, '策略点位', '关键支撑', '关键点位', '关键均线', '关键支撑位/阻力位'
-                    )
-                    risk_warn_cn = _extract_field_cn(
-                        final_decision_text_str, '风险提示', '风险因素', '主要风险'
-                    )
-                    rating_cn = _extract_field_cn(
-                        final_decision_text_str, '评级', '投资评级'
-                    )
-
-                    formatted_decision = {
-                        'action': chinese_action,
-                        'confidence': confidence,
-                        'risk_score': risk_score,
-                        'target_price': target_price,
-                        'stop_loss': stop_loss_price,
-                        'ideal_buy': ideal_buy,
-                        'second_buy': second_buy,
-                        'reasoning': '详见分析报告',
-                        'support_level': support_level,
-                        'resistance_level': resistance_level,
-                        'time_horizon': time_horizon_text,
-                        # 中文输出字段（前端 ReportDetail.vue 展示使用）
-                        '评级': rating_cn if rating_cn else chinese_action,
-                        '核心洞察': core_insight_cn,
-                        '投资逻辑': _extract_field_cn(final_decision_text_str, '投资逻辑', '投资依据', '投资理由', '投资论证'),
-                        '趋势预测': trend_cn,
-                        '策略点位': strategy_cn,
-                        '风险提示': risk_warn_cn,
-                        '理想买入': ideal_buy,
-                        '二次买入': second_buy,
-                        '止损价格': stop_loss_price,
-                        '止盈目标': target_price,
-                        '支撑位': support_level,
-                        '阻力位': resistance_level,
-                        '置信度': confidence,
-                        '风险等级': str(risk_text).strip() if risk_text and str(risk_text).strip() else '中等',
-                        '持仓周期': time_horizon_text,
-                    }
-                    logger.info(
-                        f"🎯 [DEBUG] 格式化后的decision: action={chinese_action}, "
-                        f"理想买入={ideal_buy}, 止损={stop_loss_price}, 止盈={target_price}, "
-                        f"二次买入={second_buy}, 评级={rating_cn}, 置信度={confidence}"
-                    )
-                else:
-                    formatted_decision = {
-                        'action': '持有',
-                        'confidence': 0.5,
-                        'risk_score': 0.3,
-                        'target_price': None,
-                        'stop_loss': None,
-                        'reasoning': '暂无分析推理'
-                    }
-                    logger.warning(f"⚠️ Decision不是字典或字符串类型: {type(decision)}")
-
+                logger.info(f"🎯 [DEBUG] 格式化后的decision: {formatted_decision}")
             except Exception as e:
                 logger.error(f"❌ 格式化decision失败: {e}")
                 formatted_decision = {
@@ -2396,7 +1608,6 @@ class SimpleAnalysisService:
                     'confidence': 0.5,
                     'risk_score': 0.3,
                     'target_price': None,
-                    'stop_loss': None,
                     'reasoning': '暂无分析推理'
                 }
 
@@ -2450,7 +1661,7 @@ class SimpleAnalysisService:
 
             # 5. 最后的备用方案
             if not summary:
-                summary = f"对{stock_code}的分析已完成，请查看详细报告。"
+                summary = f"对{request.stock_code}的分析已完成，请查看详细报告。"
                 logger.warning(f"⚠️ [SUMMARY] 使用备用摘要")
 
             if not recommendation:
@@ -2463,8 +1674,8 @@ class SimpleAnalysisService:
             # 构建结果
             result = {
                 "analysis_id": str(uuid.uuid4()),
-                "stock_code": stock_code,
-                "stock_symbol": stock_code,  # 添加stock_symbol字段以保持兼容性
+                "stock_code": request.stock_code,
+                "stock_symbol": request.stock_code,  # 添加stock_symbol字段以保持兼容性
                 "analysis_date": analysis_date,
                 "summary": summary,
                 "recommendation": recommendation,
@@ -2477,7 +1688,6 @@ class SimpleAnalysisService:
                 "state": state,
                 # 添加分析师信息
                 "analysts": request.parameters.selected_analysts if request.parameters else [],
-                "research_depth": request.parameters.research_depth if request.parameters else "快速",
                 # 添加提取的报告内容
                 "reports": reports,
                 # 🔥 关键修复：添加格式化后的decision字段！
@@ -2871,25 +2081,24 @@ class SimpleAnalysisService:
             # 分页
             results = merged_tasks[offset:offset + limit]
 
-            # 🔥 统一处理时区信息：MongoDB 存储的 naive datetime 为 UTC+8 时间
-            # 前端 formatDateTime 函数假定没有时区标识的时间字符串为 UTC+8 时间
+            # 🔥 统一处理时区信息（确保所有时间字段都有时区标识）
+            from datetime import timezone, timedelta
+            china_tz = timezone(timedelta(hours=8))
+
             for task in results:
                 for time_field in ("start_time", "end_time", "created_at", "started_at", "completed_at"):
                     value = task.get(time_field)
                     if value:
                         # 如果是 datetime 对象
                         if hasattr(value, "isoformat"):
-                            # MongoDB 返回的是 naive datetime（UTC+8 时间），直接转换为 ISO 格式
-                            value = to_config_tz(value)
+                            # 如果是 naive datetime，添加时区信息
+                            if value.tzinfo is None:
+                                value = value.replace(tzinfo=china_tz)
                             task[time_field] = value.isoformat()
-                        # 如果是字符串且没有时区标识，假定为 UTC+8 并添加 +08:00
+                        # 如果是字符串且没有时区标识，添加时区标识
                         elif isinstance(value, str) and value and not value.endswith(('Z', '+08:00', '+00:00')):
-                            # 保留原始格式，添加时区标识
-                            if 'T' in value:
-                                # ISO 格式，添加 UTC+8 时区标识
-                                task[time_field] = value + '+08:00'
-                            elif ' ' in value:
-                                # 普通格式，转换为 ISO 格式并添加 UTC+8 时区标识
+                            # 检查是否是 ISO 格式的时间字符串
+                            if 'T' in value or ' ' in value:
                                 task[time_field] = value.replace(' ', 'T') + '+08:00'
 
             # 为结果补齐股票名称
@@ -2916,7 +2125,7 @@ class SimpleAnalysisService:
             # 2) 清理 MongoDB 中的僵尸任务
             db = get_mongo_db()
             from datetime import timedelta
-            cutoff_time = now_tz() - timedelta(hours=max_running_hours)
+            cutoff_time = datetime.utcnow() - timedelta(hours=max_running_hours)
 
             # 查找长时间处于 processing 状态的任务
             zombie_filter = {
@@ -2934,8 +2143,8 @@ class SimpleAnalysisService:
                     "$set": {
                         "status": "failed",
                         "last_error": f"任务超时（运行时间超过 {max_running_hours} 小时）",
-                        "completed_at": now_tz(),
-                        "updated_at": now_tz()
+                        "completed_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow()
                     }
                 }
             )
@@ -2974,7 +2183,7 @@ class SimpleAnalysisService:
         try:
             db = get_mongo_db()
             from datetime import timedelta
-            cutoff_time = now_tz() - timedelta(hours=max_running_hours)
+            cutoff_time = datetime.utcnow() - timedelta(hours=max_running_hours)
 
             # 查找长时间处于 processing 状态的任务
             zombie_filter = {
@@ -2995,15 +2204,15 @@ class SimpleAnalysisService:
                     "stock_code": doc.get("stock_code"),
                     "stock_name": doc.get("stock_name"),
                     "status": doc.get("status"),
-                    "created_at": to_config_tz(doc.get("created_at")).isoformat() if doc.get("created_at") else None,
-                    "started_at": to_config_tz(doc.get("started_at")).isoformat() if doc.get("started_at") else None,
+                    "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else None,
+                    "started_at": doc.get("started_at").isoformat() if doc.get("started_at") else None,
                     "running_hours": None
                 }
 
                 # 计算运行时长
                 start_time = doc.get("started_at") or doc.get("created_at")
                 if start_time:
-                    running_seconds = (now_tz() - start_time).total_seconds()
+                    running_seconds = (datetime.utcnow() - start_time).total_seconds()
                     task["running_hours"] = round(running_seconds / 3600, 2)
 
                 zombie_tasks.append(task)
@@ -3030,16 +2239,16 @@ class SimpleAnalysisService:
             update_data = {
                 "status": status,
                 "progress": progress,
-                "updated_at": now_tz()
+                "updated_at": datetime.utcnow()
             }
 
             if status == AnalysisStatus.PROCESSING and progress == 10:
-                update_data["started_at"] = now_tz()
+                update_data["started_at"] = datetime.utcnow()
             elif status == AnalysisStatus.COMPLETED:
-                update_data["completed_at"] = now_tz()
+                update_data["completed_at"] = datetime.utcnow()
             elif status == AnalysisStatus.FAILED:
                 update_data["last_error"] = error_message
-                update_data["completed_at"] = now_tz()
+                update_data["completed_at"] = datetime.utcnow()
 
             await db.analysis_tasks.update_one(
                 {"task_id": task_id},
@@ -3069,7 +2278,8 @@ class SimpleAnalysisService:
             db = get_mongo_db()
 
             # 生成分析ID（与web目录保持一致）
-            timestamp = now_tz()  # 存储 UTC 时间（标准做法）
+            from datetime import datetime
+            timestamp = datetime.utcnow()  # 存储 UTC 时间（标准做法）
             stock_symbol = result.get('stock_symbol') or result.get('stock_code', 'UNKNOWN')
             analysis_id = f"{stock_symbol}_{timestamp.strftime('%Y%m%d_%H%M%S')}"
 
@@ -3079,18 +2289,18 @@ class SimpleAnalysisService:
                 try:
                     state = result['state']
 
-                    # 定义所有可能的报告字段（分析师团队7个 + 研究员团队 + 风控）
+                    # 定义所有可能的报告字段（7个分析师报告 + 其他报告）
                     report_fields = [
-                        'market_report',           # 市场技术分析
-                        'sentiment_report',        # 市场情绪分析
-                        'news_report',             # 新闻事件分析
-                        'fundamentals_report',     # 基本面分析
-                        'policy_report',           # 政策分析 (A股特有)
-                        'hot_money_report',        # 游资追踪 (A股特有)
-                        'lockup_report',           # 解禁监控 (A股特有)
-                        'investment_plan',         # 研究总监投资计划
-                        'trader_investment_plan', # 交易员投资计划
-                        'final_trade_decision'     # 最终交易决策
+                        'market_report',
+                        'sentiment_report',
+                        'news_report',
+                        'fundamentals_report',
+                        'policy_report',
+                        'hot_money_report',
+                        'lockup_report',
+                        'investment_plan',
+                        'trader_investment_plan',
+                        'final_trade_decision'
                     ]
 
                     # 从state中提取报告内容
@@ -3206,80 +2416,43 @@ class SimpleAnalysisService:
                         except Exception as fallback_error:
                             logger.warning(f"⚠️ 降级提取也失败: {fallback_error}")
 
-            # 🔥 根据股票代码推断市场类型（多层降级，适配新 tradingagents）
-            market_type = "A股"
-            try:
-                from tradingagents.utils.stock_utils import StockUtils
-                market_info = StockUtils.get_market_info(stock_symbol)
-                market_type_map = {
-                    "china_a": "A股",
-                    "hong_kong": "港股",
-                    "us": "美股",
-                    "unknown": "A股"  # 默认为A股
-                }
-                market_type = market_type_map.get(market_info.get("market", "unknown"), "A股")
-                logger.info(f"📊 推断市场类型 (StockUtils): {stock_symbol} -> {market_type}")
-            except Exception:
-                # 降级：基于股票代码简单判断市场类型
-                try:
-                    _sym = str(stock_symbol).upper()
-                    if _sym.endswith('.HK') or (len(_sym) == 5 and _sym.isdigit()):
-                        market_type = "港股"
-                    elif '.' in _sym and any(x in _sym for x in ['NASDAQ', 'NYSE']):
-                        market_type = "美股"
-                    elif len(_sym) == 6 and _sym.isdigit():
-                        market_type = "A股"
-                    else:
-                        market_type = "A股"
-                    logger.info(f"📊 推断市场类型 (简单判断): {stock_symbol} -> {market_type}")
-                except Exception:
-                    market_type = "A股"
+            # 🔥 根据股票代码推断市场类型
+            from tradingagents.utils.stock_utils import StockUtils
+            market_info = StockUtils.get_market_info(stock_symbol)
+            market_type_map = {
+                "china_a": "A股",
+                "hong_kong": "港股",
+                "us": "美股",
+                "unknown": "A股"  # 默认为A股
+            }
+            market_type = market_type_map.get(market_info.get("market", "unknown"), "A股")
+            logger.info(f"📊 推断市场类型: {stock_symbol} -> {market_type}")
 
-            # 🔥 获取股票名称（多层降级）
+            # 🔥 获取股票名称
             stock_name = stock_symbol  # 默认使用股票代码
             try:
-                if market_type == "A股":
-                    # A股：优先使用统一接口，其次使用 dataflows.interface 的 resolve_ticker 回退
-                    _got_name = False
-                    try:
-                        from tradingagents.dataflows.interface import get_china_stock_info_unified
-                        stock_info = get_china_stock_info_unified(stock_symbol)
-                        logger.debug(f"📊 获取股票信息返回: {stock_info[:200] if stock_info else 'None'}...")
+                if market_info.get("market") == "china_a":
+                    # A股：使用统一接口获取股票信息
+                    from tradingagents.dataflows.interface import get_china_stock_info_unified
+                    stock_info = get_china_stock_info_unified(stock_symbol)
+                    logger.debug(f"📊 获取股票信息返回: {stock_info[:200] if stock_info else 'None'}...")
 
-                        if stock_info and "股票名称:" in str(stock_info):
-                            stock_name = str(stock_info).split("股票名称:")[1].split("\n")[0].strip()
-                            logger.info(f"✅ 获取A股名称 (interface): {stock_symbol} -> {stock_name}")
-                            _got_name = True
-                    except Exception as _e1:
-                        logger.warning(f"⚠️ interface.get_china_stock_info_unified 不可用: {_e1}")
-
-                    if not _got_name:
-                        # 降级：尝试 data_source_manager
+                    if stock_info and "股票名称:" in stock_info:
+                        stock_name = stock_info.split("股票名称:")[1].split("\n")[0].strip()
+                        logger.info(f"✅ 获取A股名称: {stock_symbol} -> {stock_name}")
+                    else:
+                        # 降级方案：尝试直接从数据源管理器获取
+                        logger.warning(f"⚠️ 无法从统一接口解析股票名称: {stock_symbol}，尝试降级方案")
                         try:
                             from tradingagents.dataflows.data_source_manager import get_china_stock_info_unified as get_info_dict
                             info_dict = get_info_dict(stock_symbol)
                             if info_dict and info_dict.get('name'):
                                 stock_name = info_dict['name']
-                                logger.info(f"✅ 获取A股名称 (data_source_manager): {stock_symbol} -> {stock_name}")
-                                _got_name = True
-                        except Exception as _e2:
-                            logger.warning(f"⚠️ data_source_manager 也不可用: {_e2}")
+                                logger.info(f"✅ 降级方案成功获取股票名称: {stock_symbol} -> {stock_name}")
+                        except Exception as fallback_e:
+                            logger.error(f"❌ 降级方案也失败: {fallback_e}")
 
-                    if not _got_name:
-                        # 再降级：使用新 tradingagents 的 a_stock.resolve_ticker
-                        try:
-                            from tradingagents.dataflows.a_stock import resolve_ticker
-                            info = resolve_ticker(stock_symbol)
-                            if isinstance(info, dict) and info.get("name"):
-                                stock_name = info.get("name")
-                                logger.info(f"✅ 获取A股名称 (a_stock): {stock_symbol} -> {stock_name}")
-                            elif isinstance(info, str) and info:
-                                stock_name = info
-                                logger.info(f"✅ 获取A股名称 (a_stock): {stock_symbol} -> {stock_name}")
-                        except Exception as _e3:
-                            logger.warning(f"⚠️ a_stock.resolve_ticker 也不可用: {_e3}")
-
-                elif market_type == "港股":
+                elif market_info.get("market") == "hong_kong":
                     # 港股：使用改进的港股工具
                     try:
                         from tradingagents.dataflows.providers.hk.improved_hk import get_hk_company_name_improved
@@ -3288,7 +2461,7 @@ class SimpleAnalysisService:
                     except Exception:
                         clean_ticker = stock_symbol.replace('.HK', '').replace('.hk', '')
                         stock_name = f"港股{clean_ticker}"
-                elif market_type == "美股":
+                elif market_info.get("market") == "us":
                     # 美股：使用简单映射
                     us_stock_names = {
                         'AAPL': '苹果公司', 'TSLA': '特斯拉', 'NVDA': '英伟达',
@@ -3316,7 +2489,6 @@ class SimpleAnalysisService:
                 # 分析结果摘要
                 "summary": result.get("summary", ""),
                 "analysts": result.get("analysts", []),
-                "research_depth": result.get("research_depth", 1),
 
                 # 报告内容
                 "reports": reports,
@@ -3363,8 +2535,8 @@ class SimpleAnalysisService:
                         "detailed_analysis": result.get("detailed_analysis", {}),
                         "execution_time": result.get("execution_time", 0),
                         "tokens_used": result.get("tokens_used", 0),
-                        "reports": reports,  # 包含提取的报告内容
-                        # 🔥 关键修复：添加格式化后的decision字段！
+                        "reports": reports,
+                        "state": result.get("state", {}),
                         "decision": result.get("decision", {})
                     }}}
                 )
@@ -3380,7 +2552,7 @@ class SimpleAnalysisService:
                     'task_id': task_id,
                     'success': result.get('success', True),
                     'error': str(e),
-                    'completed_at': now_tz().isoformat()
+                    'completed_at': datetime.utcnow().isoformat()
                 }
                 await db.analysis_tasks.update_one(
                     {"task_id": task_id},
@@ -3437,6 +2609,7 @@ class SimpleAnalysisService:
         try:
             import os
             from pathlib import Path
+            from datetime import datetime
             import json
 
             # 获取项目根目录
@@ -3509,6 +2682,21 @@ class SimpleAnalysisService:
                     'filename': 'fundamentals_report.md',
                     'title': f'{stock_symbol} 基本面分析报告',
                     'state_key': 'fundamentals_report'
+                },
+                'policy_report': {
+                    'filename': 'policy_report.md',
+                    'title': f'{stock_symbol} 政策分析报告',
+                    'state_key': 'policy_report'
+                },
+                'hot_money_report': {
+                    'filename': 'hot_money_report.md',
+                    'title': f'{stock_symbol} 游资追踪报告',
+                    'state_key': 'hot_money_report'
+                },
+                'lockup_report': {
+                    'filename': 'lockup_report.md',
+                    'title': f'{stock_symbol} 解禁追踪报告',
+                    'state_key': 'lockup_report'
                 },
                 'investment_plan': {
                     'filename': 'investment_plan.md',
@@ -3587,7 +2775,6 @@ class SimpleAnalysisService:
                 'stock_symbol': stock_symbol,
                 'analysis_date': analysis_date_str,
                 'timestamp': datetime.now().isoformat(),
-                'research_depth': result.get('research_depth', 1),
                 'analysts': result.get('analysts', []),
                 'status': 'completed',
                 'reports_count': len(saved_files),
@@ -3609,202 +2796,6 @@ class SimpleAnalysisService:
             import traceback
             logger.error(f"❌ 详细错误: {traceback.format_exc()}")
             return {}
-
-    async def _record_token_usage(
-        self,
-        task_id: str,
-        user_id: str,
-        stock_code: str,
-        tokens_used: int,
-        provider: str,
-        model_name: str
-    ):
-        """记录 Token 使用情况"""
-        try:
-            from datetime import datetime
-
-            # 从结果中提取 token 使用信息
-            total_tokens = int(tokens_used or 0)
-            if total_tokens > 0:
-                input_tokens = total_tokens // 2
-                output_tokens = total_tokens - input_tokens
-            else:
-                # 如果没有 token 使用信息，使用默认估算
-                input_tokens = 2000
-                output_tokens = 1000
-                total_tokens = 3000
-
-            # 计算成本（从配置中获取价格）
-            cost = 0.0
-            currency = "CNY"
-
-            try:
-                # 从配置服务获取模型价格
-                from app.services.config_service import ConfigService
-                config_service = ConfigService()
-                system_config = await config_service.get_system_config()
-                if system_config and hasattr(system_config, 'llm_configs'):
-                    for cfg in system_config.llm_configs:
-                        if (hasattr(cfg, 'provider') and hasattr(cfg, 'model_name') and
-                                cfg.provider == provider and cfg.model_name == model_name):
-                            input_price = getattr(cfg, 'input_price_per_1k', 0.0) or 0.0
-                            output_price = getattr(cfg, 'output_price_per_1k', 0.0) or 0.0
-                            cost = (input_tokens / 1000 * input_price) + (output_tokens / 1000 * output_price)
-                            currency = getattr(cfg, 'currency', 'CNY') or "CNY"
-                            break
-            except Exception as price_err:
-                logger.debug(f"💰 获取模型价格失败，使用默认成本: {price_err}")
-
-            # 创建使用记录
-            try:
-                from app.models.config import UsageRecord
-
-                usage_record = UsageRecord(
-                    timestamp=datetime.now().isoformat(),
-                    provider=provider,
-                    model_name=model_name,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cost=cost,
-                    currency=currency,
-                    session_id=task_id,
-                    analysis_type="stock_analysis",
-                    stock_code=stock_code
-                )
-
-                # 保存到数据库
-                if self.usage_service:
-                    success = await self.usage_service.add_usage_record(usage_record)
-                    if success:
-                        logger.info(f"💰 记录使用成本: {provider}/{model_name} - {currency} {cost:.4f} (tokens: {total_tokens})")
-                    else:
-                        logger.warning(f"💰 记录使用成本失败(数据库): {provider}/{model_name}")
-                else:
-                    logger.warning(f"💰 usage_service 为 None，跳过记录")
-
-            except ImportError as import_err:
-                logger.warning(f"💰 UsageRecord 模型导入失败: {import_err}")
-            except Exception as create_err:
-                logger.error(f"💰 创建使用记录失败: {create_err}")
-
-        except Exception as e:
-            logger.error(f"💰 记录 Token 使用失败(整体): {e}")
-            import traceback
-            logger.debug(f"💰 详细错误: {traceback.format_exc()}")
-
-    def _parse_price_from_text(self, text: str, keywords: list) -> Optional[float]:
-        """从文本中解析价格"""
-        if not text or not keywords:
-            return None
-        import re
-
-        for keyword in keywords:
-            kw_escaped = re.escape(keyword)
-            patterns = [
-                kw_escaped + r'[：:]\s*[¥￥]?\s*(\d+\.?\d*)',
-                kw_escaped + r'\s*[：:]\s*(\d+\.?\d*)',
-                r'(\d+\.\d+)\s*元',
-                r'[¥￥]\s*(\d+\.?\d*)',
-                kw_escaped + r'\s*(\d+\.?\d*)',
-            ]
-            for pattern in patterns:
-                try:
-                    match = re.search(pattern, text, re.IGNORECASE)
-                    if match and match.group(1):
-                        try:
-                            price = float(match.group(1))
-                            if price > 0.1:
-                                logger.info(f"💰 [价格解析] 从关键词 '{keyword}' 解析到价格: {price}")
-                                return price
-                        except (ValueError, IndexError):
-                            continue
-                except re.error as e:
-                    logger.debug(f"💰 [价格解析] 正则 '{pattern}' 解析错误: {e}")
-                    continue
-
-        return None
-
-    def _calculate_confidence(self, action: str, text: str) -> float:
-        """根据决策强度和文本分析计算置信度"""
-        if not text:
-            return 0.5
-
-        action_upper = action.upper()
-
-        # 强势动作（Buy/Sell）的置信度基础值更高
-        base_confidence = 0.5
-
-        if action_upper in ['BUY', 'SELL', 'OVERWEIGHT', 'UNDERWEIGHT']:
-            base_confidence = 0.6
-        elif action_upper in ['HOLD']:
-            base_confidence = 0.5
-
-        # 分析文本长度 - 更长的分析通常意味着更充分的论证
-        text_length = len(text)
-        if text_length > 3000:
-            base_confidence += 0.05
-        elif text_length < 500:
-            base_confidence -= 0.1
-
-        # 分析文本中的关键词强度
-        strong_keywords = ['明确', '确认', '有效', '压倒性', '致命', '彻底', '关键', '核心', '明显']
-        weak_keywords = ['可能', '或许', '也许', '不确定', '模糊', '存疑']
-
-        strong_count = sum(1 for kw in strong_keywords if kw in text)
-        weak_count = sum(1 for kw in weak_keywords if kw in text)
-
-        if strong_count > weak_count:
-            base_confidence += 0.05
-        elif weak_count > strong_count:
-            base_confidence -= 0.1
-
-        # 限制在合理范围内
-        confidence = max(0.3, min(0.95, base_confidence))
-
-        logger.info(f"📊 [置信度计算] action={action}, text_length={text_length}, confidence={confidence}")
-        return confidence
-
-    def _calculate_risk_score(self, action: str, confidence: float, text: str) -> float:
-        """根据决策类型和文本计算风险评分"""
-        if not text:
-            return 0.5
-
-        action_upper = action.upper()
-
-        # 风险评分范围是 0-1，值越高风险越大
-        base_risk = 0.5
-
-        # Buy 操作通常风险较低
-        if action_upper in ['BUY', 'OVERWEIGHT']:
-            base_risk = 0.4
-        # Sell 操作风险中等
-        elif action_upper in ['SELL', 'UNDERWEIGHT']:
-            base_risk = 0.5
-        # Hold 操作
-        else:
-            base_risk = 0.45
-
-        # 分析文本中的风险关键词
-        high_risk_keywords = ['高风险', '重大风险', '不确定性', '剧烈', '大幅', '暴跌', '暴涨', '危机', '崩盘']
-        low_risk_keywords = ['低风险', '安全', '稳健', '确定性', '稳定']
-
-        high_risk_count = sum(1 for kw in high_risk_keywords if kw in text)
-        low_risk_count = sum(1 for kw in low_risk_keywords if kw in text)
-
-        if high_risk_count > low_risk_count:
-            base_risk += 0.1
-        elif low_risk_count > high_risk_count:
-            base_risk -= 0.1
-
-        # 置信度低意味着不确定性高，风险应该增加
-        if confidence < 0.5:
-            base_risk += 0.1
-
-        # 限制在合理范围内
-        risk_score = max(0.1, min(0.9, base_risk))
-
-        logger.info(f"📊 [风险评分计算] action={action}, confidence={confidence}, risk_score={risk_score}")
-        return risk_score
 
 # 重复的 get_task_status 方法已删除，使用第469行的内存版本
 

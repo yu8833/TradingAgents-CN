@@ -25,25 +25,16 @@ def create_news_analyst(llm):
             "\n- **消息来源权重**：财联社快讯（最快）> 新华财经/证券时报（权威）> 东方财富/同花顺（广泛）。注意区分官方消息与市场传闻。"
             "\n- **行业轮动**：A 股板块轮动特征明显，一个行业利好政策可能带动整个板块，分析时需关注产业链上下游联动。"
             "\n- **事件驱动**：关注财报预告/业绩快报、股东大会决议、重大合同公告、机构调研记录等公司层面事件。"
-            "\n\n工具使用说明（调用工具时必须严格按以下签名）："
-            "\n- `get_news(query, start_date, end_date)`：获取公司相关的个股新闻。参数：query=搜索关键词（如公司名/股票代码），start_date=开始日期，end_date=结束日期。返回新闻列表。"
-            "\n- `get_global_news(curr_date, look_back_days, limit)`：获取宏观经济和市场整体新闻。参数：curr_date=当前日期，look_back_days=往前回溯天数（建议 7），limit=返回条数上限。返回宏观新闻列表。"
-            "\n\n📊 新闻情感量化评分要求（在报告末尾必须包含量化评分表格）："
-            "\n| 指标 | 数值 | 说明 |"
-            "\n|------|------|------|"
-            "\n| 新闻情感评分 | 0.0~1.0 | 0.0=极度利空，0.5=中性，1.0=极度利好 |"
-            "\n| 政策影响评分 | 0.0~1.0 | 该新闻的政策友好程度 |"
-            "\n| 影响时效 | 短期/中期/长期 | 影响持续时间 |"
-            "\n| 利好事件数 | N | 明确利好消息数量 |"
-            "\n| 利空事件数 | N | 明确利空消息数量 |"
-            "\n| 综合新闻评级 | 利好/中性/利空 | 综合评估 |"
-            "\n\n撰写全面的新闻分析报告，区分利好/利空/中性消息，评估影响程度和持续时间。报告末尾附 Markdown 表格汇总关键新闻事件及其量化影响评级。"
+            "\n\n请使用以下工具："
+            "\n- `get_news(query, start_date, end_date)`：获取公司相关的个股新闻"
+            "\n- `get_global_news(curr_date, look_back_days, limit)`：获取宏观经济和市场整体新闻"
+            "\n\n撰写全面的新闻分析报告，区分利好/利空/中性消息，评估影响程度和持续时间。报告末尾附 Markdown 表格汇总关键新闻事件及其影响评级。"
             "\n\n📋 必采清单 — 以下数据点必须出现在报告中，无法获取时标注 [数据缺失: xxx]："
             "\n1. 个股新闻条数和时间范围"
             "\n2. 宏观新闻条数和时间范围"
             "\n3. 关键事件时间线（至少列出 3 个重要事件及日期）"
-            "\n4. 利好/利空/中性事件分类统计及量化评分"
-            "\n5. 风险事件清单（如有）及风险评分"
+            "\n4. 利好/利空/中性事件分类统计"
+            "\n5. 风险事件清单（如有）"
             + get_language_instruction()
         )
 
@@ -51,13 +42,14 @@ def create_news_analyst(llm):
             [
                 (
                     "system",
-                    "你是一位专业的 A 股分析助手，正在与其他分析伙伴协作完成股票分析。"
-                    "使用提供的工具（如数据查询、新闻搜索）来回答问题。"
-                    "如果当前工具不足以完成完整回答也没关系，其他同事会从你停止的地方继续推进。"
-                    "在你能力范围内尽力完成分析即可。"
-                    "如果你或其他同事已有**最终交易建议（买入/持有/卖出）**，请在回答开头标注「最终交易建议」。"
-                    "你可以调用的工具有：{tool_names}。\n{system_message}"
-                    "参考日期：{current_date}。{instrument_context}",
+                    "You are a helpful AI assistant, collaborating with other assistants."
+                    " Use the provided tools to progress towards answering the question."
+                    " If you are unable to fully answer, that's OK; another assistant with different tools"
+                    " will help where you left off. Execute what you can to make progress."
+                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
+                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
+                    " You have access to the following tools: {tool_names}.\n{system_message}"
+                    "For your reference, the current date is {current_date}. {instrument_context}",
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]

@@ -46,10 +46,9 @@ def safe_serialize(data):
 class RedisProgressTracker:
     """Redis进度跟踪器"""
 
-    def __init__(self, task_id: str, analysts: List[str], research_depth: str, llm_provider: str):
+    def __init__(self, task_id: str, analysts: List[str], llm_provider: str):
         self.task_id = task_id
         self.analysts = analysts
-        self.research_depth = research_depth
         from tradingagents.llm_clients.provider_keys import normalize_provider_key
 
         self.llm_provider = normalize_provider_key(llm_provider)
@@ -133,13 +132,13 @@ class RedisProgressTracker:
             return False
 
     def _generate_dynamic_steps(self) -> List[AnalysisStep]:
-        """根据分析师数量和研究深度动态生成分析步骤"""
+        """根据分析师数量动态生成分析步骤"""
         steps: List[AnalysisStep] = []
         # 1) 基础准备阶段 (10%)
         steps.extend([
             AnalysisStep("📋 准备阶段", "验证股票代码，检查数据源可用性", "pending", 0.03),
             AnalysisStep("🔧 环境检查", "检查API密钥配置，确保数据获取正常", "pending", 0.02),
-            AnalysisStep("💰 成本估算", "根据分析深度预估API调用成本", "pending", 0.01),
+            AnalysisStep("💰 成本估算", "预估API调用成本", "pending", 0.01),
             AnalysisStep("⚙️ 参数设置", "配置分析参数和AI模型选择", "pending", 0.02),
             AnalysisStep("🚀 启动引擎", "初始化AI分析引擎，准备开始分析", "pending", 0.02),
         ])
@@ -176,12 +175,8 @@ class RedisProgressTracker:
         return steps
 
     def _get_debate_rounds(self) -> int:
-        """根据研究深度获取辩论轮次"""
-        if self.research_depth == "快速":
-            return 1
-        if self.research_depth == "标准":
-            return 2
-        return 3
+        """获取辩论轮次（使用默认配置）"""
+        return 1
 
     def _get_analyst_step_info(self, analyst: str) -> Dict[str, str]:
         """获取分析师步骤信息（名称与描述）"""
@@ -202,60 +197,38 @@ class RedisProgressTracker:
 
     def _get_base_total_time(self) -> float:
         """
-        根据分析师数量、研究深度、模型类型预估总时长（秒）
+        根据分析师数量、模型类型预估总时长（秒）
 
         算法设计思路（基于实际测试数据）：
-        1. 实测：4级深度 + 3个分析师 = 11分钟（661秒）
-        2. 实测：1级快速 = 4-5分钟
-        3. 实测：2级基础 = 5-6分钟
-        4. 分析师之间有并行处理，不是线性叠加
+        - 默认配置：1个分析师约4分钟
+        - 分析师之间有并行处理，不是线性叠加
         """
-
-        # 🔧 支持5个级别的分析深度
-        depth_map = {
-            "快速": 1,  # 1级 - 快速分析
-            "基础": 2,  # 2级 - 基础分析
-            "标准": 3,  # 3级 - 标准分析（推荐）
-            "深度": 4,  # 4级 - 深度分析
-            "全面": 5   # 5级 - 全面分析
-        }
-        d = depth_map.get(self.research_depth, 3)  # 默认标准分析
-
         # 📊 基于实际测试数据的基础时间（秒）
-        # 这是单个分析师的基础耗时
-        base_time_per_depth = {
-            1: 150,  # 1级：2.5分钟（实测4-5分钟是多个分析师的情况）
-            2: 180,  # 2级：3分钟（实测5-6分钟是多个分析师的情况）
-            3: 240,  # 3级：4分钟（前端显示：6-10分钟）
-            4: 330,  # 4级：5.5分钟（实测：3个分析师11分钟，反推单个约5.5分钟）
-            5: 480   # 5级：8分钟（前端显示：15-25分钟）
-        }.get(d, 240)
+        base_time = 240  # 默认：4分钟（单个分析师）
 
         # 📈 分析师数量影响系数（基于实际测试数据）
-        # 实测：4级 + 3个分析师 = 11分钟 = 660秒
-        # 反推：330秒 * multiplier = 660秒 => multiplier = 2.0
         analyst_count = len(self.analysts)
         if analyst_count == 1:
             analyst_multiplier = 1.0
         elif analyst_count == 2:
-            analyst_multiplier = 1.5  # 2个分析师约1.5倍时间
+            analyst_multiplier = 1.5
         elif analyst_count == 3:
-            analyst_multiplier = 2.0  # 3个分析师约2倍时间（实测验证）
+            analyst_multiplier = 2.0
         elif analyst_count == 4:
-            analyst_multiplier = 2.4  # 4个分析师约2.4倍时间
+            analyst_multiplier = 2.4
         else:
-            analyst_multiplier = 2.4 + (analyst_count - 4) * 0.3  # 每增加1个分析师增加30%
+            analyst_multiplier = 2.4 + (analyst_count - 4) * 0.3
 
         # 🚀 模型速度影响（基于实际测试）
         model_mult = {
-            'qwen': 1.0,       # 阿里百炼（通义千问）速度适中
-            'dashscope': 1.0,  # 阿里百炼速度适中
-            'deepseek': 0.8,   # DeepSeek较快
-            'google': 1.2      # Google较慢
+            'qwen': 1.0,
+            'dashscope': 1.0,
+            'deepseek': 0.8,
+            'google': 1.2
         }.get(self.llm_provider, 1.0)
 
         # 计算总时间
-        total_time = base_time_per_depth * analyst_multiplier * model_mult
+        total_time = base_time * analyst_multiplier * model_mult
 
         return total_time
 
@@ -461,7 +434,6 @@ class RedisProgressTracker:
             return {
                 'task_id': self.task_id,
                 'analysts': self.analysts,
-                'research_depth': self.research_depth,
                 'llm_provider': self.llm_provider,
                 'steps': [asdict(step) for step in self.analysis_steps],
                 'start_time': self.progress_data.get('start_time'),

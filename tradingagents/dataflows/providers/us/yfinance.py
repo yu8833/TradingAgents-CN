@@ -1,23 +1,17 @@
-"""美国股票数据 Provider 兼容层"""
+"""兼容层: 美股数据源占位"""
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class YFinanceUtils:
-    """YFinance 工具类（兼容层 - 空实现）"""
+    """YFinance 工具类占位"""
 
     def __init__(self, *args, **kwargs):
-        pass
+        logger.warning("⚠️ [YFinanceUtils] 占位类，未实现")
 
-    def get_data(self, *args, **kwargs):
-        return None
+    def get_stock_info(self, *args, **kwargs):
+        return {}
 
-    @staticmethod
-    def get_stock_info(*args, **kwargs):
-        return None
-
-    @staticmethod
-    def get_historical_data(*args, **kwargs):
-        return None
-
-    @staticmethod
-    def get_quote(*args, **kwargs):
-        return None
+    def get_historical_data(self, *args, **kwargs):
+        return []

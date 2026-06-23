@@ -81,7 +81,6 @@ async def process_task(task_id: str) -> None:
 
         # Extract analysis parameters with defaults
         analysts = params.get("analysts", ["Bull Analyst", "Bear Analyst", "Research Manager"])
-        research_depth = params.get("research_depth", 2)
         from tradingagents.llm_clients.provider_keys import normalize_provider_key
 
         llm_provider = normalize_provider_key(params.get("llm_provider", "dashscope"))
@@ -112,7 +111,6 @@ async def process_task(task_id: str) -> None:
                     stock_symbol=symbol,
                     analysis_date=analysis_date,
                     analysts=analysts,
-                    research_depth=research_depth,
                     llm_provider=llm_provider,
                     llm_model=llm_model,
                     market_type=market_type,

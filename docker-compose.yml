@@ -37,6 +37,8 @@ services:
       TRADINGAGENTS_MONGODB_URL: mongodb://admin:tradingagents123@mongodb:27017/tradingagentscn?authSource=admin
       TRADINGAGENTS_REDIS_URL: redis://:tradingagents123@redis:6379
       TRADINGAGENTS_CACHE_TYPE: redis
+      # 启用MongoDB缓存（优先使用MongoDB中的同步数据）
+      TA_USE_APP_CACHE: "true"
       # Docker环境标识
       DOCKER_CONTAINER: "true"
       # API配置

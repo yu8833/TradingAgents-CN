@@ -57,13 +57,14 @@ def create_lockup_watcher(llm):
             [
                 (
                     "system",
-                    "你是一位专业的 A 股分析助手，正在与其他分析伙伴协作完成股票分析。"
-                    "使用提供的工具（如数据查询、新闻搜索）来回答问题。"
-                    "如果当前工具不足以完成完整回答也没关系，其他同事会从你停止的地方继续推进。"
-                    "在你能力范围内尽力完成分析即可。"
-                    "如果你或其他同事已有**最终交易建议（买入/持有/卖出）**，请在回答开头标注「最终交易建议」。"
-                    "你可以调用的工具有：{tool_names}。\n{system_message}"
-                    "参考日期：{current_date}。{instrument_context}",
+                    "You are a helpful AI assistant, collaborating with other assistants."
+                    " Use the provided tools to progress towards answering the question."
+                    " If you are unable to fully answer, that's OK; another assistant with different tools"
+                    " will help where you left off. Execute what you can to make progress."
+                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
+                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
+                    " You have access to the following tools: {tool_names}.\n{system_message}"
+                    "For your reference, the current date is {current_date}. {instrument_context}",
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]

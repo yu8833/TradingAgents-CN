@@ -1,11 +1,17 @@
-"""示例 SDK Provider（兼容层）"""
+"""兼容层: 示例 SDK 占位"""
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ExampleSDKProvider:
-    """示例 SDK Provider（兼容层 - 空实现）"""
-
     def __init__(self, *args, **kwargs):
-        pass
+        logger.warning("⚠️ [ExampleSDKProvider] 占位类，未实现")
 
     def get_data(self, *args, **kwargs):
-        return None
+        return []
+
+
+def example_sdk(*args, **kwargs):
+    """占位"""
+    return ExampleSDKProvider()
