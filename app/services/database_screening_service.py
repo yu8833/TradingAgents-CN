@@ -51,12 +51,6 @@ class DatabaseScreeningService:
             "amount": "amount",                # 成交额（万元）
             "close": "close",                  # 收盘价
             "volume": "volume",                # 成交量
-
-            # 技术指标标志字段（从技术指标视图获取或计算）
-            "macd_golden_fork": "macd_golden_fork",  # MACD金叉
-            "kdj_golden_fork": "kdj_golden_fork",    # KDJ金叉
-            "ma20_cross": "ma20_cross",              # 站上20日均线
-            "ma5_cross": "ma5_cross",                # 站上5日均线
         }
         
         # 支持的操作符

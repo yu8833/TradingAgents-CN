@@ -37,6 +37,12 @@
                 <el-tag size="small" type="primary">换手5%+</el-tag>
               </div>
             </div>
+            <el-tooltip effect="dark" placement="top" :show-after="200">
+              <template #content>
+                <div class="tooltip-detail">{{ strategyHelp.breakout }}</div>
+              </template>
+              <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </div>
         </el-col>
         <el-col :span="8">
@@ -51,6 +57,12 @@
                 <el-tag size="small" type="info">大盘股</el-tag>
               </div>
             </div>
+            <el-tooltip effect="dark" placement="top" :show-after="200">
+              <template #content>
+                <div class="tooltip-detail">{{ strategyHelp.value }}</div>
+              </template>
+              <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </div>
         </el-col>
         <el-col :span="8">
@@ -65,6 +77,12 @@
                 <el-tag size="small" type="success">PE<50</el-tag>
               </div>
             </div>
+            <el-tooltip effect="dark" placement="top" :show-after="200">
+              <template #content>
+                <div class="tooltip-detail">{{ strategyHelp.growth }}</div>
+              </template>
+              <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </div>
         </el-col>
       </el-row>
@@ -83,6 +101,12 @@
                 <el-tag size="small" type="primary">换手3%+</el-tag>
               </div>
             </div>
+            <el-tooltip effect="dark" placement="top" :show-after="200">
+              <template #content>
+                <div class="tooltip-detail">{{ strategyHelp.momentum }}</div>
+              </template>
+              <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </div>
         </el-col>
         <el-col :span="8">
@@ -97,6 +121,12 @@
                 <el-tag size="small" type="warning">低换手</el-tag>
               </div>
             </div>
+            <el-tooltip effect="dark" placement="top" :show-after="200">
+              <template #content>
+                <div class="tooltip-detail">{{ strategyHelp.lowVolatility }}</div>
+              </template>
+              <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </div>
         </el-col>
         <el-col :span="8">
@@ -110,6 +140,12 @@
                 <el-tag size="small" type="danger">换手5%+</el-tag>
               </div>
             </div>
+            <el-tooltip effect="dark" placement="top" :show-after="200">
+              <template #content>
+                <div class="tooltip-detail">{{ strategyHelp.smallCapGrowth }}</div>
+              </template>
+              <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </div>
         </el-col>
       </el-row>
@@ -128,6 +164,12 @@
                 <el-tag size="small" type="warning">稳健</el-tag>
               </div>
             </div>
+            <el-tooltip effect="dark" placement="top" :show-after="200">
+              <template #content>
+                <div class="tooltip-detail">{{ strategyHelp.blueChip }}</div>
+              </template>
+              <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </div>
         </el-col>
         <el-col :span="8">
@@ -141,6 +183,12 @@
                 <el-tag size="small" type="warning">破净</el-tag>
               </div>
             </div>
+            <el-tooltip effect="dark" placement="top" :show-after="200">
+              <template #content>
+                <div class="tooltip-detail">{{ strategyHelp.superLowPB }}</div>
+              </template>
+              <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </div>
         </el-col>
         <el-col :span="8">
@@ -154,6 +202,12 @@
                 <el-tag size="small" type="success">PE正常</el-tag>
               </div>
             </div>
+            <el-tooltip effect="dark" placement="top" :show-after="200">
+              <template #content>
+                <div class="tooltip-detail">{{ strategyHelp.lowPrice }}</div>
+              </template>
+              <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
           </div>
         </el-col>
       </el-row>
@@ -183,11 +237,14 @@
                 <p>BIAS60 超卖区间，赌反弹</p>
                 <div class="strategy-tags">
                   <el-tag size="small" type="warning">BIAS60:{{ signalParams.b1_bias_min }}%~{{ signalParams.b1_bias_max }}%</el-tag>
-                  <el-tooltip :content="signalHelp.B1" placement="top" effect="dark">
-                    <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                  </el-tooltip>
                 </div>
               </div>
+              <el-tooltip effect="dark" placement="top" :show-after="200">
+                <template #content>
+                  <div class="tooltip-detail">{{ signalHelp.B1 }}</div>
+                </template>
+                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+              </el-tooltip>
             </div>
           </div>
         </el-col>
@@ -200,11 +257,14 @@
                 <p>放量突破MA55/MA60 + 阳线</p>
                 <div class="strategy-tags">
                   <el-tag size="small" type="primary">量比≥{{ signalParams.b2_volume_ratio }}</el-tag>
-                  <el-tooltip :content="signalHelp.B2" placement="top" effect="dark">
-                    <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                  </el-tooltip>
                 </div>
               </div>
+              <el-tooltip effect="dark" placement="top" :show-after="200">
+                <template #content>
+                  <div class="tooltip-detail">{{ signalHelp.B2 }}</div>
+                </template>
+                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+              </el-tooltip>
             </div>
           </div>
         </el-col>
@@ -217,11 +277,14 @@
                 <p>MA13支撑 + 回踩确认</p>
                 <div class="strategy-tags">
                   <el-tag size="small" type="success">BIAS60:{{ signalParams.b3_bias_min }}%~{{ signalParams.b3_bias_max }}%</el-tag>
-                  <el-tooltip :content="signalHelp.B3" placement="top" effect="dark">
-                    <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                  </el-tooltip>
                 </div>
               </div>
+              <el-tooltip effect="dark" placement="top" :show-after="200">
+                <template #content>
+                  <div class="tooltip-detail">{{ signalHelp.B3 }}</div>
+                </template>
+                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+              </el-tooltip>
             </div>
           </div>
         </el-col>
@@ -239,11 +302,14 @@
                 <p>BIAS60 超买，减仓止盈</p>
                 <div class="strategy-tags">
                   <el-tag size="small" type="danger">BIAS60≥{{ signalParams.s1_bias_min }}%</el-tag>
-                  <el-tooltip :content="signalHelp.S1" placement="top" effect="dark">
-                    <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                  </el-tooltip>
                 </div>
               </div>
+              <el-tooltip effect="dark" placement="top" :show-after="200">
+                <template #content>
+                  <div class="tooltip-detail">{{ signalHelp.S1 }}</div>
+                </template>
+                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+              </el-tooltip>
             </div>
           </div>
         </el-col>
@@ -256,11 +322,14 @@
                 <p>跌破短期均线(MA5/8/13)</p>
                 <div class="strategy-tags">
                   <el-tag size="small" type="warning">连破短期均线</el-tag>
-                  <el-tooltip :content="signalHelp.S2" placement="top" effect="dark">
-                    <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                  </el-tooltip>
                 </div>
               </div>
+              <el-tooltip effect="dark" placement="top" :show-after="200">
+                <template #content>
+                  <div class="tooltip-detail">{{ signalHelp.S2 }}</div>
+                </template>
+                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+              </el-tooltip>
             </div>
           </div>
         </el-col>
@@ -273,11 +342,14 @@
                 <p>跌破MA55/60 + 趋势向下</p>
                 <div class="strategy-tags">
                   <el-tag size="small" type="info">中期下降趋势</el-tag>
-                  <el-tooltip :content="signalHelp.S3" placement="top" effect="dark">
-                    <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                  </el-tooltip>
                 </div>
               </div>
+              <el-tooltip effect="dark" placement="top" :show-after="200">
+                <template #content>
+                  <div class="tooltip-detail">{{ signalHelp.S3 }}</div>
+                </template>
+                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
+              </el-tooltip>
             </div>
           </div>
         </el-col>
@@ -311,23 +383,24 @@
         </div>
       </template>
 
-      <el-form :model="filters" label-width="120px" class="filter-form">
-        <!-- 基础信息 -->
+      <el-form :model="filters" label-width="130px" class="filter-form">
+        <!-- 基础属性 -->
         <div class="filter-section">
           <div class="section-title">
-            <el-icon><TrendCharts /></el-icon>
-            <span>基础信息</span>
+            <el-icon><InfoFilled /></el-icon>
+            <span>基础属性</span>
+            <span class="section-desc">市场、板块、市值、价格</span>
           </div>
           <el-row :gutter="24">
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    市场类型
-                    <el-tooltip :content="indicatorHelp.market" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.market }}</div>
+                    </template>
+                    <span class="filter-label">市场类型</span>
+                  </el-tooltip>
                 </template>
                 <el-select v-model="filters.market" placeholder="选择市场" disabled>
                   <el-option label="A股" value="A股" />
@@ -335,15 +408,15 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    板块
-                    <el-tooltip :content="indicatorHelp.board" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.board }}</div>
+                    </template>
+                    <span class="filter-label">板块</span>
+                  </el-tooltip>
                 </template>
                 <el-select v-model="filters.board" placeholder="选择板块">
                   <el-option label="全部" value="" />
@@ -355,15 +428,15 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    市值范围
-                    <el-tooltip :content="indicatorHelp.market_cap" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.market_cap }}</div>
+                    </template>
+                    <span class="filter-label">市值范围</span>
+                  </el-tooltip>
                 </template>
                 <el-select v-model="filters.marketCapRange" placeholder="选择市值范围">
                   <el-option label="小盘股 (< 100亿)" value="small" />
@@ -372,111 +445,152 @@
                 </el-select>
               </el-form-item>
             </el-col>
+
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.price }}</div>
+                    </template>
+                    <span class="filter-label">收盘价 (元)</span>
+                  </el-tooltip>
+                </template>
+                <div class="range-inputs">
+                  <el-input-number
+                    v-model="filters.priceMin"
+                    placeholder="最小"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                  <span class="range-separator">-</span>
+                  <el-input-number
+                    v-model="filters.priceMax"
+                    placeholder="最大"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                </div>
+              </el-form-item>
+            </el-col>
           </el-row>
         </div>
 
-        <!-- 交易指标 -->
+        <!-- 量价表现 -->
         <div class="filter-section">
           <div class="section-title">
             <el-icon><TrendCharts /></el-icon>
-            <span>交易指标</span>
+            <span>量价表现</span>
+            <span class="section-desc">涨跌幅、换手、量比、成交</span>
           </div>
           <el-row :gutter="24">
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    涨跌幅 (%)
-                    <el-tooltip :content="indicatorHelp.change_percent" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.change_percent }}</div>
+                    </template>
+                    <span class="filter-label">涨跌幅 (%)</span>
+                  </el-tooltip>
                 </template>
-                <el-input-number
-                  v-model="filters.changePercent.min"
-                  placeholder="最小值"
-                  :precision="2"
-                  style="width: 45%"
-                />
-                <span style="margin: 0 8px">-</span>
-                <el-input-number
-                  v-model="filters.changePercent.max"
-                  placeholder="最大值"
-                  :precision="2"
-                  style="width: 45%"
-                />
+                <div class="range-inputs">
+                  <el-input-number
+                    v-model="filters.changePercentMin"
+                    placeholder="最小"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                  <span class="range-separator">-</span>
+                  <el-input-number
+                    v-model="filters.changePercentMax"
+                    placeholder="最大"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                </div>
               </el-form-item>
             </el-col>
 
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    换手率 (%)
-                    <el-tooltip :content="indicatorHelp.turnover_rate" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.turnover_rate }}</div>
+                    </template>
+                    <span class="filter-label">换手率 (%)</span>
+                  </el-tooltip>
                 </template>
-                <el-input-number
-                  v-model="filters.turnoverRate.min"
-                  placeholder="最小值"
-                  :min="0"
-                  :precision="2"
-                  style="width: 45%"
-                />
-                <span style="margin: 0 8px">-</span>
-                <el-input-number
-                  v-model="filters.turnoverRate.max"
-                  placeholder="最大值"
-                  :min="0"
-                  :precision="2"
-                  style="width: 45%"
-                />
+                <div class="range-inputs">
+                  <el-input-number
+                    v-model="filters.turnoverRateMin"
+                    placeholder="最小"
+                    :min="0"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                  <span class="range-separator">-</span>
+                  <el-input-number
+                    v-model="filters.turnoverRateMax"
+                    placeholder="最大"
+                    :min="0"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                </div>
               </el-form-item>
             </el-col>
 
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    量比
-                    <el-tooltip :content="indicatorHelp.volume_ratio" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.volume_ratio }}</div>
+                    </template>
+                    <span class="filter-label">量比</span>
+                  </el-tooltip>
                 </template>
-                <el-input-number
-                  v-model="filters.volumeRatio.min"
-                  placeholder="最小值"
-                  :min="0"
-                  :precision="2"
-                  style="width: 45%"
-                />
-                <span style="margin: 0 8px">-</span>
-                <el-input-number
-                  v-model="filters.volumeRatio.max"
-                  placeholder="最大值"
-                  :min="0"
-                  :precision="2"
-                  style="width: 45%"
-                />
+                <div class="range-inputs">
+                  <el-input-number
+                    v-model="filters.volumeRatioMin"
+                    placeholder="最小"
+                    :min="0"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                  <span class="range-separator">-</span>
+                  <el-input-number
+                    v-model="filters.volumeRatioMax"
+                    placeholder="最大"
+                    :min="0"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                </div>
               </el-form-item>
             </el-col>
-          </el-row>
 
-          <el-row :gutter="24">
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    成交量
-                    <el-tooltip :content="indicatorHelp.volume" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.volume }}</div>
+                    </template>
+                    <span class="filter-label">成交量</span>
+                  </el-tooltip>
                 </template>
-                <el-select v-model="filters.volumeLevel" placeholder="选择成交量水平">
+                <el-select v-model="filters.volumeLevel" placeholder="选择成交量">
                   <el-option label="活跃 (高成交量)" value="high" />
                   <el-option label="正常 (中等成交量)" value="medium" />
                   <el-option label="清淡 (低成交量)" value="low" />
@@ -486,24 +600,25 @@
           </el-row>
         </div>
 
-        <!-- 技术信号 -->
+        <!-- 均线系统 -->
         <div class="filter-section">
           <div class="section-title">
-            <el-icon><Search /></el-icon>
-            <span>技术信号</span>
+            <el-icon><Rank /></el-icon>
+            <span>均线系统</span>
+            <span class="section-desc">价格与均线、均线金叉、均线排列</span>
           </div>
           <el-row :gutter="24">
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    MACD金叉
-                    <el-tooltip :content="indicatorHelp.macd" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma5 }}</div>
+                    </template>
+                    <span class="filter-label">站上5日线</span>
+                  </el-tooltip>
                 </template>
-                <el-select v-model="filters.macdGoldenFork" placeholder="选择">
+                <el-select v-model="filters.ma5Cross" placeholder="选择">
                   <el-option label="全部" value="" />
                   <el-option label="是" value="Y" />
                   <el-option label="否" value="N" />
@@ -511,15 +626,149 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    KDJ金叉
-                    <el-tooltip :content="indicatorHelp.kdj" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma20 }}</div>
+                    </template>
+                    <span class="filter-label">站上20日线</span>
+                  </el-tooltip>
+                </template>
+                <el-select v-model="filters.ma20Cross" placeholder="选择">
+                  <el-option label="全部" value="" />
+                  <el-option label="是" value="Y" />
+                  <el-option label="否" value="N" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma5_ma10_golden }}</div>
+                    </template>
+                    <span class="filter-label">MA5上穿MA10</span>
+                  </el-tooltip>
+                </template>
+                <el-select v-model="filters.ma5Ma10Golden" placeholder="选择">
+                  <el-option label="全部" value="" />
+                  <el-option label="是（金叉）" value="Y" />
+                  <el-option label="否" value="N" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma10_ma20_golden }}</div>
+                    </template>
+                    <span class="filter-label">MA10上穿MA20</span>
+                  </el-tooltip>
+                </template>
+                <el-select v-model="filters.ma10Ma20Golden" placeholder="选择">
+                  <el-option label="全部" value="" />
+                  <el-option label="是（金叉）" value="Y" />
+                  <el-option label="否" value="N" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="24">
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma_bullish }}</div>
+                    </template>
+                    <span class="filter-label">均线多头排列</span>
+                  </el-tooltip>
+                </template>
+                <el-select v-model="filters.maBullish" placeholder="选择">
+                  <el-option label="全部" value="" />
+                  <el-option label="是（上升趋势）" value="Y" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma_bearish }}</div>
+                    </template>
+                    <span class="filter-label">均线空头排列</span>
+                  </el-tooltip>
+                </template>
+                <el-select v-model="filters.maBearish" placeholder="选择">
+                  <el-option label="全部" value="" />
+                  <el-option label="是（下降趋势）" value="Y" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </div>
+
+        <!-- 震荡指标 -->
+        <div class="filter-section">
+          <div class="section-title">
+            <el-icon><Odometer /></el-icon>
+            <span>震荡指标</span>
+            <span class="section-desc">RSI、KDJ、布林带、ATR</span>
+          </div>
+          <el-row :gutter="24">
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.rsi }}</div>
+                    </template>
+                    <span class="filter-label">RSI(14)</span>
+                  </el-tooltip>
+                </template>
+                <div class="range-inputs">
+                  <el-input-number
+                    v-model="filters.rsiMin"
+                    placeholder="最小"
+                    :min="0"
+                    :max="100"
+                    :precision="1"
+                    controls-position="right"
+                    size="small"
+                  />
+                  <span class="range-separator">-</span>
+                  <el-input-number
+                    v-model="filters.rsiMax"
+                    placeholder="最大"
+                    :min="0"
+                    :max="100"
+                    :precision="1"
+                    controls-position="right"
+                    size="small"
+                  />
+                </div>
+              </el-form-item>
+            </el-col>
+
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.kdj }}</div>
+                    </template>
+                    <span class="filter-label">KDJ金叉</span>
+                  </el-tooltip>
                 </template>
                 <el-select v-model="filters.kdjGoldenFork" placeholder="选择">
                   <el-option label="全部" value="" />
@@ -529,39 +778,90 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    站上20日均线
-                    <el-tooltip :content="indicatorHelp.ma20" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.kdj_near }}</div>
+                    </template>
+                    <span class="filter-label">近N日KDJ金叉</span>
+                  </el-tooltip>
                 </template>
-                <el-select v-model="filters.ma20Cross" placeholder="选择">
+                <el-select v-model="filters.kdjGoldenForkDays" placeholder="选择（推荐3日）">
                   <el-option label="全部" value="" />
-                  <el-option label="是" value="Y" />
-                  <el-option label="否" value="N" />
+                  <el-option label="当天金叉（严格）" value="1" />
+                  <el-option label="近3日金叉（推荐）" value="3" />
+                  <el-option label="近5日金叉（宽松）" value="5" />
                 </el-select>
+              </el-form-item>
+            </el-col>
+
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.atr }}</div>
+                    </template>
+                    <span class="filter-label">ATR(14) 波动</span>
+                  </el-tooltip>
+                </template>
+                <div class="range-inputs">
+                  <el-input-number
+                    v-model="filters.atrMin"
+                    placeholder="最小"
+                    :min="0"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                  <span class="range-separator">-</span>
+                  <el-input-number
+                    v-model="filters.atrMax"
+                    placeholder="最大"
+                    :min="0"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                </div>
               </el-form-item>
             </el-col>
           </el-row>
 
           <el-row :gutter="24">
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    站上5日均线
-                    <el-tooltip :content="indicatorHelp.ma5" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.boll_break_upper }}</div>
+                    </template>
+                    <span class="filter-label">突破布林上轨</span>
+                  </el-tooltip>
                 </template>
-                <el-select v-model="filters.ma5Cross" placeholder="选择">
+                <el-select v-model="filters.bollBreakUpper" placeholder="选择">
                   <el-option label="全部" value="" />
-                  <el-option label="是" value="Y" />
+                  <el-option label="是（强势突破）" value="Y" />
+                  <el-option label="否" value="N" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.boll_break_lower }}</div>
+                    </template>
+                    <span class="filter-label">跌破布林下轨</span>
+                  </el-tooltip>
+                </template>
+                <el-select v-model="filters.bollBreakLower" placeholder="选择">
+                  <el-option label="全部" value="" />
+                  <el-option label="是（超卖区域）" value="Y" />
                   <el-option label="否" value="N" />
                 </el-select>
               </el-form-item>
@@ -569,86 +869,117 @@
           </el-row>
         </div>
 
-        <!-- 财务指标 -->
+        <!-- 趋势指标 -->
+        <div class="filter-section">
+          <div class="section-title">
+            <el-icon><DataLine /></el-icon>
+            <span>趋势指标</span>
+            <span class="section-desc">MACD趋势追踪</span>
+          </div>
+          <el-row :gutter="24">
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.macd }}</div>
+                    </template>
+                    <span class="filter-label">MACD金叉</span>
+                  </el-tooltip>
+                </template>
+                <el-select v-model="filters.macdGoldenFork" placeholder="选择">
+                  <el-option label="全部" value="" />
+                  <el-option label="是" value="Y" />
+                  <el-option label="否" value="N" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+
+            <el-col :span="6">
+              <el-form-item>
+                <template #label>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.macd_near }}</div>
+                    </template>
+                    <span class="filter-label">近N日MACD金叉</span>
+                  </el-tooltip>
+                </template>
+                <el-select v-model="filters.macdGoldenForkDays" placeholder="选择（推荐3日）">
+                  <el-option label="全部" value="" />
+                  <el-option label="当天金叉（严格）" value="1" />
+                  <el-option label="近3日金叉（推荐）" value="3" />
+                  <el-option label="近5日金叉（宽松）" value="5" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </div>
+
+        <!-- 财务估值 -->
         <div class="filter-section">
           <div class="section-title">
             <el-icon><Money /></el-icon>
-            <span>财务指标</span>
+            <span>财务估值</span>
+            <span class="section-desc">市盈率、市净率</span>
           </div>
           <el-row :gutter="24">
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    市盈率 PE
-                    <el-tooltip :content="indicatorHelp.pe" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.pe }}</div>
+                    </template>
+                    <span class="filter-label">市盈率 PE</span>
+                  </el-tooltip>
                 </template>
-                <el-input-number
-                  v-model="filters.peRange.min"
-                  placeholder="最小值"
-                  :precision="2"
-                  style="width: 45%"
-                />
-                <span style="margin: 0 8px">-</span>
-                <el-input-number
-                  v-model="filters.peRange.max"
-                  placeholder="最大值"
-                  :precision="2"
-                  style="width: 45%"
-                />
+                <div class="range-inputs">
+                  <el-input-number
+                    v-model="filters.peMin"
+                    placeholder="最小"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                  <span class="range-separator">-</span>
+                  <el-input-number
+                    v-model="filters.peMax"
+                    placeholder="最大"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                </div>
               </el-form-item>
             </el-col>
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item>
                 <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    市净率 PB
-                    <el-tooltip :content="indicatorHelp.pb" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.pb }}</div>
+                    </template>
+                    <span class="filter-label">市净率 PB</span>
+                  </el-tooltip>
                 </template>
-                <el-input-number
-                  v-model="filters.pbRange.min"
-                  placeholder="最小值"
-                  :precision="2"
-                  style="width: 45%"
-                />
-                <span style="margin: 0 8px">-</span>
-                <el-input-number
-                  v-model="filters.pbRange.max"
-                  placeholder="最大值"
-                  :precision="2"
-                  style="width: 45%"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    收盘价 (元)
-                    <el-tooltip :content="indicatorHelp.price" placement="top" effect="dark">
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-input-number
-                  v-model="filters.priceRange.min"
-                  placeholder="最小值"
-                  :precision="2"
-                  style="width: 45%"
-                />
-                <span style="margin: 0 8px">-</span>
-                <el-input-number
-                  v-model="filters.priceRange.max"
-                  placeholder="最大值"
-                  :precision="2"
-                  style="width: 45%"
-                />
+                <div class="range-inputs">
+                  <el-input-number
+                    v-model="filters.pbMin"
+                    placeholder="最小"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                  <span class="range-separator">-</span>
+                  <el-input-number
+                    v-model="filters.pbMax"
+                    placeholder="最大"
+                    :precision="2"
+                    controls-position="right"
+                    size="small"
+                  />
+                </div>
               </el-form-item>
             </el-col>
           </el-row>
@@ -669,7 +1000,10 @@
                 <template #label>
                   <span style="display: flex; align-items: center; gap: 4px;">
                     BIAS60 下限
-                    <el-tooltip :content="indicatorHelp.bias60" placement="top" effect="dark">
+                    <el-tooltip placement="top" effect="dark">
+                      <template #content>
+                        <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
+                      </template>
                       <el-icon class="help-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </span>
@@ -687,7 +1021,10 @@
                 <template #label>
                   <span style="display: flex; align-items: center; gap: 4px;">
                     BIAS60 上限
-                    <el-tooltip :content="indicatorHelp.bias60" placement="top" effect="dark">
+                    <el-tooltip placement="top" effect="dark">
+                      <template #content>
+                        <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
+                      </template>
                       <el-icon class="help-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </span>
@@ -709,7 +1046,10 @@
                 <template #label>
                   <span style="display: flex; align-items: center; gap: 4px;">
                     放量倍数
-                    <el-tooltip :content="indicatorHelp.volume_ratio" placement="top" effect="dark">
+                    <el-tooltip placement="top" effect="dark">
+                      <template #content>
+                        <div class="tooltip-detail">{{ indicatorHelp.volume_ratio }}</div>
+                      </template>
                       <el-icon class="help-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </span>
@@ -728,7 +1068,10 @@
                 <template #label>
                   <span style="display: flex; align-items: center; gap: 4px;">
                     阳线涨幅
-                    <el-tooltip :content="indicatorHelp.price_change" placement="top" effect="dark">
+                    <el-tooltip placement="top" effect="dark">
+                      <template #content>
+                        <div class="tooltip-detail">{{ indicatorHelp.price_change }}</div>
+                      </template>
                       <el-icon class="help-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </span>
@@ -746,18 +1089,27 @@
                 <template #label>
                   <span style="display: flex; align-items: center; gap: 4px;">
                     突破参考均线
-                    <el-tooltip :content="indicatorHelp.ma_cross" placement="top" effect="dark">
+                    <el-tooltip placement="top" effect="dark">
+                      <template #content>
+                        <div class="tooltip-detail">{{ indicatorHelp.ma_cross }}</div>
+                      </template>
                       <el-icon class="help-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </span>
                 </template>
                 <el-checkbox v-model="signalParams.b2_use_ma55">
-                  <el-tooltip :content="indicatorHelp.ma55_signal" placement="top" effect="dark">
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma55_signal }}</div>
+                    </template>
                     <span>MA55</span>
                   </el-tooltip>
                 </el-checkbox>
                 <el-checkbox v-model="signalParams.b2_use_ma60" style="margin-left: 12px;">
-                  <el-tooltip :content="indicatorHelp.ma60_signal" placement="top" effect="dark">
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma60_signal }}</div>
+                    </template>
                     <span>MA60</span>
                   </el-tooltip>
                 </el-checkbox>
@@ -772,7 +1124,10 @@
                 <template #label>
                   <span style="display: flex; align-items: center; gap: 4px;">
                     BIAS60 下限
-                    <el-tooltip :content="indicatorHelp.bias60" placement="top" effect="dark">
+                    <el-tooltip placement="top" effect="dark">
+                      <template #content>
+                        <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
+                      </template>
                       <el-icon class="help-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </span>
@@ -785,7 +1140,10 @@
                 <template #label>
                   <span style="display: flex; align-items: center; gap: 4px;">
                     BIAS60 上限
-                    <el-tooltip :content="indicatorHelp.bias60" placement="top" effect="dark">
+                    <el-tooltip placement="top" effect="dark">
+                      <template #content>
+                        <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
+                      </template>
                       <el-icon class="help-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </span>
@@ -798,7 +1156,10 @@
                 <template #label>
                   <span style="display: flex; align-items: center; gap: 4px;">
                     MA13与MA55比值
-                    <el-tooltip :content="indicatorHelp.ma55_signal" placement="top" effect="dark">
+                    <el-tooltip placement="top" effect="dark">
+                      <template #content>
+                        <div class="tooltip-detail">{{ indicatorHelp.ma55_signal }}</div>
+                      </template>
                       <el-icon class="help-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </span>
@@ -820,7 +1181,10 @@
                 <template #label>
                   <span style="display: flex; align-items: center; gap: 4px;">
                     BIAS60 下限
-                    <el-tooltip :content="indicatorHelp.bias60" placement="top" effect="dark">
+                    <el-tooltip placement="top" effect="dark">
+                      <template #content>
+                        <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
+                      </template>
                       <el-icon class="help-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </span>
@@ -835,17 +1199,26 @@
             <el-col :span="8">
               <el-form-item label="跌破参考均线">
                 <el-checkbox v-model="signalParams.s2_use_ma5">
-                  <el-tooltip :content="indicatorHelp.ma5" placement="top" effect="dark">
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma5 }}</div>
+                    </template>
                     <span>MA5</span>
                   </el-tooltip>
                 </el-checkbox>
                 <el-checkbox v-model="signalParams.s2_use_ma8" style="margin-left: 8px;">
-                  <el-tooltip :content="indicatorHelp.ma8" placement="top" effect="dark">
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma8_signal }}</div>
+                    </template>
                     <span>MA8</span>
                   </el-tooltip>
                 </el-checkbox>
                 <el-checkbox v-model="signalParams.s2_use_ma13" style="margin-left: 8px;">
-                  <el-tooltip :content="indicatorHelp.ma13" placement="top" effect="dark">
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma13_signal }}</div>
+                    </template>
                     <span>MA13</span>
                   </el-tooltip>
                 </el-checkbox>
@@ -858,12 +1231,18 @@
             <el-col :span="8">
               <el-form-item label="跌破参考均线">
                 <el-checkbox v-model="signalParams.s3_use_ma55">
-                  <el-tooltip :content="indicatorHelp.ma55" placement="top" effect="dark">
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma55_signal }}</div>
+                    </template>
                     <span>MA55</span>
                   </el-tooltip>
                 </el-checkbox>
                 <el-checkbox v-model="signalParams.s3_use_ma60" style="margin-left: 8px;">
-                  <el-tooltip :content="indicatorHelp.ma60" placement="top" effect="dark">
+                  <el-tooltip placement="top" effect="dark">
+                    <template #content>
+                      <div class="tooltip-detail">{{ indicatorHelp.ma60_signal }}</div>
+                    </template>
                     <span>MA60</span>
                   </el-tooltip>
                 </el-checkbox>
@@ -874,7 +1253,10 @@
                 <template #label>
                   <span style="display: flex; align-items: center; gap: 4px;">
                     趋势判断天数
-                    <el-tooltip :content="indicatorHelp.ma_trend" placement="top" effect="dark">
+                    <el-tooltip placement="top" effect="dark">
+                      <template #content>
+                        <div class="tooltip-detail">{{ indicatorHelp.ma_trend }}</div>
+                      </template>
                       <el-icon class="help-icon"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </span>
@@ -983,7 +1365,10 @@
           align="right"
         >
           <template #header>
-            <el-tooltip :content="indicatorHelp.ma5" placement="top" effect="dark">
+            <el-tooltip placement="top" effect="dark">
+              <template #content>
+                <div class="tooltip-detail">{{ indicatorHelp.ma5_signal }}</div>
+              </template>
               <span style="display: inline-flex; align-items: center; gap: 4px;">
                 MA5 <el-icon><QuestionFilled /></el-icon>
               </span>
@@ -1002,7 +1387,10 @@
           align="right"
         >
           <template #header>
-            <el-tooltip :content="indicatorHelp.ma13" placement="top" effect="dark">
+            <el-tooltip placement="top" effect="dark">
+              <template #content>
+                <div class="tooltip-detail">{{ indicatorHelp.ma13_signal }}</div>
+              </template>
               <span style="display: inline-flex; align-items: center; gap: 4px;">
                 MA13 <el-icon><QuestionFilled /></el-icon>
               </span>
@@ -1021,7 +1409,10 @@
           align="right"
         >
           <template #header>
-            <el-tooltip :content="indicatorHelp.ma55" placement="top" effect="dark">
+            <el-tooltip placement="top" effect="dark">
+              <template #content>
+                <div class="tooltip-detail">{{ indicatorHelp.ma55_signal }}</div>
+              </template>
               <span style="display: inline-flex; align-items: center; gap: 4px;">
                 MA55 <el-icon><QuestionFilled /></el-icon>
               </span>
@@ -1040,7 +1431,10 @@
           align="right"
         >
           <template #header>
-            <el-tooltip :content="indicatorHelp.ma60" placement="top" effect="dark">
+            <el-tooltip placement="top" effect="dark">
+              <template #content>
+                <div class="tooltip-detail">{{ indicatorHelp.ma60_signal }}</div>
+              </template>
               <span style="display: inline-flex; align-items: center; gap: 4px;">
                 MA60 <el-icon><QuestionFilled /></el-icon>
               </span>
@@ -1060,7 +1454,10 @@
           sortable
         >
           <template #header>
-            <el-tooltip :content="indicatorHelp.bias60" placement="top" effect="dark">
+            <el-tooltip placement="top" effect="dark">
+              <template #content>
+                <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
+              </template>
               <span style="display: inline-flex; align-items: center; gap: 4px;">
                 BIAS60 <el-icon><QuestionFilled /></el-icon>
               </span>
@@ -1195,10 +1592,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, toRefs } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, TrendCharts, Download, Star, Connection, Warning, MagicStick, Wallet, Histogram, Lightning, DataAnalysis, Crop, Money, ShoppingCart, QuestionFilled } from '@element-plus/icons-vue'
+import { Search, Refresh, TrendCharts, Download, Star, Connection, Warning, MagicStick, Wallet, Histogram, Lightning, DataAnalysis, Crop, Money, ShoppingCart, InfoFilled, Rank, Odometer, DataLine } from '@element-plus/icons-vue'
 import type { StockInfo } from '@/types/analysis'
 import { screeningApi, type FieldConfigResponse } from '@/api/screening'
 import { ApiClient } from '@/api/request'
@@ -1230,6 +1627,7 @@ const STRATEGY_TEMPLATES = {
       changePercent: { min: 3, max: null },
       volumeLevel: 'high',
       macdGoldenFork: '',
+      macdGoldenForkDays: '',  // 近N日金叉可选，由用户自行添加
       kdjGoldenFork: '',
       ma20Cross: '',
       ma5Cross: '',
@@ -1428,7 +1826,23 @@ const fieldsLoading = ref(false)
 const filters = reactive({
   market: 'A股',
   marketCapRange: '',
-  changePercent: { min: null, max: null },
+  // 区间字段拆分为顶层属性（解决 Vue 3 响应式追踪问题）
+  changePercentMin: null,
+  changePercentMax: null,
+  turnoverRateMin: null,
+  turnoverRateMax: null,
+  volumeRatioMin: null,
+  volumeRatioMax: null,
+  peMin: null,
+  peMax: null,
+  pbMin: null,
+  pbMax: null,
+  priceMin: null,
+  priceMax: null,
+  rsiMin: null,
+  rsiMax: null,
+  atrMin: null,
+  atrMax: null,
   volumeLevel: '',
   // 标志筛选条件
   macdGoldenFork: '',  // MACD金叉：是/否/空(全部)
@@ -1436,13 +1850,20 @@ const filters = reactive({
   ma20Cross: '',       // 站上20日均线
   ma5Cross: '',        // 站上5日均线
   // 扩展筛选条件
-  turnoverRate: { min: null, max: null },  // 换手率区间(%)
-  volumeRatio: { min: null, max: null },   // 量比区间
-  board: '',                                // 板块（主板/创业板/科创板/北交所）
-  // 财务指标区间
-  peRange: { min: null, max: null },        // PE 区间
-  pbRange: { min: null, max: null },        // PB 区间
-  priceRange: { min: null, max: null },     // 收盘价区间
+  board: '',                                // 板块
+  // RSI 强弱指标
+  // 近N日金叉
+  macdGoldenForkDays: '',  // MACD近N日金叉：空/1/3/5
+  kdjGoldenForkDays: '',   // KDJ近N日金叉：空/1/3/5
+  // 均线排列
+  maBullish: '',           // 均线多头排列：是/否/空
+  maBearish: '',           // 均线空头排列：是/否/空
+  // 布林带突破信号
+  bollBreakUpper: '',      // 突破布林带上轨：是/否/空
+  bollBreakLower: '',      // 跌破布林带下轨：是/否/空
+  // 均线金叉信号
+  ma5Ma10Golden: '',       // MA5上穿MA10：是/否/空
+  ma10Ma20Golden: '',      // MA10上穿MA20：是/否/空
 })
 
 // 三买三卖信号参数（可调）
@@ -1497,7 +1918,17 @@ const indicatorHelp = {
   ma55_signal: 'MA55（55日移动平均线）\n定义与计算公式：\nMA55是将股票最近55个交易日的收盘价进行算术平均得到的线。\n公式：MA55 = (C1 + C2 + ... + C55) / 55\n\n意义：中短期趋势的分水岭，接近季度线。\n常用于：判断中期趋势方向、作为中长线的重要支撑/压力位。\n• B2信号中：价格突破MA55是中期趋势反转的重要信号\n• S3信号中：价格跌破MA55且MA60下行 = 中期趋势确认走弱',
   ma60_signal: 'MA60（60日移动平均线）\n定义与计算公式：\nMA60是将股票最近60个交易日的收盘价进行算术平均得到的线。\n公式：MA60 = (C1 + C2 + ... + C60) / 60\n\n意义：俗称"季线"，是判断中期趋势的核心均线。\n常用于：判断股票中期强弱、作为中长线操作的重要参考。\n价格在MA60上方表示中期强势，反之表示中期弱势。\n• B2信号中：价格同时突破MA55和MA60是最强的中期反转信号\n• S3信号中：MA60趋势向下 + 价格在MA60下方 = 强烈清仓信号',
   ma_trend: '均线趋势（Moving Average Trend）\n定义与计算公式：\n通过计算均线近期数日的斜率，判断均线本身的趋势方向。\n方法：取最近N日的均线值，用线性回归计算斜率。\n\n斜率 > 0：均线向上，趋势向好\n斜率 < 0：均线向下，趋势向弱\n\n意义：均线本身的趋势比单根价格K线更可靠。\n\n典型用法（S3信号）：\n• MA60斜率 < 0：中期均线持续下降\n• 同时价格在MA55/MA60下方\n→ 确认中期下降趋势，清仓信号',
-  price_change_signal: '价格涨跌幅（Price Change）\n定义与计算公式：\n表示当日价格相对于开盘价的变化幅度。\n公式：涨跌幅 = (收盘价 - 开盘价) / 开盘价 × 100%\n\n意义：判断当日K线形态的强度。\n\n典型用法：\n• > 3%：中阳线，当日强势（B2信号的阳线条件）\n• > 5%：大阳线，强势突破信号\n• < -3%：中阴线，当日弱势',
+  price_change_signal: '价格涨跌幅（Price Change）\n定义与计算公式：\n表示当日价格相对于开盘价的变化幅度。\n公式：涨跌幅 = (收盘价 - 开盘价) / 开盘价 × 100%\n\n意义：判断当日K线形态的强度。\n\n典型用法：\n• > 3%：中阳线，当日强势（B2信号条件）\n• > 5%：大阳线，强势突破信号\n• < -3%：中阴线，当日弱势',
+  rsi: 'RSI 强弱指标（Relative Strength Index）\n\n计算公式：RSI = 100 - 100/(1+RS)\nRS = N日内上涨幅度均值 / N日内下跌幅度均值（N默认为14）\n\n含义：衡量股价涨跌的相对强度，取值0-100。\n\n参考区间：\n• RSI < 30：超卖区，价格可能反弹，是潜在买入信号\n• RSI 30-50：偏弱，价格处于下跌趋势\n• RSI 50-70：偏强，价格处于上涨趋势\n• RSI > 70：超买区，价格可能回调\n\n实战技巧：\n• RSI < 30 + MACD金叉 = 双重底部反转信号（强烈买入）\n• RSI从低位上穿50 = 中期走强信号\n• RSI > 70 + 价格创新高但RSI未创新高 = 顶背离（卖出信号）',
+  macd_near: '近N日MACD金叉\n\n含义：在最近N个交易日内出现过MACD金叉。\n\n与"当天MACD金叉"的区别：\n• 当天金叉：今天刚刚发生金叉，处于反转初期\n  → 通常成交量未放大，与"放量突破"条件互斥\n• 近N日金叉：N天内出现过金叉，可能已经涨了1-3天\n  → 成交量已放大，与放量突破条件兼容\n\n选项说明：\n• 1日：当天金叉（严格）\n• 3日：近3日内金叉（适中，推荐）\n• 5日：近5日内金叉（宽松）\n\n推荐组合：\n• 近3日MACD金叉 + 涨幅>3% + 换手率>3%\n  = 既有反转信号确认，又已放量启动',
+  kdj_near: '近N日KDJ金叉\n\n含义：在最近N个交易日内出现过KDJ金叉。\n\nKDJ特点：\n• 比MACD更敏感，反应更快\n• 短线信号，假信号比MACD多\n• 金叉后若RSI也强势，可信度更高\n\n与MACD金叉的区别：\n• KDJ更灵敏，适合短线交易\n• MACD更稳定，适合中线交易\n• 两者同时金叉 = 强烈买入信号\n\n推荐组合：\n• 近3日KDJ金叉 + RSI在30-70区间\n• 近3日MACD金叉 + 近3日KDJ金叉（双重确认）',
+  ma_bullish: '均线多头排列\n\n定义：短期均线 > 中期均线 > 长期均线，且各均线方向向上。\n\n具体条件：MA5 > MA10 > MA20 > MA60，且四条均线均向上倾斜。\n\n意义：\n• 表明股票处于明确的上升趋势\n• 各周期买入者均处于盈利状态，抛压小\n• 是趋势型策略的核心确认信号\n\n实战用法：\n• 均线多头排列 + 成交量放大 = 趋势确认，可顺势做多\n• 均线多头排列 + RSI < 50 = 回调低位，可能是加仓机会\n• 均线多头排列 ≠ 不会跌，只是上升趋势中\n• 一旦MA5跌破MA10 = 趋势可能转换，需警惕',
+  ma_bearish: '均线空头排列\n\n定义：短期均线 < 中期均线 < 长期均线，且各均线方向向下。\n\n具体条件：MA5 < MA10 < MA20 < MA60，且四条均线均向下倾斜。\n\n意义：\n• 表明股票处于明确的下降趋势\n• 所有周期买入者均处于亏损状态，抛压大\n• 是空仓/做空信号的核心确认\n\n实战用法：\n• 均线空头排列 = 规避，不轻易抄底\n• 空头排列中抢反弹风险极大\n• 空头排列结束（MA5上穿MA10）= 可能见底信号\n• 均线空头排列 + RSI < 30 = 极超卖，但不代表立即反弹',
+  boll_break_upper: '突破布林带上轨\n\n布林带（Bollinger Bands）由上轨、中轨（MA20）、下轨三条线组成。\n上轨 = MA20 + 2 × 标准差，下轨 = MA20 - 2 × 标准差。\n\n突破上轨含义：\n• 收盘价超过布林带上轨\n• 股价进入强势区域，短期内上涨动能强劲\n• 统计学上：价格在2倍标准差之外，属于小概率事件\n\n实战用法：\n• 突破上轨 + 放量 = 强势突破，可能持续上涨\n• 突破上轨 + 缩量 = 假突破概率高，注意回调风险\n• 震荡市中突破上轨往往是卖出信号\n• 趋势行情中突破上轨往往是加仓信号',
+  boll_break_lower: '跌破布林带下轨\n\n布林带（Bollinger Bands）由上轨、中轨（MA20）、下轨三条线组成。\n上轨 = MA20 + 2 × 标准差，下轨 = MA20 - 2 × 标准差。\n\n跌破下轨含义：\n• 收盘价跌破布林带下轨\n• 股价进入超卖区域，短期内下跌动能释放\n• 统计学上：价格在2倍标准差之外，属于小概率事件\n\n实战用法：\n• 跌破下轨 + 放量下跌 = 恐慌抛售，可能继续下跌\n• 跌破下轨 + 缩量 = 下跌动能衰竭，可能反弹\n• 注意：下跌趋势中"跌了还能再跌"，不要盲目抄底\n• 配合MACD金叉或RSI超卖使用，可靠性更高',
+  ma5_ma10_golden: 'MA5上穿MA10（短期金叉）\n\n含义：5日均线从下往上穿越10日均线。\n\n意义：\n• 短期趋势由跌转涨的信号\n• 最近5天的平均买入成本超过最近10天\n• 代表短期资金开始进场，情绪转暖\n\n特点：\n• 最灵敏的均线金叉信号，反应最快\n• 假信号也最多，在震荡市中频繁出现\n• 适合短线交易者使用\n\n实战用法：\n• MA5上穿MA10 + 成交量放大 = 信号可靠\n• MA5上穿MA10 + MA20向上 = 中期趋势支撑，胜率更高\n• 配合MACD金叉使用效果更好',
+  ma10_ma20_golden: 'MA10上穿MA20（中期金叉）\n\n含义：10日均线从下往上穿越20日均线。\n\n意义：\n• 中期趋势由跌转涨的信号\n• 最近10天的平均买入成本超过最近20天\n• 代表中期资金开始进场，趋势反转更可靠\n\n特点：\n• 比MA5/MA10金叉更稳定，假信号更少\n• 是判断中期趋势拐点的经典信号\n• 适合中短线交易者使用\n\n实战用法：\n• MA10上穿MA20 + MA20开始走平上翘 = 强烈买入信号\n• MA10上穿MA20 + MACD金叉 = 双重确认，胜率很高\n• 金叉后回踩MA20不破 = 最佳加仓点',
+  atr: 'ATR 波动率（Average True Range）\n\n计算公式：\nATR = N日真实波幅的移动平均（N默认为14）\n真实波幅 = max(最高价-最低价, |最高价-昨收|, |最低价-昨收|)\n\n含义：衡量股价的波动幅度，不反映方向，只反映波动大小。\n\n特点：\n• ATR值高 = 波动大，风险高，收益机会也大\n• ATR值低 = 波动小，风险低，可能处于盘整\n• ATR是绝对值，与股价高低有关\n\n实战用法：\n• 止损设置：通常用 1-2倍ATR 作为止损幅度\n• 波动率筛选：寻找ATR适中的股票，避免过度波动\n• 突破确认：ATR放大 + 价格突破 = 真突破概率高\n• 低ATR + 盘整 = 可能即将选择方向，提前布局',
 }
 
 // 信号卡片的 tooltip 解释
@@ -1508,6 +1939,169 @@ const signalHelp = {
   S1: 'S1 - 加速卖点\n条件：BIAS60 ≥ 25%\n\n解读：\n价格严重偏离60日均线，进入超买区间。\n"加速上涨"之后往往伴随回调，建议减仓止盈，保留1/3仓位即可。',
   S2: 'S2 - 跌破卖点\n条件：连续跌破MA5、MA8、MA13（短期均线全部失守）\n\n解读：\n短期趋势已经完全转向，均线支撑全部失效。\n这是明确的离场信号，应加大止盈力度，仅保留少量底仓。',
   S3: 'S3 - 清仓卖点\n条件：跌破MA55 + 跌破MA60 + MA60趋势向下\n\n解读：\n中期趋势已经确认向下，长期均线还在持续下降。\n这是最强烈的卖出信号——清仓离场，保护本金。\n不要抱有幻想，趋势的力量会让左侧交易者付出代价。',
+}
+
+// 智能策略模板的 tooltip 详细说明
+const strategyHelp = {
+  breakout: `突破型策略
+适用场景：牛市行情、板块轮动、题材热点爆发时
+
+核心逻辑：
+筛选放量上涨且换手率高的股票，捕捉强势突破行情。
+这类股票通常有主力资金介入，短期爆发力强。
+
+筛选条件：
+• 涨幅 ≥ 3%（当日强势上涨）
+• 高成交量（成交额 ≥ 10亿元）
+• 换手率 ≥ 5%（资金关注度高）
+
+实战要点：
+• 适合短线/波段交易者
+• 配合MACD金叉或均线多头排列效果更佳
+• 注意：高位放量可能是出货，需结合位置判断`,
+
+  value: `价值型策略
+适用场景：熊市末期、震荡市、长期投资布局
+
+核心逻辑：
+筛选低估值、大市值的蓝筹股，追求安全边际和长期稳定收益。
+经典的价值投资思路——"以合理价格买入优秀公司"。
+
+筛选条件：
+• 大盘股（市值 ≥ 500亿）
+• PE ≤ 15（估值偏低）
+• PB 在 0.5 ~ 2 之间（估值合理）
+
+实战要点：
+• 适合中长线投资者持有
+• 风险较低，但短期收益可能有限
+• 适合作为底仓配置，防御性强`,
+
+  growth: `成长型策略
+适用场景：震荡市、结构性行情、中小盘行情
+
+核心逻辑：
+筛选中等市值、高换手率、估值合理的成长型股票。
+在风险与收益之间寻求平衡，追求稳健增长。
+
+筛选条件：
+• 中盘股（市值 100~500亿）
+• 涨幅 ≥ 0（走势偏强）
+• 换手率 ≥ 3%（活跃度高）
+• PE ≤ 50（估值不过分）
+
+实战要点：
+• 攻守兼备，适合大多数投资者
+• 可作为核心持仓，长期持有
+• 关注业绩增长，避免估值陷阱`,
+
+  momentum: `动量型策略
+适用场景：强势行情、趋势明确、热点板块延续时
+
+核心逻辑：
+"强者恒强"——筛选涨幅领先、成交量放大的股票，
+顺势而为，追逐市场最强势的标的。
+
+筛选条件：
+• 涨幅 ≥ 5%（大幅上涨）
+• 高成交量（成交额 ≥ 10亿元）
+• 换手率 ≥ 3%（资金活跃）
+
+实战要点：
+• 高风险高收益，适合激进型交易者
+• 严格止损，趋势反转立即离场
+• 不宜重仓，控制在总仓位的30%以内`,
+
+  lowVolatility: `低波动型策略
+适用场景：熊市、震荡市、风险厌恶型投资者
+
+核心逻辑：
+筛选低估值、大市值、低换手率的蓝筹股，
+追求稳定收益，控制最大回撤。
+
+筛选条件：
+• 大盘股（市值 ≥ 500亿）
+• 涨跌幅在 -5% ~ 5%（波动小）
+• 换手率 ≤ 2%（交投稳定）
+• PE ≤ 20（估值合理）
+• PB 在 0.5 ~ 3 之间
+
+实战要点：
+• 防御性强，下跌市中表现较好
+• 适合保守型投资者和大资金配置
+• 牛市中可能跑输大盘，需有心理准备`,
+
+  smallCapGrowth: `小盘成长策略
+适用场景：牛市初期、题材股行情、风险偏好提升时
+
+核心逻辑：
+筛选小市值、高换手率的成长股，
+利用小盘股的高弹性获取超额收益。
+
+筛选条件：
+• 小盘股（市值 < 100亿）
+• 涨幅 ≥ 0（走势偏强）
+• 换手率 ≥ 5%（高度活跃）
+• PE ≤ 80（成长股估值可适当放宽）
+
+实战要点：
+• 高风险高弹性，波动剧烈
+• 严格止损，避免深套
+• 适合短线交易，不宜长期持有
+• 注意流动性风险，小盘股进出不便`,
+
+  blueChip: `蓝筹稳健策略
+适用场景：长期投资、养老资金、稳健型投资者
+
+核心逻辑：
+筛选大市值、低估值、稳健换手率的蓝筹股，
+追求长期稳健增值和分红收益。
+
+筛选条件：
+• 大盘股（市值 ≥ 500亿）
+• 跌幅 ≤ 3%（走势稳健）
+• 换手率 ≤ 3%（交投稳定）
+• PE ≤ 25（估值合理）
+• PB 在 0.5 ~ 4 之间
+
+实战要点：
+• 适合长期持有，享受复利增长
+• 关注分红率，优质蓝筹股息率可观
+• 波动小，心态更稳，适合上班族`,
+
+  superLowPB: `超低PB策略
+适用场景：熊市末期、市场极度悲观、价值投资者
+
+核心逻辑：
+筛选市净率低于1的破净股，寻找被市场错杀的标的。
+类似巴菲特早期的"烟蒂股"投资法。
+
+筛选条件：
+• PB ≤ 1（跌破净资产）
+• PE 在 0 ~ 100 之间（排除亏损股）
+
+实战要点：
+• 高安全边际，向下空间有限
+• 需耐心等待估值修复，可能持有周期长
+• 注意区分"真便宜"和"价值陷阱"
+• 建议分散投资，避免单只重仓`,
+
+  lowPrice: `低价股策略
+适用场景：牛市初期、散户行情、低价股补涨时
+
+核心逻辑：
+筛选低股价、合理PE的股票，
+低价股在牛市中往往有较强的补涨需求。
+
+筛选条件：
+• 股价 ≤ 10元
+• PE ≤ 60（估值合理）
+
+实战要点：
+• 低价≠便宜，需结合基本面判断
+• 低价股可能存在基本面问题，需甄别
+• 适合小资金博弈，弹性大
+• 注意风险，及时止盈止损`,
 }
 
 // 行业选项（动态加载）
@@ -1524,10 +2118,18 @@ const paginatedResults = computed(() => {
 const performScreening = async () => {
   screeningLoading.value = true
   hasSearched.value = true
+  // 保存当前提示实例，用于结果返回后关闭
+  let loadingMessage: any = null
 
   try {
     // 如果当前是信号筛选模式，调用专用的信号筛选 API
     if (currentSignalType.value) {
+      // 三买三卖信号筛选需要从API实时获取K线数据并计算BIAS等技术指标，耗时较长
+      loadingMessage = ElMessage.warning({
+        message: `正在进行【${currentSignalType.value}】信号筛选，需要从API实时获取K线数据并计算指标，请耐心等待...`,
+        duration: 0,  // 不自动关闭，等待结果返回后手动关闭
+      })
+      
       console.log(`🔍 [信号筛选] 调用 ${currentSignalType.value} 信号筛选 API，参数:`, signalParams)
       
       const res = await ApiClient.post(
@@ -1572,6 +2174,10 @@ const performScreening = async () => {
         total_mv: it.total_mv || null,
       }))
       
+      // 关闭正在进行的提示
+      if (loadingMessage && loadingMessage.close) {
+        loadingMessage.close()
+      }
       ElMessage.success(`筛选完成，找到 ${screeningResults.value.length} 只 ${currentSignalType.value} 信号股票`)
       return
     }
@@ -1591,18 +2197,18 @@ const performScreening = async () => {
     }
 
     // 涨跌幅条件
-    if (filters.changePercent.min != null || filters.changePercent.max != null) {
-      const lo = filters.changePercent.min ?? -100
-      const hi = filters.changePercent.max ?? 100
+    if (filters.changePercentMin != null || filters.changePercentMax != null) {
+      const lo = filters.changePercentMin ?? -100
+      const hi = filters.changePercentMax ?? 100
       children.push({ field: 'pct_chg', op: 'between', value: [lo, hi] })
     }
 
-    // 成交量条件（映射为成交额范围，单位：元）
+    // 成交量条件（映射为成交额范围，单位：万元，与数据库一致）
     if (filters.volumeLevel) {
       const volumeRangeMap: Record<string, [number, number]> = {
-        high: [1000000000, Number.MAX_SAFE_INTEGER],    // 高成交量：>10亿元
-        medium: [300000000, 1000000000],                 // 中等成交量：3亿-10亿元
-        low: [0, 300000000]                              // 低成交量：<3亿元
+        high: [100000, Number.MAX_SAFE_INTEGER],    // 高成交量：>10亿元 = 100000万元
+        medium: [30000, 100000],                     // 中等成交量：3亿-10亿元 = 30000-100000万元
+        low: [0, 30000]                              // 低成交量：<3亿元 = 30000万元
       }
       const volumeRange = volumeRangeMap[filters.volumeLevel]
       if (volumeRange) {
@@ -1627,18 +2233,74 @@ const performScreening = async () => {
       }
     }
 
+    // 近N日金叉条件（优先使用，比当天金叉更实用）
+    if (filters.macdGoldenForkDays) {
+      const days = parseInt(filters.macdGoldenForkDays)
+      children.push({ field: 'macd_golden_fork_n', op: 'eq', value: days })
+    }
+    if (filters.kdjGoldenForkDays) {
+      const days = parseInt(filters.kdjGoldenForkDays)
+      children.push({ field: 'kdj_golden_fork_n', op: 'eq', value: days })
+    }
+
+    // 均线多头排列
+    if (filters.maBullish === 'Y') {
+      children.push({ field: 'ma_bullish', op: 'eq', value: true })
+    }
+    if (filters.maBearish === 'Y') {
+      children.push({ field: 'ma_bearish', op: 'eq', value: true })
+    }
+
+    // 布林带突破信号
+    if (filters.bollBreakUpper === 'Y') {
+      children.push({ field: 'boll_break_upper', op: 'eq', value: true })
+    } else if (filters.bollBreakUpper === 'N') {
+      children.push({ field: 'boll_break_upper', op: 'eq', value: false })
+    }
+    if (filters.bollBreakLower === 'Y') {
+      children.push({ field: 'boll_break_lower', op: 'eq', value: true })
+    } else if (filters.bollBreakLower === 'N') {
+      children.push({ field: 'boll_break_lower', op: 'eq', value: false })
+    }
+
+    // 均线金叉信号
+    if (filters.ma5Ma10Golden === 'Y') {
+      children.push({ field: 'ma5_ma10_golden', op: 'eq', value: true })
+    } else if (filters.ma5Ma10Golden === 'N') {
+      children.push({ field: 'ma5_ma10_golden', op: 'eq', value: false })
+    }
+    if (filters.ma10Ma20Golden === 'Y') {
+      children.push({ field: 'ma10_ma20_golden', op: 'eq', value: true })
+    } else if (filters.ma10Ma20Golden === 'N') {
+      children.push({ field: 'ma10_ma20_golden', op: 'eq', value: false })
+    }
+
+    // ATR 波动率区间
+    if (filters.atrMin != null || filters.atrMax != null) {
+      const lo = filters.atrMin ?? 0
+      const hi = filters.atrMax ?? 10000
+      children.push({ field: 'atr14', op: 'between', value: [lo, hi] })
+    }
+
+    // RSI 区间
+    if (filters.rsiMin != null || filters.rsiMax != null) {
+      const lo = filters.rsiMin ?? 0
+      const hi = filters.rsiMax ?? 100
+      children.push({ field: 'rsi14', op: 'between', value: [lo, hi] })
+    }
+
     // 扩展筛选条件
     // 换手率区间
-    if (filters.turnoverRate.min != null || filters.turnoverRate.max != null) {
-      const lo = filters.turnoverRate.min ?? 0
-      const hi = filters.turnoverRate.max ?? 100
+    if (filters.turnoverRateMin != null || filters.turnoverRateMax != null) {
+      const lo = filters.turnoverRateMin ?? 0
+      const hi = filters.turnoverRateMax ?? 100
       children.push({ field: 'turnover_rate', op: 'between', value: [lo, hi] })
     }
 
     // 量比区间
-    if (filters.volumeRatio.min != null || filters.volumeRatio.max != null) {
-      const lo = filters.volumeRatio.min ?? 0
-      const hi = filters.volumeRatio.max ?? 100
+    if (filters.volumeRatioMin != null || filters.volumeRatioMax != null) {
+      const lo = filters.volumeRatioMin ?? 0
+      const hi = filters.volumeRatioMax ?? 100
       children.push({ field: 'volume_ratio', op: 'between', value: [lo, hi] })
     }
 
@@ -1648,23 +2310,23 @@ const performScreening = async () => {
     }
 
     // PE 区间
-    if (filters.peRange.min != null || filters.peRange.max != null) {
-      const lo = filters.peRange.min ?? -100000
-      const hi = filters.peRange.max ?? 100000
+    if (filters.peMin != null || filters.peMax != null) {
+      const lo = filters.peMin ?? -100000
+      const hi = filters.peMax ?? 100000
       children.push({ field: 'pe', op: 'between', value: [lo, hi] })
     }
 
     // PB 区间
-    if (filters.pbRange.min != null || filters.pbRange.max != null) {
-      const lo = filters.pbRange.min ?? -10000
-      const hi = filters.pbRange.max ?? 10000
+    if (filters.pbMin != null || filters.pbMax != null) {
+      const lo = filters.pbMin ?? -10000
+      const hi = filters.pbMax ?? 10000
       children.push({ field: 'pb', op: 'between', value: [lo, hi] })
     }
 
     // 收盘价区间
-    if (filters.priceRange.min != null || filters.priceRange.max != null) {
-      const lo = filters.priceRange.min ?? 0
-      const hi = filters.priceRange.max ?? 10000
+    if (filters.priceMin != null || filters.priceMax != null) {
+      const lo = filters.priceMin ?? 0
+      const hi = filters.priceMax ?? 10000
       children.push({ field: 'close', op: 'between', value: [lo, hi] })
     }
 
@@ -1676,6 +2338,16 @@ const performScreening = async () => {
       order_by: [{ field: sortField.value, direction: sortOrder.value as const }],
       limit: 500,
       offset: 0,
+    }
+
+    // 检测是否包含技术指标筛选条件（需要从API实时计算，耗时较长）
+    const hasTechIndicators = filters.macdGoldenFork || filters.kdjGoldenFork || filters.ma20Cross || filters.ma5Cross
+    if (hasTechIndicators && !loadingMessage) {
+      // 只在信号筛选还没创建提示时创建（避免重复创建）
+      loadingMessage = ElMessage.warning({
+        message: '当前筛选包含技术指标（金叉/站上均线等），正在从API获取K线数据并计算，请耐心等待...',
+        duration: 0,  // 不自动关闭，等待结果返回后手动关闭
+      })
     }
 
     // 调试日志：打印请求payload
@@ -1730,12 +2402,64 @@ const performScreening = async () => {
       macd_hist: it.macd_hist,
     }))
 
+    // 关闭正在进行的提示
+    if (loadingMessage && loadingMessage.close) {
+      loadingMessage.close()
+    }
     ElMessage.success(`筛选完成，找到 ${screeningResults.value.length} 只股票`)
   } catch (error) {
+    // 关闭正在进行的提示
+    if (loadingMessage && loadingMessage.close) {
+      loadingMessage.close()
+    }
     ElMessage.error('筛选失败，请重试')
   } finally {
     screeningLoading.value = false
   }
+}
+
+// 将嵌套对象格式的条件转换为顶层属性格式
+const convertConditions = (conditions: Record<string, any>): Record<string, any> => {
+  const result: Record<string, any> = {}
+  for (const [key, value] of Object.entries(conditions)) {
+    if (value && typeof value === 'object' && 'min' in value && 'max' in value) {
+      // 嵌套对象格式，如 { min: 3, max: null } → changePercentMin, changePercentMax
+      const prefix = key.replace('Range', '').replace(/([A-Z])/g, (m) => m.toLowerCase())
+      // 处理特殊的字段名映射
+      if (key === 'changePercent') {
+        result.changePercentMin = value.min
+        result.changePercentMax = value.max
+      } else if (key === 'turnoverRate') {
+        result.turnoverRateMin = value.min
+        result.turnoverRateMax = value.max
+      } else if (key === 'volumeRatio') {
+        result.volumeRatioMin = value.min
+        result.volumeRatioMax = value.max
+      } else if (key === 'peRange') {
+        result.peMin = value.min
+        result.peMax = value.max
+      } else if (key === 'pbRange') {
+        result.pbMin = value.min
+        result.pbMax = value.max
+      } else if (key === 'priceRange') {
+        result.priceMin = value.min
+        result.priceMax = value.max
+      } else if (key === 'rsiRange') {
+        result.rsiMin = value.min
+        result.rsiMax = value.max
+      } else if (key === 'atrRange') {
+        result.atrMin = value.min
+        result.atrMax = value.max
+      } else {
+        // 通用处理
+        result[`${prefix}Min`] = value.min
+        result[`${prefix}Max`] = value.max
+      }
+    } else {
+      result[key] = value
+    }
+  }
+  return result
 }
 
 const applyTemplate = (templateKey: string) => {
@@ -1747,9 +2471,11 @@ const applyTemplate = (templateKey: string) => {
   activeSignalTemplate.value = ''
   currentSignalType.value = ''
 
+  // 将嵌套对象格式转换为顶层属性格式
+  const convertedConditions = convertConditions(template.conditions)
   Object.assign(filters, {
     market: 'A股',
-    ...template.conditions
+    ...convertedConditions
   })
 
   ElMessage.info(`已应用【${template.name}】策略模板，请点击"开始筛选"查看结果`)
@@ -1771,7 +2497,23 @@ const resetFilters = () => {
   Object.assign(filters, {
     market: 'A股',
     marketCapRange: '',
-    changePercent: { min: null, max: null },
+    // 区间字段拆分为顶层属性
+    changePercentMin: null,
+    changePercentMax: null,
+    turnoverRateMin: null,
+    turnoverRateMax: null,
+    volumeRatioMin: null,
+    volumeRatioMax: null,
+    peMin: null,
+    peMax: null,
+    pbMin: null,
+    pbMax: null,
+    priceMin: null,
+    priceMax: null,
+    rsiMin: null,
+    rsiMax: null,
+    atrMin: null,
+    atrMax: null,
     volumeLevel: '',
     // 标志筛选条件重置
     macdGoldenFork: '',
@@ -1779,13 +2521,18 @@ const resetFilters = () => {
     ma20Cross: '',
     ma5Cross: '',
     // 扩展筛选条件重置
-    turnoverRate: { min: null, max: null },
-    volumeRatio: { min: null, max: null },
     board: '',
-    // 财务指标区间重置
-    peRange: { min: null, max: null },
-    pbRange: { min: null, max: null },
-    priceRange: { min: null, max: null },
+    // 新增字段重置
+    macdGoldenForkDays: '',
+    kdjGoldenForkDays: '',
+    maBullish: '',
+    maBearish: '',
+    // 布林带突破信号
+    bollBreakUpper: '',
+    bollBreakLower: '',
+    // 均线金叉信号
+    ma5Ma10Golden: '',
+    ma10Ma20Golden: '',
   })
 
   screeningResults.value = []
@@ -2104,6 +2851,7 @@ onMounted(() => {
       display: flex;
       align-items: start;
       gap: 12px;
+      width: 100%;
     }
 
     /* 通用策略卡片 */
@@ -2117,6 +2865,7 @@ onMounted(() => {
       cursor: pointer;
       transition: all 0.3s ease;
       border: 2px solid transparent;
+      position: relative;
 
       &:hover {
         background: var(--el-fill-color-lighter);
@@ -2131,6 +2880,20 @@ onMounted(() => {
           var(--el-color-primary-light-9) 0%,
           var(--el-color-primary-light-8) 100%
         );
+      }
+
+      /* 右上角问号图标：智能策略模板 + 三买三卖统一使用 */
+      .help-icon.card-help {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        margin: 0;
+        color: var(--el-text-color-placeholder);
+        font-size: 14px;
+
+        &:hover {
+          color: var(--el-color-primary);
+        }
       }
 
       /* 策略图标 */
@@ -2258,6 +3021,9 @@ onMounted(() => {
           display: flex;
           gap: 6px;
           flex-wrap: wrap;
+          align-items: center;
+          min-height: 24px;
+          box-sizing: border-box;
         }
       }
 
@@ -2304,6 +3070,30 @@ onMounted(() => {
       margin-left: 6px;
       cursor: help;
       vertical-align: middle;
+
+      &.card-help {
+        margin-left: auto;
+      }
+
+      &:hover {
+        color: var(--el-color-primary);
+      }
+    }
+
+    /* Tooltip 详细内容美化 */
+    .tooltip-detail {
+      white-space: pre-wrap;
+      line-height: 1.7;
+      font-size: 13px;
+      max-width: 360px;
+      color: #e6e8eb;
+
+      /* 第一行（标题）加粗 */
+      &::first-line {
+        font-weight: 600;
+        font-size: 14px;
+        color: #ffffff;
+      }
     }
   }
 
@@ -2342,6 +3132,24 @@ onMounted(() => {
 
     .filter-form {
       padding: 20px;
+
+      /* 区间输入框容器：确保两个输入框和减号在一行 */
+      .range-inputs {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+
+        .el-input-number {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .range-separator {
+          flex-shrink: 0;
+          color: var(--el-text-color-secondary);
+        }
+      }
 
       .help-icon {
         font-size: 14px;
@@ -2385,6 +3193,25 @@ onMounted(() => {
           .el-icon {
             color: var(--el-color-primary);
             font-size: 18px;
+          }
+
+          .section-desc {
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--el-text-color-secondary);
+            margin-left: 4px;
+          }
+        }
+
+        .filter-label {
+          cursor: help;
+          border-bottom: 1px dashed var(--el-border-color-darker);
+          padding-bottom: 1px;
+          transition: all 0.2s ease;
+
+          &:hover {
+            color: var(--el-color-primary);
+            border-bottom-color: var(--el-color-primary);
           }
         }
       }
@@ -2583,13 +3410,19 @@ html.dark {
             .el-icon {
               color: var(--el-text-color-regular);
             }
+
+            .section-desc {
+              color: var(--el-text-color-secondary);
+            }
           }
         }
 
-        .help-icon {
-          color: var(--el-text-color-placeholder);
+        .filter-label {
+          border-bottom-color: var(--el-border-color-darker);
+
           &:hover {
-            color: var(--el-text-color-primary);
+            color: var(--el-color-primary);
+            border-bottom-color: var(--el-color-primary);
           }
         }
       }
@@ -2628,5 +3461,32 @@ html.dark {
       color: var(--el-text-color-primary);
     }
   }
+}
+</style>
+
+<style>
+/* 全局 Tooltip 内容美化样式 */
+.el-popper.is-dark .el-tooltip__inner {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  font-size: 13px;
+  max-width: 400px;
+  padding: 10px 14px;
+  color: #e6e8eb;
+}
+
+/* 卡片上的帮助图标 tooltip 内容（更详细） */
+.el-popper.is-dark .tooltip-detail {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  font-size: 13px;
+  max-width: 380px;
+  color: #e6e8eb;
+}
+
+.el-popper.is-dark .tooltip-detail::first-line {
+  font-weight: 600;
+  font-size: 14px;
+  color: #ffffff;
 }
 </style>

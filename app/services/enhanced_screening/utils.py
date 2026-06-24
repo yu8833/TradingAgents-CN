@@ -23,12 +23,38 @@ def analyze_conditions(conditions: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     supported_fields = set(BASIC_FIELDS_INFO.keys())
 
+    # 硬编码：数据库中没有数据的字段（尽管 BASIC_FIELDS_INFO 里有定义，
+    # 但它们的数据需要从 API 实时计算，不在数据库视图中）
+    # 必须走传统筛选路径才能正确计算
+    _not_in_db_fields = {
+        # 技术指标数值
+        "rsi14", "kdj_k", "kdj_d", "kdj_j", "dif", "dea", "macd_hist",
+        "boll_upper", "boll_mid", "boll_lower", "atr14",
+        "ma5", "ma10", "ma20", "ma60",
+        # 技术信号标志
+        "macd_golden_fork", "kdj_golden_fork",
+        "macd_golden_fork_n", "kdj_golden_fork_n",
+        "ma5_cross", "ma10_cross", "ma20_cross", "ma60_cross",
+        # 复合信号
+        "ma_bullish", "ma_bearish",
+        # 布林带突破信号
+        "boll_break_upper", "boll_break_lower",
+        # 均线金叉信号
+        "ma5_ma10_golden", "ma10_ma20_golden",
+    }
+
     for condition in conditions:
         if not isinstance(condition, dict):
             continue
         field = condition.get("field")
 
-        if field in supported_fields:
+        if field in _not_in_db_fields:
+            analysis["can_use_database"] = False
+            analysis["needs_technical_indicators"] = True
+            analysis["technical_conditions"] += 1
+            analysis["condition_types"].append("technical")
+            analysis["unsupported_fields"].append(field)
+        elif field in supported_fields:
             field_info = BASIC_FIELDS_INFO[field]
             field_type = field_info.field_type
 

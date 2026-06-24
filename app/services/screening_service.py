@@ -1,49 +1,15 @@
 from __future__ import annotations
 
+import json
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
-from datetime import datetime, timedelta
 
 import pandas as pd
 import numpy as np
-
-# 统一指标库
-try:
-    from tradingagents.tools.analysis.indicators import IndicatorSpec, compute_many
-except ImportError:
-    import logging as _fallback_logging
-    _fallback_logging.getLogger(__name__).warning(
-        "tradingagents.tools.analysis.indicators 不可用，筛选功能将返回空结果"
-    )
-    from dataclasses import dataclass as _fallback_dataclass, field as _fallback_field
-    @_fallback_dataclass
-    class IndicatorSpec:
-        name: str = "ma"
-        params: dict = None
-    def compute_many(df, specs):
-        return df
-
-# 统一多数据源DF接口（按优先级降级）
-try:
-    from tradingagents.dataflows.data_source_manager import get_data_source_manager
-except ImportError:
-    import logging as _fallback_logging
-    _fallback_logging.getLogger(__name__).warning(
-        "tradingagents.dataflows.data_source_manager 不可用，get_data_source_manager 将返回 None"
-    )
-    def get_data_source_manager():
-        return None
-
-try:
-    from tradingagents.dataflows.providers.china.fundamentals_snapshot import get_cn_fund_snapshot
-except ImportError:
-    import logging as _fallback_logging
-    _fallback_logging.getLogger(__name__).warning(
-        "tradingagents.dataflows.providers.china.fundamentals_snapshot 不可用"
-    )
-    def get_cn_fund_snapshot(code):
-        return None
-
 
 from app.services.screening.eval_utils import (
     collect_fields_from_conditions as _collect_fields_from_conditions_util,
@@ -53,36 +19,28 @@ from app.services.screening.eval_utils import (
 )
 
 # --- DSL 约束 ---
-# 允许用于筛选的所有字段名（覆盖行情、技术指标、基本面、标志信号）
 ALLOWED_FIELDS = {
-    # 原始行情（统一为小写列）
     "open", "high", "low", "close", "vol", "amount",
-    # 派生
-    "pct_chg",  # 当日涨跌幅
-    # MA（固定参数）
+    "pct_chg",
     "ma5", "ma10", "ma20", "ma60",
-    # EMA / MACD
     "ema12", "ema26",
     "dif", "dea", "macd_hist",
-    # 振荡 / 波动率
     "rsi14",
     "boll_mid", "boll_upper", "boll_lower",
     "atr14",
-    # KDJ
     "kdj_k", "kdj_d", "kdj_j",
-    # 基本面（基础快照 / 扩展）
     "pe", "pb", "pe_ttm", "pb_mrq", "roe", "market_cap",
     "total_mv", "circ_mv",
-    # 交易指标（从股票基础信息 / 视图拿到）
     "turnover_rate", "volume_ratio",
-    # 板块 / 市场
     "market", "board", "industry", "area",
-    # 技术信号标志字段（金叉 / 站上均线）
     "macd_golden_fork", "kdj_golden_fork",
+    "macd_golden_fork_n", "kdj_golden_fork_n",
     "ma5_cross", "ma10_cross", "ma20_cross", "ma60_cross",
+    "ma_bullish", "ma_bearish",
+    "boll_break_upper", "boll_break_lower",
+    "ma5_ma10_golden", "ma10_ma20_golden",
 }
 
-# 分类：基础行情字段、技术指标字段、基本面字段
 BASE_FIELDS = {"open", "high", "low", "close", "vol", "amount", "pct_chg"}
 TECH_FIELDS = {
     "ma5", "ma10", "ma20", "ma60",
@@ -92,14 +50,16 @@ TECH_FIELDS = {
     "boll_mid", "boll_upper", "boll_lower",
     "atr14",
     "kdj_k", "kdj_d", "kdj_j",
-    # 标志字段
     "macd_golden_fork", "kdj_golden_fork",
+    "macd_golden_fork_n", "kdj_golden_fork_n",
     "ma5_cross", "ma10_cross", "ma20_cross", "ma60_cross",
+    "ma_bullish", "ma_bearish",
+    "boll_break_upper", "boll_break_lower",
+    "ma5_ma10_golden", "ma10_ma20_golden",
 }
 FUND_FIELDS = {"pe", "pb", "pe_ttm", "pb_mrq", "roe", "market_cap", "total_mv", "circ_mv",
                "turnover_rate", "volume_ratio", "market", "board", "industry", "area"}
 
-# 允许的操作符（注意：前端可能发送 'eq' 代替 '=='，这里全部接纳，并在评估时归一化）
 ALLOWED_OPS = {">", "<", ">=", "<=", "==", "!=", "eq", "ne",
                 "between", "in", "not_in", "contains", "cross_up", "cross_down"}
 
@@ -107,122 +67,361 @@ ALLOWED_OPS = {">", "<", ">=", "<=", "==", "!=", "eq", "ne",
 @dataclass
 class ScreeningParams:
     market: str = "CN"
-    date: Optional[str] = None  # YYYY-MM-DD，None=最近交易日
-    adj: str = "qfq"  # 预留参数，当前实现使用Tdx数据，不区分复权
+    date: Optional[str] = None
+    adj: str = "qfq"
     limit: int = 50
     offset: int = 0
-    order_by: Optional[List[Dict[str, str]]] = None  # [{field, direction}]
+    order_by: Optional[List[Dict[str, str]]] = None
 
 
 import logging
 logger = logging.getLogger("agents")
 
+
+# ==========================
+# Redis 缓存
+# ==========================
+_redis_client: Any = None
+_redis_lock = threading.Lock()
+
+
+def _get_sync_redis():
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    with _redis_lock:
+        if _redis_client is not None:
+            return _redis_client
+        try:
+            from app.core.sync_redis import get_sync_redis
+            _redis_client = get_sync_redis()
+        except Exception as e:
+            logger.warning(f"⚠️ Redis模块导入失败: {e}")
+            _redis_client = None
+    return _redis_client
+
+
+class KlineCache:
+    PREFIX = "kline"
+
+    def __init__(self, ttl_trading: int = 300, ttl_holiday: int = 3600):
+        self.ttl_trading = ttl_trading
+        self.ttl_holiday = ttl_holiday
+
+    def _key(self, code: str, period: str, limit: int, adj: str) -> str:
+        adj_s = f"_{adj}" if adj else ""
+        return f"{self.PREFIX}:{code}:{period}:{limit}{adj_s}"
+
+    def _ttl(self) -> int:
+        now = datetime.now()
+        if now.weekday() >= 5:
+            return self.ttl_holiday
+        hm = now.hour * 100 + now.minute
+        if 930 <= hm <= 1500:
+            return self.ttl_trading
+        return self.ttl_holiday
+
+    def get(self, code: str, period: str, limit: int, adj: str) -> Optional[List[Dict]]:
+        client = _get_sync_redis()
+        if client is None:
+            return None
+        try:
+            data = client.get(self._key(code, period, limit, adj))
+            if data:
+                return json.loads(data)
+        except Exception:
+            pass
+        return None
+
+    def set(self, code: str, period: str, limit: int, adj: str, data: List[Dict]):
+        client = _get_sync_redis()
+        if client is None:
+            return
+        try:
+            client.setex(self._key(code, period, limit, adj), self._ttl(), json.dumps(data, ensure_ascii=False))
+        except Exception:
+            pass
+
+
+# ==========================
+# 技术指标计算（纯pandas）
+# ==========================
+def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """使用纯 pandas 计算技术指标"""
+    if df is None or df.empty or len(df) < 30:
+        return df
+
+    dfc = df.copy()
+    close = dfc['close']
+
+    # MACD (12, 26, 9)
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    dfc['dif'] = ema12 - ema26
+    dfc['dea'] = dfc['dif'].ewm(span=9, adjust=False).mean()
+    dfc['macd_hist'] = (dfc['dif'] - dfc['dea']) * 2
+
+    # KDJ (9, 3, 3)
+    low_min = dfc['low'].rolling(window=9).min()
+    high_max = dfc['high'].rolling(window=9).max()
+    rsv = (close - low_min) / (high_max - low_min + 1e-10) * 100
+    rsv = rsv.fillna(50)
+    dfc['kdj_k'] = rsv.ewm(alpha=1/3, adjust=False).mean()
+    dfc['kdj_d'] = dfc['kdj_k'].ewm(alpha=1/3, adjust=False).mean()
+    dfc['kdj_j'] = 3 * dfc['kdj_k'] - 2 * dfc['kdj_d']
+
+    # 均线
+    dfc['ma5'] = close.rolling(5).mean()
+    dfc['ma10'] = close.rolling(10).mean()
+    dfc['ma20'] = close.rolling(20).mean()
+    dfc['ma60'] = close.rolling(60).mean() if len(dfc) >= 60 else close.rolling(len(dfc)).mean()
+
+    # RSI (14)
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    rs = gain / loss.replace(0, 1e-10)
+    dfc['rsi14'] = 100 - (100 / (1 + rs))
+
+    # 布林带 (20, 2)
+    boll_mid = close.rolling(20).mean()
+    boll_std = close.rolling(20).std()
+    dfc['boll_mid'] = boll_mid
+    dfc['boll_upper'] = boll_mid + 2 * boll_std
+    dfc['boll_lower'] = boll_mid - 2 * boll_std
+
+    # ATR (14)
+    high_low = dfc['high'] - dfc['low']
+    high_close = (dfc['high'] - dfc['close'].shift(1)).abs()
+    low_close = (dfc['low'] - dfc['close'].shift(1)).abs()
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    dfc['atr14'] = tr.rolling(14).mean()
+
+    # 均线多头/空头排列
+    ma5 = dfc['ma5']
+    ma10 = dfc['ma10']
+    ma20 = dfc['ma20']
+    ma60 = dfc['ma60']
+    dfc['ma_bullish'] = (ma5 > ma10) & (ma10 > ma20) & (ma20 > ma60)
+    dfc['ma_bearish'] = (ma5 < ma10) & (ma10 < ma20) & (ma20 < ma60)
+
+    return dfc
+
+
+# ==========================
+# 主筛选服务（优化版）
+# ==========================
 class ScreeningService:
     def __init__(self):
-        # 数据源通过统一DF接口获取，不直接绑定具体源
-        self.provider = None
+        self._data_source_manager = None
+        self._kline_cache = KlineCache()
+        self._max_workers = 8  # 并发数（避免API限流）
+        self._batch_size = 20   # 每批大小
+
+    def _get_data_source_manager(self):
+        if self._data_source_manager is None:
+            try:
+                from app.services.data_sources.manager import DataSourceManager
+                self._data_source_manager = DataSourceManager()
+                logger.info("✅ 数据源管理器初始化成功")
+            except Exception as e:
+                logger.error(f"❌ 数据源管理器初始化失败: {e}")
+        return self._data_source_manager
+
+    def _get_kline(self, code: str, limit: int = 220, adj: str = "qfq") -> Optional[List[Dict]]:
+        """获取K线数据（Redis缓存优先 → 网络）"""
+        # 1. 尝试Redis缓存
+        cached = self._kline_cache.get(code, "day", limit, adj)
+        if cached:
+            return cached
+
+        # 2. 从网络获取
+        manager = self._get_data_source_manager()
+        if manager is None:
+            return None
+
+        kline_data, _ = manager.get_kline_with_fallback(code, "day", limit, adj)
+        if kline_data:
+            # 写入缓存（异步，不阻塞）
+            threading.Thread(
+                target=self._kline_cache.set,
+                args=(code, "day", limit, adj, kline_data),
+                daemon=True
+            ).start()
+        return kline_data
+
+    def _get_turnover_rates_batch(self, codes: List[str]) -> Dict[str, float]:
+        """批量获取股票的换手率（从数据库）"""
+        result = {}
+        try:
+            from app.core.database import get_mongo_db_sync
+            db = get_mongo_db_sync()
+            if db is None:
+                return result
+            # stock_screening_view 中每只股票只有一条最新记录，字段是 trade_date
+            docs = list(db.stock_screening_view.find(
+                {"code": {"$in": codes}},
+                {"code": 1, "turnover_rate": 1, "_id": 0}
+            ))
+            for doc in docs:
+                if doc.get("turnover_rate") is not None:
+                    result[doc["code"]] = float(doc["turnover_rate"])
+        except Exception:
+            pass
+        return result
+
+    def _process_one(self, code: str, conditions: Dict, need_tech: bool, params: ScreeningParams, turnover_map: Dict[str, float]) -> Optional[Dict]:
+        """处理单只股票"""
+        try:
+            kline_data = self._get_kline(code, 220, params.adj)
+            if not kline_data or len(kline_data) == 0:
+                return None
+
+            df = pd.DataFrame(kline_data)
+            if df.empty:
+                return None
+
+            # 列名标准化
+            col_map = {c: c.lower() for c in df.columns if c.lower() != c}
+            if col_map:
+                df = df.rename(columns=col_map)
+
+            if "close" in df.columns:
+                df["pct_chg"] = df["close"].pct_change() * 100.0
+
+            if need_tech and len(df) >= 30:
+                df = compute_indicators(df)
+
+            # 补充数据库字段（turnover_rate）
+            db_turnover = turnover_map.get(code)
+            if db_turnover is not None:
+                df["turnover_rate"] = db_turnover
+
+            last = df.iloc[-1]
+
+            # 评估条件
+            passes = _evaluate_conditions_util(df, conditions, ALLOWED_FIELDS, ALLOWED_OPS)
+            if not passes:
+                return None
+
+            # 构建结果
+            item = {"code": code}
+            item.update({
+                "close": _safe_float_util(last.get("close")),
+                "pct_chg": _safe_float_util(last.get("pct_chg")),
+                "amount": _safe_float_util(last.get("amount")),
+                "turnover_rate": _safe_float_util(last.get("turnover_rate")),
+                "ma20": _safe_float_util(last.get("ma20")) if need_tech else None,
+                "rsi14": _safe_float_util(last.get("rsi14")) if need_tech else None,
+                "kdj_k": _safe_float_util(last.get("kdj_k")) if need_tech else None,
+                "kdj_d": _safe_float_util(last.get("kdj_d")) if need_tech else None,
+                "kdj_j": _safe_float_util(last.get("kdj_j")) if need_tech else None,
+                "dif": _safe_float_util(last.get("dif")) if need_tech else None,
+                "dea": _safe_float_util(last.get("dea")) if need_tech else None,
+                "macd_hist": _safe_float_util(last.get("macd_hist")) if need_tech else None,
+                "boll_upper": _safe_float_util(last.get("boll_upper")) if need_tech else None,
+                "boll_mid": _safe_float_util(last.get("boll_mid")) if need_tech else None,
+                "boll_lower": _safe_float_util(last.get("boll_lower")) if need_tech else None,
+                "atr14": _safe_float_util(last.get("atr14")) if need_tech else None,
+                "ma_bullish": bool(last.get("ma_bullish")) if need_tech else None,
+                "ma_bearish": bool(last.get("ma_bearish")) if need_tech else None,
+            })
+            return item
+        except Exception as e:
+            return None
+
+    def _get_universe(self) -> List[str]:
+        """获取A股代码集合"""
+        try:
+            from app.core.database import get_mongo_db_sync, settings as _db_settings
+            db = get_mongo_db_sync()
+            collection = db.stock_basic_info
+            query = {
+                "$or": [
+                    {"market_info.market": "CN"},
+                    {"category": "stock_cn"},
+                    {"market": {"$in": ["主板", "创业板", "科创板", "北交所"]}}
+                ]
+            }
+            codes: List[str] = []
+            try:
+                docs = list(collection.find(query, {"code": 1, "_id": 0}))
+                codes = [doc.get("code") for doc in docs if doc.get("code")]
+            except (TypeError, AttributeError):
+                try:
+                    from pymongo import MongoClient
+                    sync_client = MongoClient(_db_settings.MONGO_URI, serverSelectionTimeoutMS=5000)
+                    sync_db = sync_client[_db_settings.MONGO_DB]
+                    docs = list(sync_db.stock_basic_info.find(query, {"code": 1, "_id": 0}))
+                    codes = [doc.get("code") for doc in docs if doc.get("code")]
+                    sync_client.close()
+                except Exception as inner_e:
+                    logger.error(f"❌ 同步直连MongoDB获取股票列表失败: {inner_e}")
+            if codes:
+                logger.info(f"📊 从 MongoDB 获取到 {len(codes)} 只A股股票")
+                return codes
+            return ["000001", "000002", "000858", "600519", "600036", "601318", "300750"]
+        except Exception as e:
+            logger.error(f"❌ 从 MongoDB 获取股票列表失败: {e}")
+            return ["000001", "000002", "000858", "600519", "600036", "601318", "300750"]
 
     # --- 公共入口 ---
     def run(self, conditions: Dict[str, Any], params: ScreeningParams) -> Dict[str, Any]:
         symbols = self._get_universe()
-        # 为控制时长，先限制样本规模（后续用批量/缓存优化）
-        symbols = symbols[:120]
+        if not symbols:
+            return {"total": 0, "items": []}
 
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=220)
-        end_s = end_date.strftime("%Y-%m-%d")
-        start_s = start_date.strftime("%Y-%m-%d")
-
-        results: List[Dict[str, Any]] = []
-
-        # 解析条件中涉及的字段，决定是否需要技术指标/行情
-        needed_fields = self._collect_fields_from_conditions(conditions)
+        # 解析条件
+        needed_fields = _collect_fields_from_conditions_util(conditions, ALLOWED_FIELDS)
         order_fields = {o.get("field") for o in (params.order_by or []) if o.get("field")}
         all_needed = set(needed_fields) | set(order_fields)
         need_tech = any(f in TECH_FIELDS for f in all_needed)
-        need_base = any(f in BASE_FIELDS for f in all_needed) or need_tech
-        need_fund = any(f in FUND_FIELDS for f in all_needed)
+        # 扩展扫描范围
+        MAX_SCAN = 500 if need_tech else 2000
+        symbols = symbols[:MAX_SCAN]
 
-        for code in symbols:
-            try:
-                dfc = None
-                last = None
+        logger.info(f"📊 筛选开始，扫描 {len(symbols)} 只，技术指标={need_tech}，并发={self._max_workers}")
 
-                # 如需要基础行情/技术指标才取K线
-                if need_base:
-                    manager = get_data_source_manager()
-                    if manager is None:
-                        break
-                    df = manager.get_stock_dataframe(code, start_s, end_s)
-                    if df is None or df.empty:
-                        continue
-                    # 统一列为小写
-                    dfu = df.rename(columns={
-                        "Open": "open", "High": "high", "Low": "low", "Close": "close",
-                        "Volume": "vol", "Amount": "amount"
-                    }).copy()
-                    # 计算派生：pct_chg
-                    if "close" in dfu.columns:
-                        dfu["pct_chg"] = dfu["close"].pct_change() * 100.0
+        # 批量获取换手率（从数据库）
+        turnover_map: Dict[str, float] = {}
+        if "turnover_rate" in all_needed:
+            turnover_map = self._get_turnover_rates_batch(symbols)
+            logger.info(f"📊 批量获取换手率: {len(turnover_map)} 只股票有数据")
 
-                    # 仅在需要技术指标时计算
-                    if need_tech:
-                        specs = [
-                            IndicatorSpec("ma", {"n": 5}),
-                            IndicatorSpec("ma", {"n": 10}),
-                            IndicatorSpec("ma", {"n": 20}),
-                            IndicatorSpec("ema", {"n": 12}),
-                            IndicatorSpec("ema", {"n": 26}),
-                            IndicatorSpec("macd"),
-                            IndicatorSpec("rsi", {"n": 14}),
-                            IndicatorSpec("boll", {"n": 20, "k": 2}),
-                            IndicatorSpec("atr", {"n": 14}),
-                            IndicatorSpec("kdj", {"n": 9, "m1": 3, "m2": 3}),
-                        ]
-                        dfc = compute_many(dfu, specs)
-                    else:
-                        dfc = dfu
+        # 预热数据源管理器（主线程初始化，避免子线程冲突）
+        self._get_data_source_manager()
 
-                    last = dfc.iloc[-1]
+        results: List[Dict[str, Any]] = []
+        t0 = time.time()
 
-                # 评估条件（若条件完全是基本面且不涉及行情/技术，这里可跳过K线）
-                passes = True
-                if need_base:
-                    passes = self._evaluate_conditions(dfc, conditions)
-                elif need_fund and not need_base and not need_tech:
-                    # 仅基本面条件：使用基本面快照判断
-                    snap = get_cn_fund_snapshot(code)
-                    if not snap:
-                        passes = False
-                    else:
-                        passes = self._evaluate_fund_conditions(snap, conditions)
+        # 并行处理（使用线程池，复用连接）
+        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
+            futures = {
+                executor.submit(self._process_one, code, conditions, need_tech, params, turnover_map): code
+                for code in symbols
+            }
+            done = 0
+            for future in as_completed(futures):
+                done += 1
+                try:
+                    result = future.result(timeout=60)
+                    if result:
+                        results.append(result)
+                    if done % 50 == 0:
+                        elapsed = time.time() - t0
+                        logger.info(f"📊 进度: {done}/{len(symbols)} ({elapsed:.1f}s), 当前 {len(results)} 只通过")
+                except Exception:
+                    pass
 
-                if passes:
-                    item = {"code": code}
-                    if last is not None:
-                        item.update({
-                            "close": self._safe_float(last.get("close")),
-                            "pct_chg": self._safe_float(last.get("pct_chg")),
-                            "amount": self._safe_float(last.get("amount")),
-                            "ma20": self._safe_float(last.get("ma20")) if need_tech else None,
-                            "rsi14": self._safe_float(last.get("rsi14")) if need_tech else None,
-                            "kdj_k": self._safe_float(last.get("kdj_k")) if need_tech else None,
-                            "kdj_d": self._safe_float(last.get("kdj_d")) if need_tech else None,
-                            "kdj_j": self._safe_float(last.get("kdj_j")) if need_tech else None,
-                            "dif": self._safe_float(last.get("dif")) if need_tech else None,
-                            "dea": self._safe_float(last.get("dea")) if need_tech else None,
-                            "macd_hist": self._safe_float(last.get("macd_hist")) if need_tech else None,
-                        })
-                    results.append(item)
-            except Exception:
-                continue
-
+        elapsed = time.time() - t0
         total = len(results)
+        logger.info(f"📊 筛选完成: {total} 只通过，耗时 {elapsed:.1f}s")
+
         # 排序
         if params.order_by:
-            for order in reversed(params.order_by):  # 后者优先级低
+            for order in reversed(params.order_by):
                 f = order.get("field")
-                d = order.get("direction", "desc").lower()
+                d = (order.get("direction") or "desc").lower()
                 if f in ALLOWED_FIELDS:
                     results.sort(key=lambda x: (x.get(f) is None, x.get(f)), reverse=(d == "desc"))
 
@@ -231,83 +430,4 @@ class ScreeningService:
         end = start + (params.limit or 50)
         page_items = results[start:end]
 
-        return {
-            "total": total,
-            "items": page_items,
-        }
-    def _evaluate_fund_conditions(self, snap: Dict[str, Any], node: Dict[str, Any]) -> bool:
-        """Delegate fundamental condition evaluation to utils to keep service slim."""
-        return _evaluate_fund_conditions_util(snap, node, FUND_FIELDS)
-
-
-    def _collect_fields_from_conditions(self, node: Dict[str, Any]) -> List[str]:
-        """Delegate field collection to utils."""
-        return _collect_fields_from_conditions_util(node, ALLOWED_FIELDS)
-
-    # --- 内部：DSL 评估 ---
-    def _evaluate_conditions(self, df: pd.DataFrame, node: Dict[str, Any]) -> bool:
-        """Delegate technical/base condition evaluation to utils."""
-        return _evaluate_conditions_util(df, node, ALLOWED_FIELDS, ALLOWED_OPS)
-
-    # --- 工具 ---
-    def _safe_float(self, v: Any) -> Optional[float]:
-        """Delegate numeric coercion to utils."""
-        return _safe_float_util(v)
-
-    def _get_universe(self) -> List[str]:
-        """获取A股代码集合：从 MongoDB stock_basic_info 集合获取所有A股股票代码"""
-        try:
-            from app.core.database import get_mongo_db_sync, settings as _db_settings
-
-            # 优先使用同步 MongoDB 客户端查询
-            db = get_mongo_db_sync()
-            collection = db.stock_basic_info
-
-            # 查询所有A股股票代码（兼容不同的数据结构）
-            query = {
-                "$or": [
-                    {"market_info.market": "CN"},  # 新数据结构
-                    {"category": "stock_cn"},      # 旧数据结构
-                    {"market": {"$in": ["主板", "创业板", "科创板", "北交所"]}}  # 按市场类型
-                ]
-            }
-
-            # 优先尝试同步迭代（pymongo 同步游标）
-            codes: List[str] = []
-            try:
-                cursor = collection.find(query, {"code": 1, "_id": 0})
-                # 使用 list() 显式转换，检测是否是同步游标
-                docs = list(cursor)
-                codes = [doc.get("code") for doc in docs if doc.get("code")]
-            except (TypeError, AttributeError):
-                # 如果是异步游标，改用独立的同步客户端直连查询
-                try:
-                    from pymongo import MongoClient
-                    sync_client = MongoClient(
-                        _db_settings.MONGO_URI,
-                        serverSelectionTimeoutMS=5000,
-                        connectTimeoutMS=5000,
-                    )
-                    sync_db = sync_client[_db_settings.MONGO_DB]
-                    sync_cursor = sync_db.stock_basic_info.find(
-                        query, {"code": 1, "_id": 0}
-                    )
-                    codes = [doc.get("code") for doc in sync_cursor if doc.get("code")]
-                    try:
-                        sync_client.close()
-                    except Exception:
-                        pass
-                except Exception as inner_e:
-                    logger.error(f"❌ 同步直连MongoDB获取股票列表失败: {inner_e}")
-
-            if codes:
-                logger.info(f"📊 从 MongoDB 获取到 {len(codes)} 只A股股票")
-                return codes
-            else:
-                logger.warning("⚠️ MongoDB 中未找到股票数据，使用兜底股票列表")
-                return ["000001", "000002", "000858", "600519", "600036", "601318", "300750"]
-
-        except Exception as e:
-            logger.error(f"❌ 从 MongoDB 获取股票列表失败: {e}")
-            return ["000001", "000002", "000858", "600519", "600036", "601318", "300750"]
-
+        return {"total": total, "items": page_items}

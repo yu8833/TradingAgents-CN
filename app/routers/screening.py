@@ -127,11 +127,6 @@ async def run_screening(request: Request, user: dict = Depends(get_current_user)
             raw_conditions = raw_body["children"]
 
         # 映射字段名和操作符
-        # 对数据库中全部为 None 的技术标志字段做安全跳过
-        from app.core.database import get_mongo_db
-        db = get_mongo_db()
-        col = db["stock_screening_view"]
-
         conditions: List[Dict[str, Any]] = []
         for c in raw_conditions:
             if not isinstance(c, dict):
@@ -142,17 +137,6 @@ async def run_screening(request: Request, user: dict = Depends(get_current_user)
             value = c.get("value")
             if not fld or value is None:
                 continue
-
-            # 对技术标志字段做安全检查：如果数据库中该字段全部为 None，则跳过
-            if fld in _FLAG_FIELDS:
-                non_null_count = await col.count_documents(
-                    {fld: {"$exists": True, "$ne": None}}
-                )
-                if non_null_count == 0:
-                    logger.info(
-                        f"[screening] 跳过空数据字段 {fld}（数据库中无有效数据）"
-                    )
-                    continue
 
             conditions.append({"field": fld, "operator": op, "value": value})
 

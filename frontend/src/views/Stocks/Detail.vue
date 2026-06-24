@@ -199,6 +199,102 @@
           </div>
         </el-card>
 
+        <!-- 风险分析：位于K线图下方、新闻上方 -->
+        <el-card v-if="riskAnalysis || riskLoading" shadow="hover" class="risk-card" id="risk-analysis">
+          <template #header>
+            <div class="card-hd">
+              <div class="risk-header-title">
+                <el-icon class="risk-icon"><Warning /></el-icon>
+                风险分析
+              </div>
+              <span class="risk-source">数据源：{{ riskAnalysis?.source || '-' }}</span>
+            </div>
+          </template>
+          <el-skeleton v-if="riskLoading" :rows="6" animated />
+          <div v-else-if="riskAnalysis" class="risk-content">
+            <!-- 评分概览 -->
+            <div class="risk-overview">
+              <div class="score-ring">
+                <svg viewBox="0 0 120 120" class="score-svg">
+                  <circle cx="60" cy="60" r="50" fill="none" stroke="#e8eaed" stroke-width="10" />
+                  <circle
+                    cx="60" cy="60" r="50" fill="none"
+                    :stroke="getRiskScoreColor(riskAnalysis.score)"
+                    stroke-width="10"
+                    stroke-linecap="round"
+                    :stroke-dasharray="(riskAnalysis.score / 100) * 314 + ' 314'"
+                    transform="rotate(-90 60 60)"
+                  />
+                </svg>
+                <div class="score-text">
+                  <div class="score-num" :style="{ color: getRiskScoreColor(riskAnalysis.score) }">
+                    {{ riskAnalysis.score }}
+                  </div>
+                  <div class="score-label">综合评分</div>
+                </div>
+              </div>
+              <div class="score-stats">
+                <div class="stat-item">
+                  <div class="stat-num">{{ riskAnalysis.total }}</div>
+                  <div class="stat-label">总检查项</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-num risk">{{ riskAnalysis.risk_count }}</div>
+                  <div class="stat-label">风险项</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-num safe">{{ riskAnalysis.safe_count }}</div>
+                  <div class="stat-label">安全项</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 风险分类 -->
+            <div class="risk-categories">
+              <div v-for="(cat, idx) in riskAnalysis.categories" :key="idx" class="risk-category">
+                <div class="cat-header">
+                  <span class="cat-name">{{ cat.name }}</span>
+                  <el-tag size="small" :type="cat.risk_count > 0 ? 'danger' : 'success'" effect="plain">
+                    {{ cat.risk_count > 0 ? cat.risk_count + ' 项风险' : '全部安全' }}
+                  </el-tag>
+                </div>
+                <div class="cat-items">
+                  <!-- 风险项 -->
+                  <div
+                    v-for="item in cat.risk_items"
+                    :key="'r-' + item.id"
+                    class="risk-item is-risk"
+                    :class="{ 'has-reason': item.reason, 'expanded': expandedRiskItems.has(item.id) }"
+                    @click="item.reason && toggleRiskItem(item.id)"
+                  >
+                    <div class="item-head">
+                      <el-icon class="item-icon"><WarningFilled /></el-icon>
+                      <span class="item-name">{{ item.name }}</span>
+                      <el-tag v-if="item.score !== undefined" size="small" type="danger" effect="plain" class="item-score">
+                        {{ item.score }}分
+                      </el-tag>
+                      <el-icon v-if="item.reason" class="expand-icon">
+                        <CaretBottom v-if="!expandedRiskItems.has(item.id)" />
+                        <CaretTop v-else />
+                      </el-icon>
+                    </div>
+                    <div v-if="item.reason && expandedRiskItems.has(item.id)" class="item-reason">
+                      <div class="reason-title">风险原因：</div>
+                      <div class="reason-content">{{ item.reason }}</div>
+                    </div>
+                  </div>
+                  <!-- 安全项 -->
+                  <div v-for="item in cat.safe_items" :key="'s-' + item.id" class="risk-item is-safe">
+                    <el-icon class="item-icon"><CircleCheckFilled /></el-icon>
+                    <span class="item-name">{{ item.name }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <el-empty v-else description="暂无风险分析数据" />
+        </el-card>
+
         <!-- 新闻与公告：位于详细分析结果下方 -->
         <el-card shadow="hover" class="news-card">
           <template #header>
@@ -359,7 +455,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { TrendCharts, Star, Refresh, Link, Document, Clock, Reading, CreditCard, Delete } from '@element-plus/icons-vue'
+import { TrendCharts, Star, Refresh, Link, Document, Clock, Reading, CreditCard, Delete, Warning, WarningFilled, CircleCheckFilled, CaretBottom, CaretTop } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import { stocksApi } from '@/api/stocks'
 import { analysisApi } from '@/api/analysis'
@@ -635,7 +731,8 @@ async function clearCache() {
       fetchQuote(),
       fetchFundamentals(),
       fetchKline(),
-      fetchNews()
+      fetchNews(),
+      fetchRiskAnalysis()
     ])
 
     ElMessage.success('数据已刷新')
@@ -743,6 +840,7 @@ async function loadPageData() {
     fetchFundamentals(),
     fetchKline(),
     fetchNews(),
+    fetchRiskAnalysis(),
     checkFavorite(),
     fetchLatestAnalysis(),  // 获取最新的历史分析报告
     fetchSyncStatus()  // 获取同步状态
@@ -756,6 +854,7 @@ function resetPageState() {
   syncStatus.value = null
   newsItems.value = []
   newsSource.value = undefined
+  riskAnalysis.value = null
   lastAnalysis.value = null
   lastTaskInfo.value = null
   analysisStatus.value = 'idle'
@@ -886,6 +985,39 @@ const filteredNews = computed(() => {
   if (newsFilter.value === 'announcement') return newsItems.value.filter(x => x.type === 'announcement')
   return newsItems.value
 })
+
+// 风险分析
+const riskAnalysis = ref<any>(null)
+const riskLoading = ref(false)
+
+async function fetchRiskAnalysis() {
+  try {
+    riskLoading.value = true
+    const res = await stocksApi.getRiskAnalysis(code.value)
+    riskAnalysis.value = (res as any)?.data || null
+  } catch (e) {
+    console.error('获取风险分析失败', e)
+    riskAnalysis.value = null
+  } finally {
+    riskLoading.value = false
+  }
+}
+
+function getRiskScoreColor(score: number): string {
+  if (score >= 80) return '#10b068'
+  if (score >= 60) return '#f09832'
+  return '#ff4d4f'
+}
+
+const expandedRiskItems = ref<Set<number>>(new Set())
+
+function toggleRiskItem(id: number) {
+  if (expandedRiskItems.value.has(id)) {
+    expandedRiskItems.value.delete(id)
+  } else {
+    expandedRiskItems.value.add(id)
+  }
+}
 
 // 基本面（mock）
 const basics = reactive({
@@ -1543,5 +1675,227 @@ function exportReport() {
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
+}
+
+/* 风险分析卡片 */
+.risk-card {
+  .risk-header-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+
+    .risk-icon {
+      color: #f09832;
+      font-size: 18px;
+    }
+  }
+
+  .risk-source {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+}
+
+.risk-content {
+  .risk-overview {
+    display: flex;
+    align-items: center;
+    gap: 40px;
+    padding: 20px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+    border-radius: 12px;
+    margin-bottom: 20px;
+  }
+
+  .score-ring {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    flex-shrink: 0;
+
+    .score-svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .score-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+
+      .score-num {
+        font-size: 32px;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .score-label {
+        font-size: 12px;
+        color: var(--el-text-color-secondary);
+        margin-top: 4px;
+      }
+    }
+  }
+
+  .score-stats {
+    display: flex;
+    gap: 32px;
+    flex: 1;
+
+    .stat-item {
+      text-align: center;
+
+      .stat-num {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--el-text-color-primary);
+        line-height: 1;
+
+        &.risk {
+          color: #f56c6c;
+        }
+
+        &.safe {
+          color: #67c23a;
+        }
+      }
+
+      .stat-label {
+        font-size: 13px;
+        color: var(--el-text-color-secondary);
+        margin-top: 8px;
+      }
+    }
+  }
+
+  .risk-categories {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .risk-category {
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.2s ease;
+
+    &:hover {
+      border-color: var(--el-color-primary-light-5);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .cat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+
+      .cat-name {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--el-text-color-primary);
+      }
+    }
+
+    .cat-items {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .risk-item {
+      font-size: 13px;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+
+      &.is-risk {
+        color: #f56c6c;
+
+        &.has-reason {
+          cursor: pointer;
+
+          &:hover {
+            background: rgba(245, 108, 108, 0.06);
+          }
+        }
+
+        &.expanded {
+          background: rgba(245, 108, 108, 0.06);
+        }
+
+        .item-icon {
+          color: #f56c6c;
+        }
+      }
+
+      &.is-safe {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        color: var(--el-text-color-regular);
+
+        .item-icon {
+          color: #67c23a;
+        }
+      }
+
+      .item-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+
+        .item-icon {
+          flex-shrink: 0;
+          font-size: 14px;
+        }
+
+        .item-name {
+          flex: 1;
+          line-height: 1.4;
+        }
+
+        .item-score {
+          flex-shrink: 0;
+          font-size: 11px;
+        }
+
+        .expand-icon {
+          flex-shrink: 0;
+          font-size: 12px;
+          opacity: 0.6;
+          transition: transform 0.2s ease;
+        }
+      }
+
+      .item-reason {
+        padding: 0 12px 10px 30px;
+
+        .reason-title {
+          font-size: 12px;
+          font-weight: 600;
+          color: #f56c6c;
+          margin-bottom: 4px;
+        }
+
+        .reason-content {
+          font-size: 12px;
+          color: var(--el-text-color-regular);
+          line-height: 1.6;
+          white-space: pre-wrap;
+          word-break: break-all;
+        }
+      }
+
+      .item-name {
+        line-height: 1.4;
+      }
+    }
+  }
 }
 </style>

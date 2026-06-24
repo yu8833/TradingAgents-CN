@@ -12,7 +12,14 @@ import numpy as np
 # 标志字段集（技术信号类筛选）
 FLAG_FIELDS = frozenset({
     "macd_golden_fork", "kdj_golden_fork",
+    "macd_golden_fork_n", "kdj_golden_fork_n",  # 近N日金叉
     "ma5_cross", "ma10_cross", "ma20_cross", "ma60_cross",
+    # 均线多头/空头排列（复合信号）
+    "ma_bullish", "ma_bearish",
+    # 布林带突破信号
+    "boll_break_upper", "boll_break_lower",
+    # 均线金叉（MA5上穿MA10等）
+    "ma5_ma10_golden", "ma10_ma20_golden",
 })
 
 
@@ -334,6 +341,144 @@ def _evaluate_flag(df: pd.DataFrame, field: str, op: str, right: Any) -> bool:
             return False
         above = close > ma
         return above if want_true else not above
+
+    # 均线多头排列：ma5 > ma10 > ma20 > ma60
+    if field == "ma_bullish":
+        t0 = df.iloc[-1]
+        try:
+            ma5 = float(t0.get("ma5")) if t0.get("ma5") is not None else None
+            ma10 = float(t0.get("ma10")) if t0.get("ma10") is not None else None
+            ma20 = float(t0.get("ma20")) if t0.get("ma20") is not None else None
+            ma60 = float(t0.get("ma60")) if t0.get("ma60") is not None else None
+        except Exception:
+            return False
+        vals = (ma5, ma10, ma20, ma60)
+        if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in vals):
+            return False
+        bullish = (ma5 > ma10) and (ma10 > ma20) and (ma20 > ma60)
+        return bullish if want_true else not bullish
+
+    # 均线空头排列：ma5 < ma10 < ma20 < ma60
+    if field == "ma_bearish":
+        t0 = df.iloc[-1]
+        try:
+            ma5 = float(t0.get("ma5")) if t0.get("ma5") is not None else None
+            ma10 = float(t0.get("ma10")) if t0.get("ma10") is not None else None
+            ma20 = float(t0.get("ma20")) if t0.get("ma20") is not None else None
+            ma60 = float(t0.get("ma60")) if t0.get("ma60") is not None else None
+        except Exception:
+            return False
+        vals = (ma5, ma10, ma20, ma60)
+        if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in vals):
+            return False
+        bearish = (ma5 < ma10) and (ma10 < ma20) and (ma20 < ma60)
+        return bearish if want_true else not bearish
+
+    # 布林带突破：收盘价突破上轨
+    if field == "boll_break_upper":
+        t0 = df.iloc[-1]
+        try:
+            close = float(t0.get("close")) if t0.get("close") is not None else None
+            boll_upper = float(t0.get("boll_upper")) if t0.get("boll_upper") is not None else None
+        except Exception:
+            return False
+        if close is None or boll_upper is None or np.isnan(close) or np.isnan(boll_upper):
+            return False
+        broken = close > boll_upper
+        return broken if want_true else not broken
+
+    # 布林带下轨跌破：收盘价跌破下轨
+    if field == "boll_break_lower":
+        t0 = df.iloc[-1]
+        try:
+            close = float(t0.get("close")) if t0.get("close") is not None else None
+            boll_lower = float(t0.get("boll_lower")) if t0.get("boll_lower") is not None else None
+        except Exception:
+            return False
+        if close is None or boll_lower is None or np.isnan(close) or np.isnan(boll_lower):
+            return False
+        broken = close < boll_lower
+        return broken if want_true else not broken
+
+    # MA5 上穿 MA10（均线金叉）
+    if field == "ma5_ma10_golden":
+        t0 = df.iloc[-1]
+        t1 = df.iloc[-2] if len(df) >= 2 else t0
+        try:
+            ma5_0 = float(t0.get("ma5")) if t0.get("ma5") is not None else None
+            ma5_1 = float(t1.get("ma5")) if t1.get("ma5") is not None else None
+            ma10_0 = float(t0.get("ma10")) if t0.get("ma10") is not None else None
+            ma10_1 = float(t1.get("ma10")) if t1.get("ma10") is not None else None
+        except Exception:
+            return False
+        vals = (ma5_0, ma5_1, ma10_0, ma10_1)
+        if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in vals):
+            return False
+        golden = (ma5_1 <= ma10_1) and (ma5_0 > ma10_0)
+        return golden if want_true else not golden
+
+    # MA10 上穿 MA20（均线金叉）
+    if field == "ma10_ma20_golden":
+        t0 = df.iloc[-1]
+        t1 = df.iloc[-2] if len(df) >= 2 else t0
+        try:
+            ma10_0 = float(t0.get("ma10")) if t0.get("ma10") is not None else None
+            ma10_1 = float(t1.get("ma10")) if t1.get("ma10") is not None else None
+            ma20_0 = float(t0.get("ma20")) if t0.get("ma20") is not None else None
+            ma20_1 = float(t1.get("ma20")) if t1.get("ma20") is not None else None
+        except Exception:
+            return False
+        vals = (ma10_0, ma10_1, ma20_0, ma20_1)
+        if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in vals):
+            return False
+        golden = (ma10_1 <= ma20_1) and (ma10_0 > ma20_0)
+        return golden if want_true else not golden
+
+    # 近N日金叉（value 为整数 N 表示近N日内）
+    if field in {"macd_golden_fork_n", "kdj_golden_fork_n"}:
+        # value 为 int 时表示近N日内（金叉当天+N-1天内出现过金叉）
+        lookback = int(right) if isinstance(right, int) else 1
+        lookback = max(1, min(lookback, 30))  # 限制范围 1-30
+        base_field = field.replace("_fork_n", "_golden_fork")
+
+        # 检查最近 N 根K线中是否有金叉（DIF从上穿越DEA）
+        # i=1表示昨天，i=lookback表示lookback天前
+        _golden_found = False
+        for i in range(1, min(lookback + 1, len(df))):
+            # t_i: i天前的K线（i=1为昨天）
+            t_i = df.iloc[-i]
+            # t_ip1: (i+1)天前的K线（i=1为前天）
+            t_ip1 = df.iloc[-i - 1] if i < len(df) - 1 else t_i
+            try:
+                if base_field == "macd_golden_fork":
+                    # 金叉：dif从下面穿越dea
+                    # 条件：(i+1)天前 dif <= dea AND i天前 dif > dea
+                    dif_i = float(t_i.get("dif")) if t_i.get("dif") is not None else None
+                    dif_ip1 = float(t_ip1.get("dif")) if t_ip1.get("dif") is not None else None
+                    dea_i = float(t_i.get("dea")) if t_i.get("dea") is not None else None
+                    dea_ip1 = float(t_ip1.get("dea")) if t_ip1.get("dea") is not None else None
+                    vals = (dif_i, dif_ip1, dea_i, dea_ip1)
+                    if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in vals):
+                        continue
+                    # 金叉：(i+1)天前 dif<=dea AND i天前 dif>dea
+                    _golden_found = (dif_ip1 <= dea_ip1) and (dif_i > dea_i)
+                elif base_field == "kdj_golden_fork":
+                    # 金叉：kdj_k从下面穿越kdj_d
+                    k_i = float(t_i.get("kdj_k")) if t_i.get("kdj_k") is not None else None
+                    k_ip1 = float(t_ip1.get("kdj_k")) if t_ip1.get("kdj_k") is not None else None
+                    d_i = float(t_i.get("kdj_d")) if t_i.get("kdj_d") is not None else None
+                    d_ip1 = float(t_ip1.get("kdj_d")) if t_ip1.get("kdj_d") is not None else None
+                    vals = (k_i, k_ip1, d_i, d_ip1)
+                    if any(v is None or (isinstance(v, float) and np.isnan(v)) for v in vals):
+                        continue
+                    _golden_found = (k_ip1 <= d_ip1) and (k_i > d_i)
+                else:
+                    continue
+                if _golden_found:
+                    return True if want_true else False
+            except Exception:
+                continue
+        return False if want_true else True
 
     return False
 

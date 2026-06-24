@@ -80,6 +80,40 @@ export interface NewsResponse {
   items: NewsItem[]
 }
 
+export interface RiskSubItem {
+  id: number
+  name: string
+  trig: boolean
+  level?: number
+  score?: number
+}
+
+export interface RiskItem {
+  id: number
+  name: string
+  trig: boolean
+  sub_items: RiskSubItem[]
+}
+
+export interface RiskCategory {
+  name: string
+  total: number
+  risk_count: number
+  risk_items: RiskItem[]
+  safe_items: RiskItem[]
+}
+
+export interface RiskAnalysisResponse {
+  code: string
+  name: string
+  total: number
+  risk_count: number
+  safe_count: number
+  score: number
+  categories: RiskCategory[]
+  source: string
+}
+
 export const stocksApi = {
   /**
    * 获取股票行情
@@ -118,6 +152,14 @@ export const stocksApi = {
    */
   async getNews(symbol: string, days = 30, limit = 50, includeAnnouncements = true) {
     return ApiClient.get<NewsResponse>(`/api/stocks/${symbol}/news`, { days, limit, include_announcements: includeAnnouncements })
+  },
+
+  /**
+   * 获取股票风险分析数据
+   * @param symbol 6位股票代码
+   */
+  async getRiskAnalysis(symbol: string) {
+    return ApiClient.get<RiskAnalysisResponse>(`/api/stocks/${symbol}/risk-analysis`)
   }
 }
 

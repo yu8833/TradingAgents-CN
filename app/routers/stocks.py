@@ -787,3 +787,123 @@ async def get_news(code: str, days: int = 30, limit: int = 50, include_announcem
             }
             return ok(data)
 
+
+@router.get("/{code}/risk-analysis", response_model=dict)
+async def get_risk_analysis(
+    code: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    获取股票风险分析数据（来自通达信）
+
+    仅支持A股，返回风险评分、风险分类、风险项等信息。
+
+    参数：
+    - code: 股票代码
+
+    返回：
+    - total: 总检查项数
+    - num: 风险项数
+    - name: 股票名称
+    - score: 风险评分（满分100）
+    - categories: 风险分类列表
+    """
+    import httpx
+
+    market, normalized_code = _detect_market_and_code(code)
+
+    if market != 'CN':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="风险分析仅支持A股"
+        )
+
+    try:
+        url = f"http://page1.tdx.com.cn:7615/site/pcwebcall_static/bxb/json/{normalized_code}.json"
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            raw_data = response.json()
+
+        total = raw_data.get("total", 0)
+        num = raw_data.get("num", 0)
+        name = raw_data.get("name", "")
+        raw_categories = raw_data.get("data", [])
+
+        score = max(0, min(100, 100 - num * 5)) if total > 0 else 0
+
+        categories = []
+        for cat in raw_categories:
+            cat_name = cat.get("name", "")
+            rows = cat.get("rows", [])
+
+            risk_items = []
+            safe_items = []
+
+            for row in rows:
+                trig_yy = row.get("trigyy") or ""
+                trig_yy = trig_yy.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+
+                item = {
+                    "id": row.get("id"),
+                    "name": row.get("lx", ""),
+                    "trig": row.get("trig", 0) == 1,
+                    "score": row.get("fs"),
+                    "reason": trig_yy if trig_yy else None,
+                    "sub_items": []
+                }
+
+                sub_items = row.get("commonlxid", [])
+                if sub_items:
+                    for sub in sub_items:
+                        sub_trig_yy = sub.get("trigyy") or ""
+                        sub_trig_yy = sub_trig_yy.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+                        item["sub_items"].append({
+                            "id": sub.get("id"),
+                            "name": sub.get("lx", ""),
+                            "trig": sub.get("trig", 0) == 1,
+                            "level": sub.get("level"),
+                            "score": sub.get("fs"),
+                            "reason": sub_trig_yy if sub_trig_yy else None
+                        })
+
+                if item["trig"]:
+                    risk_items.append(item)
+                else:
+                    safe_items.append(item)
+
+            categories.append({
+                "name": cat_name,
+                "total": len(rows),
+                "risk_count": len(risk_items),
+                "risk_items": risk_items,
+                "safe_items": safe_items
+            })
+
+        result = {
+            "code": normalized_code,
+            "name": name,
+            "total": total,
+            "risk_count": num,
+            "safe_count": total - num,
+            "score": score,
+            "categories": categories,
+            "source": "通达信"
+        }
+
+        return ok(result)
+
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"获取风险分析数据HTTP错误: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"未找到该股票的风险分析数据"
+        )
+    except Exception as e:
+        logger.error(f"获取风险分析数据失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"获取风险分析数据失败: {str(e)}"
+        )
+
