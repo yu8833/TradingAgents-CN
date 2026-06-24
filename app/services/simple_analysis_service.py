@@ -517,8 +517,8 @@ class SimpleAnalysisService:
         except Exception as e:
             logger.warning(f"⚠️ [异步更新] 失败: {e}")
 
-    def _resolve_stock_name(self, code: Optional[str]) -> str:
-        """解析股票名称（带缓存）"""
+    async def _resolve_stock_name(self, code: Optional[str]) -> str:
+        """解析股票名称（带缓存）- 从数据库stock_basic_info表查询"""
         if not code:
             return ""
         # 命中缓存
@@ -526,26 +526,52 @@ class SimpleAnalysisService:
             return self._stock_name_cache[code]
         name = None
         try:
-            if _get_stock_info_safe:
-                info = _get_stock_info_safe(code)
-                if isinstance(info, dict):
-                    name = info.get("name")
+            # 从数据库 stock_basic_info 表查询股票名称
+            db = get_mongo_db()
+            code6 = str(code).strip().zfill(6)
+            
+            # 按数据源优先级查询
+            source_priority = ["tushare", "multi_source", "akshare", "baostock"]
+            for src in source_priority:
+                b = await db["stock_basic_info"].find_one(
+                    {"code": code6, "source": src},
+                    {"name": 1, "_id": 0}
+                )
+                if b and b.get("name"):
+                    name = b["name"]
+                    break
+            
+            # 如果所有数据源都没有，尝试不带 source 条件查询（兼容旧数据）
+            if not name:
+                b = await db["stock_basic_info"].find_one(
+                    {"code": code6},
+                    {"name": 1, "_id": 0}
+                )
+                if b and b.get("name"):
+                    name = b["name"]
         except Exception as e:
             logger.warning(f"⚠️ 获取股票名称失败: {code} - {e}")
+        
         if not name:
             name = f"股票{code}"
         # 写缓存
         self._stock_name_cache[code] = name
         return name
 
-    def _enrich_stock_names(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _enrich_stock_names(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """为任务列表补齐股票名称(就地更新)"""
+        import re
         try:
             for t in tasks:
                 code = t.get("stock_code") or t.get("stock_symbol")
                 name = t.get("stock_name")
-                if not name and code:
-                    t["stock_name"] = self._resolve_stock_name(code)
+                # 如果没有名称，或者是兜底格式的名称（以"股票"开头后跟数字），则重新查询
+                is_placeholder = False
+                if name and isinstance(name, str):
+                    if re.match(r'^股票\d+$', name):
+                        is_placeholder = True
+                if (not name or is_placeholder) and code:
+                    t["stock_name"] = await self._resolve_stock_name(code)
         except Exception as e:
             logger.warning(f"⚠️ 补齐股票名称时出现异常: {e}")
         return tasks
@@ -625,7 +651,7 @@ class SimpleAnalysisService:
                 user_id=user_id,
                 stock_code=stock_code,
                 parameters=request.parameters.model_dump() if request.parameters else {},
-                stock_name=(self._resolve_stock_name(stock_code) if hasattr(self, '_resolve_stock_name') else None),
+                stock_name=(await self._resolve_stock_name(stock_code) if hasattr(self, '_resolve_stock_name') else None),
             )
 
             logger.info(f"✅ 任务状态已创建: {task_state.task_id}")
@@ -639,7 +665,7 @@ class SimpleAnalysisService:
 
             # 补齐股票名称并写入数据库任务文档的初始记录
             code = stock_code
-            name = self._resolve_stock_name(code) if hasattr(self, '_resolve_stock_name') else f"股票{code}"
+            name = await self._resolve_stock_name(code) if hasattr(self, '_resolve_stock_name') else f"股票{code}"
 
             try:
                 db = get_mongo_db()
@@ -1901,7 +1927,7 @@ class SimpleAnalysisService:
             results = merged_tasks[offset:offset + limit]
 
             # 为结果补齐股票名称
-            results = self._enrich_stock_names(results)
+            results = await self._enrich_stock_names(results)
             logger.info(f"📋 [Tasks] 合并后返回数量: {len(results)} (内存: {len(tasks_in_mem)}, MongoDB: {count})")
             return results
         except Exception as outer_e:
@@ -2102,7 +2128,7 @@ class SimpleAnalysisService:
                                 task[time_field] = value.replace(' ', 'T') + '+08:00'
 
             # 为结果补齐股票名称
-            results = self._enrich_stock_names(results)
+            results = await self._enrich_stock_names(results)
             logger.info(f"📋 [Tasks] 合并后返回数量: {len(results)} (内存: {len(tasks_in_mem)}, MongoDB: {count})")
             return results
         except Exception as outer_e:
