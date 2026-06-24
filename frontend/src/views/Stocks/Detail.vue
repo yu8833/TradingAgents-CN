@@ -264,8 +264,8 @@
                     v-for="item in cat.risk_items"
                     :key="'r-' + item.id"
                     class="risk-item is-risk"
-                    :class="{ 'has-reason': item.reason, 'expanded': expandedRiskItems.has(item.id) }"
-                    @click="item.reason && toggleRiskItem(item.id)"
+                    :class="{ 'has-detail': hasItemDetail(item), 'expanded': expandedRiskItems.has(item.id) }"
+                    @click="hasItemDetail(item) && toggleRiskItem(item.id)"
                   >
                     <div class="item-head">
                       <el-icon class="item-icon"><WarningFilled /></el-icon>
@@ -273,20 +273,90 @@
                       <el-tag v-if="item.score !== undefined" size="small" type="danger" effect="plain" class="item-score">
                         {{ item.score }}分
                       </el-tag>
-                      <el-icon v-if="item.reason" class="expand-icon">
+                      <el-icon v-if="hasItemDetail(item)" class="expand-icon">
                         <CaretBottom v-if="!expandedRiskItems.has(item.id)" />
                         <CaretTop v-else />
                       </el-icon>
                     </div>
-                    <div v-if="item.reason && expandedRiskItems.has(item.id)" class="item-reason">
-                      <div class="reason-title">风险原因：</div>
-                      <div class="reason-content">{{ item.reason }}</div>
+                    <div v-if="hasItemDetail(item) && expandedRiskItems.has(item.id)" class="item-detail">
+                      <div v-if="item.reason" class="item-reason">
+                        <div class="reason-title">风险原因：</div>
+                        <div class="reason-content">{{ item.reason }}</div>
+                      </div>
+                      <div v-if="item.sub_items && item.sub_items.length > 0" class="sub-items">
+                        <div class="sub-title">检查细项（{{ item.sub_items.length }}项）：</div>
+                        <div
+                          v-for="sub in item.sub_items"
+                          :key="sub.id"
+                          class="sub-item"
+                          :class="sub.trig ? 'is-risk' : 'is-safe'"
+                        >
+                          <el-icon class="sub-icon">
+                            <WarningFilled v-if="sub.trig" />
+                            <CircleCheckFilled v-else />
+                          </el-icon>
+                          <span class="sub-name">{{ sub.name }}</span>
+                          <el-tag
+                            v-if="sub.score !== undefined"
+                            size="small"
+                            :type="sub.trig ? 'danger' : 'success'"
+                            effect="plain"
+                            class="sub-score"
+                          >
+                            {{ sub.score }}分
+                          </el-tag>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <!-- 安全项 -->
-                  <div v-for="item in cat.safe_items" :key="'s-' + item.id" class="risk-item is-safe">
-                    <el-icon class="item-icon"><CircleCheckFilled /></el-icon>
-                    <span class="item-name">{{ item.name }}</span>
+                  <div
+                    v-for="item in cat.safe_items"
+                    :key="'s-' + item.id"
+                    class="risk-item is-safe"
+                    :class="{ 'has-detail': item.sub_items && item.sub_items.length > 0, 'expanded': expandedRiskItems.has(item.id) }"
+                    @click="item.sub_items && item.sub_items.length > 0 && toggleRiskItem(item.id)"
+                  >
+                    <div class="item-head">
+                      <el-icon class="item-icon"><CircleCheckFilled /></el-icon>
+                      <span class="item-name">{{ item.name }}</span>
+                      <el-icon
+                        v-if="item.sub_items && item.sub_items.length > 0"
+                        class="expand-icon"
+                      >
+                        <CaretBottom v-if="!expandedRiskItems.has(item.id)" />
+                        <CaretTop v-else />
+                      </el-icon>
+                    </div>
+                    <div
+                      v-if="item.sub_items && item.sub_items.length > 0 && expandedRiskItems.has(item.id)"
+                      class="item-detail"
+                    >
+                      <div class="sub-items">
+                        <div class="sub-title">检查细项（{{ item.sub_items.length }}项）：</div>
+                        <div
+                          v-for="sub in item.sub_items"
+                          :key="sub.id"
+                          class="sub-item"
+                          :class="sub.trig ? 'is-risk' : 'is-safe'"
+                        >
+                          <el-icon class="sub-icon">
+                            <WarningFilled v-if="sub.trig" />
+                            <CircleCheckFilled v-else />
+                          </el-icon>
+                          <span class="sub-name">{{ sub.name }}</span>
+                          <el-tag
+                            v-if="sub.score !== undefined"
+                            size="small"
+                            :type="sub.trig ? 'danger' : 'success'"
+                            effect="plain"
+                            class="sub-score"
+                          >
+                            {{ sub.score }}分
+                          </el-tag>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -360,6 +430,85 @@
             <div class="fact"><span>PS(TTM)</span><b>{{ Number.isFinite(basics.ps) ? basics.ps.toFixed(2) : '-' }}</b></div>
             <div class="fact"><span>ROE</span><b>{{ fmtPercent(basics.roe) }}</b></div>
             <div class="fact"><span>负债率</span><b>{{ fmtPercent(basics.debtRatio) }}</b></div>
+          </div>
+        </el-card>
+
+        <!-- 主要财务指标 -->
+        <el-card v-if="financialDetail" shadow="hover" class="financial-card">
+          <template #header>
+            <div class="card-hd">
+              <span>主要财务指标</span>
+              <span class="fin-period">{{ financialDetail.report_period || '-' }}</span>
+            </div>
+          </template>
+          <div class="financial-content">
+            <div class="fin-section">
+              <div class="fin-section-title">利润与成长</div>
+              <div class="fin-grid">
+                <div class="fin-item">
+                  <span class="fin-label">营业收入</span>
+                  <span class="fin-value">{{ fmtFinAmount(financialDetail.revenue_ttm || financialDetail.revenue) }}</span>
+                  <span v-if="financialDetail.revenue_yoy !== undefined && financialDetail.revenue_yoy !== null" class="fin-change" :class="getChangeClass(financialDetail.revenue_yoy)">
+                    {{ fmtPercent(financialDetail.revenue_yoy) }}
+                  </span>
+                </div>
+                <div class="fin-item">
+                  <span class="fin-label">净利润</span>
+                  <span class="fin-value">{{ fmtFinAmount(financialDetail.net_profit_ttm || financialDetail.net_profit) }}</span>
+                  <span v-if="financialDetail.net_profit_yoy !== undefined && financialDetail.net_profit_yoy !== null" class="fin-change" :class="getChangeClass(financialDetail.net_profit_yoy)">
+                    {{ fmtPercent(financialDetail.net_profit_yoy) }}
+                  </span>
+                </div>
+                <div class="fin-item">
+                  <span class="fin-label">毛利率</span>
+                  <span class="fin-value">{{ fmtPercent(financialDetail.gross_margin) }}</span>
+                </div>
+                <div class="fin-item">
+                  <span class="fin-label">净利率</span>
+                  <span class="fin-value">{{ fmtPercent(financialDetail.net_margin) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="fin-section">
+              <div class="fin-section-title">盈利能力</div>
+              <div class="fin-grid">
+                <div class="fin-item">
+                  <span class="fin-label">ROE</span>
+                  <span class="fin-value">{{ fmtPercent(basics.roe) }}</span>
+                </div>
+                <div class="fin-item">
+                  <span class="fin-label">ROA</span>
+                  <span class="fin-value">{{ fmtPercent(financialDetail.roa) }}</span>
+                </div>
+                <div class="fin-item">
+                  <span class="fin-label">每股收益</span>
+                  <span class="fin-value">{{ financialDetail.eps !== undefined && financialDetail.eps !== null ? financialDetail.eps.toFixed(2) + '元' : '-' }}</span>
+                </div>
+                <div class="fin-item">
+                  <span class="fin-label">每股净资产</span>
+                  <span class="fin-value">{{ financialDetail.bps !== undefined && financialDetail.bps !== null ? financialDetail.bps.toFixed(2) + '元' : '-' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="fin-section">
+              <div class="fin-section-title">偿债能力</div>
+              <div class="fin-grid">
+                <div class="fin-item">
+                  <span class="fin-label">资产负债率</span>
+                  <span class="fin-value">{{ fmtPercent(basics.debtRatio) }}</span>
+                </div>
+                <div class="fin-item">
+                  <span class="fin-label">流动比率</span>
+                  <span class="fin-value">{{ financialDetail.current_ratio !== undefined && financialDetail.current_ratio !== null ? financialDetail.current_ratio.toFixed(2) : '-' }}</span>
+                </div>
+                <div class="fin-item">
+                  <span class="fin-label">速动比率</span>
+                  <span class="fin-value">{{ financialDetail.quick_ratio !== undefined && financialDetail.quick_ratio !== null ? financialDetail.quick_ratio.toFixed(2) : '-' }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </el-card>
 
@@ -804,6 +953,11 @@ async function fetchFundamentals() {
     const ff: any = f
     basics.debtRatio = Number.isFinite(ff.debt_ratio) ? Number(ff.debt_ratio) : basics.debtRatio
 
+    // 财务详情数据
+    if (f.financial_detail) {
+      financialDetail.value = f.financial_detail
+    }
+
     // 获取PE/PB的实时标识
     basics.peIsRealtime = ff.pe_is_realtime || false
     basics.peSource = ff.pe_source || ''
@@ -1011,6 +1165,13 @@ function getRiskScoreColor(score: number): string {
 
 const expandedRiskItems = ref<Set<number>>(new Set())
 
+function hasItemDetail(item: any) {
+  if (!item) return false
+  if (item.reason) return true
+  if (item.sub_items && item.sub_items.length > 0) return true
+  return false
+}
+
 function toggleRiskItem(id: number) {
   if (expandedRiskItems.value.has(id)) {
     expandedRiskItems.value.delete(id)
@@ -1033,6 +1194,9 @@ const basics = reactive({
   peSource: '',         // PE数据来源
   peUpdatedAt: null     // PE更新时间
 })
+
+// 财务详情数据
+const financialDetail = ref<any>(null)
 
 // 操作
 function onAnalyze() {
@@ -1163,6 +1327,30 @@ function fmtAmount(v: any) {
   if (n >= 1e8) return (n/1e8).toFixed(2) + '亿'
   if (n >= 1e4) return (n/1e4).toFixed(2) + '万'
   return n.toFixed(0)
+}
+
+// 财务金额格式化（后端可能为元，也可能为亿元，统一做友好显示）
+function fmtFinAmount(v: any) {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '-'
+  // 如果数值很大（大于1万），认为单位是元
+  if (Math.abs(n) >= 10000) {
+    if (Math.abs(n) >= 1e12) return (n/1e12).toFixed(2) + '万亿'
+    if (Math.abs(n) >= 1e8) return (n/1e8).toFixed(2) + '亿'
+    if (Math.abs(n) >= 1e4) return (n/1e4).toFixed(2) + '万'
+    return n.toFixed(0)
+  }
+  // 数值较小，可能已经是亿元或其他单位，直接保留两位小数
+  return n.toFixed(2)
+}
+
+// 获取涨跌幅颜色类
+function getChangeClass(v: any): string {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return ''
+  if (n > 0) return 'up'
+  if (n < 0) return 'down'
+  return ''
 }
 // 🔥 新增：格式化同步时间（添加时区标识）
 function formatSyncTime(timeStr: string | null | undefined): string {
@@ -1815,7 +2003,7 @@ function exportReport() {
       &.is-risk {
         color: #f56c6c;
 
-        &.has-reason {
+        &.has-detail {
           cursor: pointer;
 
           &:hover {
@@ -1833,11 +2021,19 @@ function exportReport() {
       }
 
       &.is-safe {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 4px 0;
         color: var(--el-text-color-regular);
+
+        &.has-detail {
+          cursor: pointer;
+
+          &:hover {
+            background: rgba(103, 194, 58, 0.06);
+          }
+        }
+
+        &.expanded {
+          background: rgba(103, 194, 58, 0.06);
+        }
 
         .item-icon {
           color: #67c23a;
@@ -1873,8 +2069,12 @@ function exportReport() {
         }
       }
 
+      .item-detail {
+        padding: 0 8px 10px 30px;
+      }
+
       .item-reason {
-        padding: 0 12px 10px 30px;
+        margin-bottom: 10px;
 
         .reason-title {
           font-size: 12px;
@@ -1892,8 +2092,123 @@ function exportReport() {
         }
       }
 
+      .sub-items {
+        .sub-title {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--el-text-color-secondary);
+          margin-bottom: 6px;
+        }
+
+        .sub-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 6px;
+          font-size: 12px;
+          border-radius: 4px;
+
+          &.is-risk {
+            color: #f56c6c;
+
+            .sub-icon {
+              color: #f56c6c;
+            }
+          }
+
+          &.is-safe {
+            color: var(--el-text-color-regular);
+
+            .sub-icon {
+              color: #67c23a;
+            }
+          }
+
+          .sub-icon {
+            flex-shrink: 0;
+            font-size: 12px;
+          }
+
+          .sub-name {
+            flex: 1;
+            line-height: 1.4;
+          }
+
+          .sub-score {
+            flex-shrink: 0;
+            font-size: 10px;
+          }
+        }
+      }
+
       .item-name {
         line-height: 1.4;
+      }
+    }
+  }
+}
+
+/* 主要财务指标卡片 */
+.financial-card {
+  margin-top: 16px;
+
+  .card-hd {
+    .fin-period {
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+      font-weight: normal;
+    }
+  }
+
+  .financial-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+
+    .fin-section {
+      .fin-section-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--el-text-color-primary);
+        margin-bottom: 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--el-border-color-lighter);
+      }
+
+      .fin-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px 12px;
+      }
+
+      .fin-item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+
+        .fin-label {
+          font-size: 12px;
+          color: var(--el-text-color-secondary);
+        }
+
+        .fin-value {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--el-text-color-primary);
+        }
+
+        .fin-change {
+          font-size: 12px;
+          font-weight: 500;
+
+          &.up {
+            color: #f56c6c;
+          }
+
+          &.down {
+            color: #67c23a;
+          }
+        }
       }
     }
   }

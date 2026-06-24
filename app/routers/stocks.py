@@ -450,6 +450,51 @@ async def get_fundamentals(
                 data["ps"] = round(ps_calculated, 2)
                 data["ps_ttm"] = round(ps_calculated, 2) if revenue_ttm else None
 
+        # 🔥 提取更多财务指标（如果有的话）
+        financial_detail = {}
+
+        # 利润表指标
+        financial_detail["revenue"] = financial_data.get("revenue")
+        financial_detail["revenue_ttm"] = financial_data.get("revenue_ttm")
+        financial_detail["net_profit"] = financial_data.get("net_profit")
+        financial_detail["net_profit_ttm"] = financial_data.get("net_profit_ttm")
+        financial_detail["gross_profit"] = financial_data.get("gross_profit")
+
+        # 盈利能力
+        financial_detail["gross_margin"] = financial_data.get("gross_margin")
+        financial_detail["net_margin"] = financial_data.get("net_margin")
+        financial_detail["roa"] = financial_data.get("roa")
+
+        # 偿债能力
+        financial_detail["current_ratio"] = financial_data.get("current_ratio")
+        financial_detail["quick_ratio"] = financial_data.get("quick_ratio")
+
+        # 每股指标
+        financial_detail["eps"] = financial_data.get("eps")
+        financial_detail["bps"] = financial_data.get("bps")
+
+        # 增长率
+        financial_detail["revenue_yoy"] = financial_data.get("revenue_yoy")
+        financial_detail["net_profit_yoy"] = financial_data.get("net_profit_yoy")
+
+        # 报告期信息
+        financial_detail["report_period"] = financial_data.get("report_period")
+        financial_detail["report_type"] = financial_data.get("report_type")
+        financial_detail["data_source"] = financial_data.get("data_source")
+
+        # 如果 financial_indicators 中有更多指标，也提取出来
+        if financial_data.get("financial_indicators"):
+            indicators = financial_data["financial_indicators"]
+            for key in ["gross_margin", "net_margin", "roa", "current_ratio", "quick_ratio", "eps", "bps", "revenue_yoy", "net_profit_yoy"]:
+                if financial_detail.get(key) is None and indicators.get(key) is not None:
+                    financial_detail[key] = indicators.get(key)
+            # 额外提取可能存在的其他指标
+            for key in ["net_profit", "revenue", "gross_profit"]:
+                if financial_detail.get(key) is None and indicators.get(key) is not None:
+                    financial_detail[key] = indicators.get(key)
+
+        data["financial_detail"] = financial_detail
+
     # 6. 如果财务数据中没有 ROE，使用 stock_basic_info 中的
     if data["roe"] is None:
         data["roe"] = b.get("roe")

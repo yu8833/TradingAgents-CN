@@ -111,7 +111,7 @@ async def get_latest_financial_data(
                 message="获取最新财务数据成功"
             )
         else:
-            return ok(success=False, data=None,
+            return ok(data=None,
                 message="未找到财务数据"
             )
         
