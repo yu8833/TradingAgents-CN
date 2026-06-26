@@ -76,46 +76,71 @@
         </div>
       </el-card>
 
-      <!-- 策略点位 & 价格区间（daily_stock_analysis 风格） -->
+      <!-- 快速分析卡片（仅在有快速结果时显示） -->
+      <QuickSummaryCard
+        v-if="report?.quick_result && Object.keys(report.quick_result).length > 0"
+        :result="report.quick_result"
+        :show-deep-button="false"
+        :show-tech-indicators="true"
+        class="quick-summary-wrapper"
+      />
+
+      <!-- 策略总结卡片（用户一眼看到结论） -->
       <el-card class="strategy-card" shadow="never">
         <template #header>
           <div class="card-header">
             <el-icon><Promotion /></el-icon>
-            <span>策略点位</span>
-            <el-tag v-if="pickField(report, ['评级', 'action', '操作建议'])" :type="getDecisionActionTagType(pickField(report, ['评级', 'action', '操作建议']))" size="small" style="margin-left: 12px;">操作建议：{{ pickField(report, ['评级', 'action', '操作建议']) }}</el-tag>
-            <el-tag type="info" size="small" style="margin-left: 12px;">仅供参考</el-tag>
+            <span>策略总结</span>
+            <el-tag type="info" size="small" style="margin-left: 12px;">AI 生成，仅供参考</el-tag>
           </div>
         </template>
-        <div class="strategy-grid">
-          <div class="price-block buy-block">
-            <div class="price-label">💰 理想买入价</div>
-            <div class="price-value">{{ formatPriceValue(report, ['理想买入', 'ideal_buy', 'target_price']) }}</div>
-            <div class="price-sub">首次建仓参考价</div>
+
+        <!-- 核心结论区：操作建议 + 置信度 + 风险等级 -->
+        <div class="conclusion-section">
+          <div class="conclusion-main">
+            <div class="conclusion-action" :class="'action-' + getDecisionActionKey(pickField(report, ['评级', 'action', '操作建议']))">
+              {{ pickField(report, ['评级', 'action', '操作建议']) || '暂无' }}
+            </div>
+            <div class="conclusion-sub">
+              <div class="sub-item">
+                <span class="sub-label">置信度</span>
+                <span class="sub-value">{{ formatConfidence(pickField(report, ['置信度', 'confidence', 'confidence_score'])) }}</span>
+              </div>
+              <div class="sub-divider"></div>
+              <div class="sub-item">
+                <span class="sub-label">风险等级</span>
+                <span class="sub-value">{{ pickField(report, ['风险等级', 'risk_level']) || '中等' }}</span>
+              </div>
+            </div>
           </div>
-          <div class="price-block add-block">
-            <div class="price-label">📈 二次买入价</div>
-            <div class="price-value">{{ formatPriceValue(report, ['二次买入', 'second_buy']) }}</div>
-            <div class="price-sub">回调加仓参考</div>
-          </div>
-          <div class="price-block stop-block">
-            <div class="price-label">🛑 止损价格</div>
-            <div class="price-value">{{ formatPriceValue(report, ['止损价格', 'stop_loss', 'stop_loss_price']) }}</div>
-            <div class="price-sub">无条件离场参考</div>
-          </div>
-          <div class="price-block target-block">
-            <div class="price-label">🎯 止盈目标价</div>
-            <div class="price-value">{{ formatPriceValue(report, ['止盈目标', 'target_price', 'price_target']) }}</div>
-            <div class="price-sub">减仓/获利参考</div>
-          </div>
-          <div class="price-block support-block">
-            <div class="price-label">📉 支撑位</div>
-            <div class="price-value">{{ formatPriceValue(report, ['支撑位', 'support_level']) }}</div>
-            <div class="price-sub">下方关键支撑</div>
-          </div>
-          <div class="price-block resistance-block">
-            <div class="price-label">📈 阻力位</div>
-            <div class="price-value">{{ formatPriceValue(report, ['阻力位', 'resistance_level']) }}</div>
-            <div class="price-sub">上方压力参考</div>
+        </div>
+
+        <!-- 一句话结论 -->
+        <div v-if="getOneLineConclusion()" class="one-line-conclusion">
+          <el-icon color="#f59e0b"><InfoFilled /></el-icon>
+          <span>{{ getOneLineConclusion() }}</span>
+        </div>
+
+        <!-- 关键价位（只显示有合理数据的） -->
+        <div v-if="hasReasonablePrices()" class="prices-section">
+          <div class="section-subtitle">关键价位</div>
+          <div class="price-row">
+            <div v-if="formatPriceValue(report, ['支撑位', 'support_level']) !== '--'" class="price-chip support-chip">
+              <span class="chip-label">支撑</span>
+              <span class="chip-value">{{ formatPriceValue(report, ['支撑位', 'support_level']) }}</span>
+            </div>
+            <div v-if="formatPriceValue(report, ['阻力位', 'resistance_level']) !== '--'" class="price-chip resistance-chip">
+              <span class="chip-label">阻力</span>
+              <span class="chip-value">{{ formatPriceValue(report, ['阻力位', 'resistance_level']) }}</span>
+            </div>
+            <div v-if="formatPriceValue(report, ['止盈目标', 'target_price', 'price_target']) !== '--'" class="price-chip target-chip">
+              <span class="chip-label">目标</span>
+              <span class="chip-value">{{ formatPriceValue(report, ['止盈目标', 'target_price', 'price_target']) }}</span>
+            </div>
+            <div v-if="formatPriceValue(report, ['止损价格', 'stop_loss', 'stop_loss_price']) !== '--'" class="price-chip stop-chip">
+              <span class="chip-label">止损</span>
+              <span class="chip-value">{{ formatPriceValue(report, ['止损价格', 'stop_loss', 'stop_loss_price']) }}</span>
+            </div>
           </div>
         </div>
 
@@ -293,6 +318,7 @@ import { useAuthStore } from '@/stores/auth'
 import { marked } from 'marked'
 import { getMarketByStockCode } from '@/utils/market'
 import type { CurrencyAmount } from '@/api/paper'
+import QuickSummaryCard from '@/components/QuickSummaryCard.vue'
 
 type ReportModuleContent = string | Record<string, unknown>
 
@@ -312,6 +338,8 @@ type ReportDetailData = {
   key_points?: string[]
   summary?: string
   reports: Record<string, ReportModuleContent>
+  mode?: 'quick' | 'deep'
+  quick_result?: Record<string, any>
 }
 
 // 路由和认证
@@ -327,7 +355,15 @@ const loading = ref(true)
 const report = ref<ReportDetailData | null>(null)
 const activeModule = ref('')
 const llmConfigs = ref<LLMConfig[]>([]) // 存储所有模型配置
-const reportModuleKeys = computed<string[]>(() => report.value ? Object.keys(report.value.reports || {}) : [])
+const reportModuleKeys = computed<string[]>(() => {
+  if (!report.value) return []
+  const reports = report.value.reports || {}
+  // 快速分析模式：只显示快速分析报告
+  if (report.value.mode === 'quick' && reports.quick_analysis) {
+    return ['quick_analysis']
+  }
+  return Object.keys(reports)
+})
 
 // 获取模型配置列表
 const fetchLLMConfigs = async () => {
@@ -836,6 +872,9 @@ const getModelDescription = (modelInfo: string) => {
 const getModuleDisplayName = (moduleName: string) => {
   // 统一与单股分析的中文标签映射（完整的13个报告）
   const nameMap: Record<string, string> = {
+    // 快速分析报告
+    quick_analysis: '⚡ 快速分析报告',
+
     // 分析师团队 (7个) - A股特有：政策分析师、游资追踪师、解禁监控师
     market_report: '📈 市场技术分析',
     sentiment_report: '💭 市场情绪分析',
@@ -1389,10 +1428,46 @@ const formatPriceValue = (report: any, candidates: string[]): string => {
     }
   }
   
-  if (num !== null && !isNaN(num)) {
+  if (num !== null && !isNaN(num) && num > 0) {
+    // 基本合理性校验
+    // 排除明显是年份的数字（2000-2030之间的整数）
+    if (Number.isInteger(num) && num >= 2000 && num <= 2030) {
+      return '--'
+    }
+    // 排除小于 0.1 的值（不太可能是股价）
+    if (num < 0.1) {
+      return '--'
+    }
+    // 价格合理性校验：从 market_report 中提取基准价
+    const basePrice = extractBasePrice(report)
+    if (basePrice !== null && basePrice > 0) {
+      // 价格必须在基准价的 0.3 ~ 3 倍范围内
+      if (num < basePrice * 0.3 || num > basePrice * 3.0) {
+        return '--'
+      }
+    }
     return num.toFixed(2)
   }
   return '--'
+}
+
+// 从 market_report 中提取基准价（最新收盘价）
+const extractBasePrice = (report: any): number | null => {
+  if (!report || !report.reports) return null
+  const marketText = report.reports.market_report
+  if (!marketText || typeof marketText !== 'string') return null
+  // 尝试匹配最新收盘价
+  const m1 = marketText.match(/最新收盘价[^\d]*(\d+(?:\.\d+)?)/)
+  if (m1) {
+    const p = parseFloat(m1[1])
+    if (!isNaN(p) && p > 0) return p
+  }
+  const m2 = marketText.match(/收盘价[^\d]*(\d+(?:\.\d+)?)/)
+  if (m2) {
+    const p = parseFloat(m2[1])
+    if (!isNaN(p) && p > 0) return p
+  }
+  return null
 }
 
 const formatPct = (val: any): string => {
@@ -1403,6 +1478,20 @@ const formatPct = (val: any): string => {
   return Math.round(num).toString()
 }
 
+// 校验分数是否合理（0-100 之间，且不是明显的年份/百分比等）
+const isValidScore = (val: any): number | null => {
+  if (val === null || val === undefined || val === '') return null
+  const num = Number(val)
+  if (isNaN(num) || !isFinite(num)) return null
+  let score = num
+  if (score > 0 && score <= 1) {
+    score = score * 100
+  }
+  if (score < 5 || score > 100) return null
+  if (Number.isInteger(score) && score <= 3) return null
+  return Math.round(score)
+}
+
 const hasAnyScore = (report: any): boolean => {
   const keys = ['置信度', 'confidence', 'confidence_score',
     '技术面评分', 'technical_score',
@@ -1410,7 +1499,12 @@ const hasAnyScore = (report: any): boolean => {
     '情绪面评分', 'sentiment_score',
     '政策面评分', 'policy_score',
     '风险等级', 'risk_level']
-  return keys.some(k => pickField(report, [k]) !== null)
+  return keys.some(k => {
+    if (k === '风险等级' || k === 'risk_level') {
+      return pickField(report, [k]) !== null
+    }
+    return isValidScore(pickField(report, [k])) !== null
+  })
 }
 
 // 洞察文本是否存在
@@ -1419,79 +1513,85 @@ const hasAnyInsight = (report: any): boolean => {
   return keys.some(k => pickField(report, [k]) !== null)
 }
 
-// 6 类洞察卡片的统一数据（新增情绪分析，保持对称）
+// 获取一句话结论
+const getOneLineConclusion = (): string => {
+  if (!report.value) return ''
+  const v = pickField(report.value, ['一句话结论', '核心结论', '综合决策'])
+  if (v && typeof v === 'string' && v.trim().length >= 5) {
+    return v.trim()
+  }
+  // 兜底：从核心洞察中取第一句
+  const core = pickField(report.value, ['核心洞察'], 100)
+  if (core && typeof core === 'string') {
+    const firstSentence = core.split(/[。！？；]/)[0]
+    if (firstSentence.length >= 5) return firstSentence + '。'
+  }
+  return ''
+}
+
+// 精简版核心洞察：只保留3个最关键的维度
 const insightItems = computed(() => {
   if (!report.value) return []
   const defs = [
-    { key: 'core',       title: '核心洞察', icon: '💡',
-      subtitle: '一句话把握报告要点',
-      candidates: ['核心洞察'],
-      maxChars: 400,
-      tooltip: '模型从所有分析维度中提炼的最具代表性结论，通常是影响评级与操作建议的核心原因。',
+    { key: 'core',       title: '核心结论', icon: '💡',
+      subtitle: '为什么是这个评级',
+      conciseField: '精简核心结论',
+      candidates: ['投资逻辑', '核心洞察'],
+      maxChars: 120,
+      tooltip: '支撑当前评级的最核心理由，综合基本面、技术面、资金面等关键信息提炼。',
     },
-    { key: 'logic',      title: '投资逻辑', icon: '📊',
-      subtitle: '为什么看好或看空',
-      candidates: ['投资逻辑'],
-      maxChars: 400,
-      tooltip: 'AI 对该标的给出买入/持有/卖出建议的底层依据，综合公司基本面、行业周期、估值与市场情绪等信息。',
-    },
-    { key: 'sentiment',  title: '情绪分析', icon: '🔥',
-      subtitle: '市场情绪与舆论热度',
-      candidates: ['情绪分析', '市场情绪', '舆情分析', '情绪面分析'],
-      maxChars: 400,
-      tooltip: '基于新闻热度、社交媒体讨论、资金流向（北向资金、主力净流入）、板块热度等信息得出的市场情绪判断。',
-    },
-    { key: 'trend',      title: '趋势预测', icon: '📈',
-      subtitle: '短期 / 中期走势判断',
-      candidates: ['趋势预测'],
-      maxChars: 400,
-      tooltip: '基于技术指标与近期行情的方向性判断。仅作参考，不构成投资建议——实际走势受宏观消息、资金流向等多重因素影响。',
-    },
-    { key: 'strategy',   title: '策略点位', icon: '🎯',
-      subtitle: '入场 / 加仓 / 离场参考',
-      candidates: ['策略点位'],
-      maxChars: 400,
-      tooltip: '与上方价格卡片互为补充，提供交易上的具体执行建议，包括理想买入区间、加仓位置、止损止盈参考线。',
-    },
-    { key: 'risk',       title: '风险提示', icon: '⚠️',
-      subtitle: '需要重点关注的风险',
+    { key: 'risk',       title: '关键风险', icon: '⚠️',
+      subtitle: '需要警惕的因素',
+      conciseField: '精简关键风险',
       candidates: ['风险提示'],
-      maxChars: 400,
-      tooltip: '可能影响投资结果的风险因素，例如行业政策变化、财报不及预期、估值偏高、市场波动放大、流动性风险等。',
+      maxChars: 100,
+      tooltip: '可能影响投资结果的主要风险因素，需重点关注。',
+    },
+    { key: 'sentiment',  title: '资金情绪', icon: '🔥',
+      subtitle: '市场情绪与资金流向',
+      conciseField: '精简资金情绪',
+      candidates: ['情绪分析', '市场情绪', '情绪面分析'],
+      maxChars: 100,
+      tooltip: '基于资金流向、市场热度、舆论等信息得出的情绪判断。',
     },
   ]
   const result = defs
     .map(d => {
-      // 获取完整内容：优先从后端的 _full 字段获取，否则从 report 模块中直接取
       let fullText = null
-      for (const key of d.candidates) {
-        const fullKey = key + '_full'
-        const v = report.value?.[fullKey]
-        if (v !== null && v !== undefined && v !== '' && v !== 'None') {
-          fullText = v
-          break
+
+      // 优先使用后端预提取的精简字段（质量最高）
+      if (d.conciseField) {
+        const v = report.value?.[d.conciseField]
+        if (typeof v === 'string' && v.trim() && v.trim() !== 'None') {
+          fullText = v.trim()
         }
       }
-      // 如果没有 _full 字段，尝试从原始 report 模块中提取完整内容
+
+      if (!fullText) {
+        for (const key of d.candidates) {
+          const fullKey = key + '_full'
+          const v = report.value?.[fullKey]
+          if (v !== null && v !== undefined && v !== '' && v !== 'None') {
+            fullText = v
+            break
+          }
+        }
+      }
       if (!fullText) {
         const moduleMap = report.value?.reports || {}
         const fallbackMap: { [key: string]: string[] } = {
+          '投资逻辑': ['investment_plan', 'research_team_decision', 'final_trade_decision', 'trader_investment_plan'],
           '核心洞察': ['final_trade_decision', 'research_team_decision', 'trader_investment_plan'],
-          '投资逻辑': ['investment_plan', 'trader_investment_plan', 'research_team_decision', 'final_trade_decision'],
-          '趋势预测': ['market_report', 'trader_investment_plan', 'final_trade_decision'],
-          '策略点位': ['trader_investment_plan', 'investment_plan', 'final_trade_decision'],
-          '情绪分析': ['sentiment_report', 'news_report', 'hot_money_report', 'market_report'],
+          '风险提示': ['risk_management_decision', 'risky_analyst', 'final_trade_decision', 'safe_analyst'],
+          '情绪分析': ['sentiment_report', 'hot_money_report', 'news_report', 'market_report'],
           '市场情绪': ['sentiment_report', 'news_report', 'hot_money_report'],
-          '舆情分析': ['sentiment_report', 'news_report'],
           '情绪面分析': ['sentiment_report', 'news_report'],
-          '风险提示': ['risk_management_decision', 'risky_analyst', 'safe_analyst', 'neutral_analyst', 'final_trade_decision'],
         }
         for (const key of d.candidates) {
           const moduleKeys = fallbackMap[key] || []
           for (const mk of moduleKeys) {
             const moduleText = moduleMap[mk]
             if (typeof moduleText === 'string' && moduleText.trim()) {
-              // 从模块中提取匹配字段的内容（最多400字）
               const re = new RegExp(
                 '(?:^|\\n)[#*_]*\\s*(?:\\d+[.、]\\s*)?' + key.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') +
                 '[*_]*\\s*[:：]?\\s*(?:\\n|[:：])?\\s*([\\s\\S]{0,' + d.maxChars + '}?)(?=\\n\\s*#+|\\n\\s*\\n|$)',
@@ -1506,13 +1606,21 @@ const insightItems = computed(() => {
           if (fullText) break
         }
       }
-      // 最终兜底：如果还是没有，使用原有的截断内容
       if (!fullText) {
-        fullText = pickField(report.value, d.candidates, d.maxChars || 400)
+        fullText = pickField(report.value, d.candidates, d.maxChars || 150)
+      }
+      // 进一步精简：只取前1-2句话
+      if (fullText && fullText.length > 60) {
+        const sentences = fullText.split(/[。！？；]/).filter(s => s.trim().length > 5)
+        if (sentences.length >= 2) {
+          fullText = sentences.slice(0, 2).join('。') + '。'
+        } else if (sentences.length === 1) {
+          fullText = sentences[0] + '。'
+        }
       }
       return { ...d, fullText }
     })
-    .filter(d => d.fullText !== null && d.fullText !== undefined && d.fullText !== '')
+    .filter(d => d.fullText !== null && d.fullText !== undefined && d.fullText !== '' && d.fullText.length >= 10)
   return result
 })
 
@@ -1532,61 +1640,61 @@ const dimensionItems = computed(() => {
   const items: any[] = []
 
   const confVal = pickField(report.value, ['置信度', 'confidence', 'confidence_score'])
-  if (confVal !== null) {
-    const v = Math.round(Number(confVal) <= 1 ? Number(confVal) * 100 : Number(confVal))
-    const meta = scoreMeta(v)
+  const confScore = isValidScore(confVal)
+  if (confScore !== null) {
+    const meta = scoreMeta(confScore)
     items.push({
       key: 'confidence', name: '置信度', icon: '🎯',
       subtitle: '模型对本次结论的信心',
-      type: 'progress', value: v, color: meta.color, label: meta.label,
+      type: 'progress', value: confScore, color: meta.color, label: meta.label,
       tooltip: '模型综合各维度证据的一致性、数据完整度、历史回测表现得出的置信度。越高表示模型对结论的把握越强，但不代表实际收益的确定性。',
     })
   }
 
   const techVal = pickField(report.value, ['技术面评分', 'technical_score'])
-  if (techVal !== null) {
-    const v = Math.round(Number(techVal) <= 1 ? Number(techVal) * 100 : Number(techVal))
-    const meta = scoreMeta(v)
+  const techScore = isValidScore(techVal)
+  if (techScore !== null) {
+    const meta = scoreMeta(techScore)
     items.push({
       key: 'technical', name: '技术面', icon: '📊',
       subtitle: 'K 线 / 均线 / MACD / RSI',
-      type: 'progress', value: v, color: meta.color, label: meta.label,
+      type: 'progress', value: techScore, color: meta.color, label: meta.label,
       tooltip: '综合 K 线形态、MA/EMA 均线排列、MACD 金叉死叉、RSI 强弱、BOLL 轨道位置、成交量变化等指标得出的技术形态评分。',
     })
   }
 
   const fundVal = pickField(report.value, ['基本面评分', 'fundamental_score'])
-  if (fundVal !== null) {
-    const v = Math.round(Number(fundVal) <= 1 ? Number(fundVal) * 100 : Number(fundVal))
-    const meta = scoreMeta(v)
+  const fundScore = isValidScore(fundVal)
+  if (fundScore !== null) {
+    const meta = scoreMeta(fundScore)
     items.push({
       key: 'fundamental', name: '基本面', icon: '💰',
       subtitle: '营收 / 利润 / 估值 / 行业',
-      type: 'progress', value: v, color: meta.color, label: meta.label,
+      type: 'progress', value: fundScore, color: meta.color, label: meta.label,
       tooltip: '公司营收、利润增长、ROE、毛利率、资产质量、PE/PB 估值水平、行业地位与竞争格局的综合评分，体现企业内在价值的健康度。',
     })
   }
 
   const sentVal = pickField(report.value, ['情绪面评分', 'sentiment_score'])
-  if (sentVal !== null) {
-    const v = Math.round(Number(sentVal) <= 1 ? Number(sentVal) * 100 : Number(sentVal))
-    const meta = scoreMeta(v)
+  const sentScore = isValidScore(sentVal)
+  if (sentScore !== null) {
+    const meta = scoreMeta(sentScore)
     items.push({
       key: 'sentiment', name: '情绪面', icon: '🔥',
       subtitle: '新闻 / 舆论 / 资金情绪',
-      type: 'progress', value: v, color: meta.color, label: meta.label,
+      type: 'progress', value: sentScore, color: meta.color, label: meta.label,
       tooltip: '基于新闻正面度、社交媒体讨论、资金流向（北向资金、主力净流入）、板块热度等信息得出的市场情绪评分。高分代表情绪整体积极。',
     })
   }
 
   const policyVal = pickField(report.value, ['政策面评分', 'policy_score'])
-  if (policyVal !== null) {
-    const v = Math.round(Number(policyVal) <= 1 ? Number(policyVal) * 100 : Number(policyVal))
-    const meta = scoreMeta(v)
+  const policyScore = isValidScore(policyVal)
+  if (policyScore !== null) {
+    const meta = scoreMeta(policyScore)
     items.push({
       key: 'policy', name: '政策面', icon: '🏛️',
       subtitle: '监管 / 行业 / 宏观政策',
-      type: 'progress', value: v, color: meta.color, label: meta.label,
+      type: 'progress', value: policyScore, color: meta.color, label: meta.label,
       tooltip: '监管政策、行业扶持或限制、利率与汇率政策、财政政策等对该标的所在行业的直接与间接影响评估。',
     })
   }
@@ -1628,6 +1736,32 @@ const getDecisionActionTagType = (action: string): 'primary' | 'success' | 'warn
     if (action.includes(k)) return map[k]
   }
   return 'info'
+}
+
+// 根据操作建议返回 CSS class key（用于大字结论样式）
+const getDecisionActionKey = (action: string): string => {
+  if (!action) return 'hold'
+  if (action.includes('强烈买入') || action.includes('买入')) return 'buy'
+  if (action.includes('强烈卖出') || action.includes('卖出')) return 'sell'
+  if (action.includes('持有') || action.includes('观望')) return 'hold'
+  if (action.includes('减仓')) return 'sell'
+  return 'hold'
+}
+
+// 格式化置信度显示
+const formatConfidence = (val: any): string => {
+  if (val === null || val === undefined || val === '') return '--'
+  const num = Number(val)
+  if (isNaN(num)) return String(val)
+  if (num <= 1) return Math.round(num * 100) + '%'
+  return Math.round(num) + '%'
+}
+
+// 是否有合理的价格数据
+const hasReasonablePrices = (): boolean => {
+  if (!report.value) return false
+  const keys = ['支撑位', '阻力位', '止盈目标', '止损价格']
+  return keys.some(k => formatPriceValue(report.value, [k]) !== '--')
 }
 
 watch(
@@ -1689,6 +1823,10 @@ watch(
           gap: 8px;
         }
       }
+    }
+
+    .quick-summary-wrapper {
+      margin-bottom: 24px;
     }
 
     /* 风险提示样式 */
@@ -1781,50 +1919,117 @@ watch(
 
     /* daily_stock_analysis 风格的策略点位卡片 */
     .strategy-card {
-      .strategy-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
+      /* ========== 核心结论区 ========== */
+      .conclusion-section {
         margin-bottom: 20px;
+        padding: 28px 24px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border: 1px solid var(--el-border-color-lighter);
 
-        @media (max-width: 768px) {
-          grid-template-columns: repeat(2, 1fr);
+        .conclusion-main {
+          display: flex;
+          align-items: center;
+          gap: 32px;
+
+          .conclusion-action {
+            font-size: 42px;
+            font-weight: 800;
+            letter-spacing: 4px;
+            line-height: 1;
+
+            &.action-buy { color: #22c55e; text-shadow: 0 2px 8px rgba(34, 197, 94, 0.2); }
+            &.action-sell { color: #ef4444; text-shadow: 0 2px 8px rgba(239, 68, 68, 0.2); }
+            &.action-hold { color: #f59e0b; text-shadow: 0 2px 8px rgba(245, 158, 11, 0.2); }
+          }
+
+          .conclusion-sub {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            flex: 1;
+
+            .sub-item {
+              display: flex;
+              flex-direction: column;
+              gap: 4px;
+
+              .sub-label {
+                font-size: 13px;
+                color: var(--el-text-color-secondary);
+              }
+              .sub-value {
+                font-size: 20px;
+                font-weight: 700;
+                color: var(--el-text-color-primary);
+              }
+            }
+
+            .sub-divider {
+              width: 1px;
+              height: 36px;
+              background: var(--el-border-color);
+            }
+          }
         }
       }
 
-      .price-block {
-        padding: 16px;
+      /* ========== 一句话结论 ========== */
+      .one-line-conclusion {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 14px 18px;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
         border-radius: 10px;
-        text-align: center;
-        border: 1px solid var(--el-border-color-lighter);
-        background: var(--el-fill-color-light);
-
-        &.buy-block { background: linear-gradient(135deg, rgba(232, 245, 233, 0.6) 0%, rgba(187, 247, 208, 0.3) 100%); border-color: #a5d6a7; }
-        &.add-block { background: linear-gradient(135deg, rgba(225, 245, 254, 0.6) 0%, rgba(186, 230, 253, 0.3) 100%); border-color: #81d4fa; }
-        &.stop-block { background: linear-gradient(135deg, rgba(254, 226, 226, 0.6) 0%, rgba(252, 165, 165, 0.3) 100%); border-color: #ef9a9a; }
-        &.target-block { background: linear-gradient(135deg, rgba(255, 243, 224, 0.6) 0%, rgba(255, 213, 128, 0.3) 100%); border-color: #ffb74d; }
-        &.support-block { background: linear-gradient(135deg, rgba(237, 231, 246, 0.6) 0%, rgba(206, 188, 228, 0.3) 100%); border-color: #b39ddb; }
-        &.resistance-block { background: linear-gradient(135deg, rgba(255, 235, 238, 0.6) 0%, rgba(244, 194, 194, 0.3) 100%); border-color: #e57373; }
-      }
-
-      .price-label {
-        font-size: 13px;
-        color: var(--el-text-color-regular);
+        border: 1px solid #fde68a;
+        font-size: 15px;
         font-weight: 500;
-        margin-bottom: 8px;
+        color: #92400e;
+        line-height: 1.6;
       }
 
-      .price-value {
-        font-size: 22px;
-        font-weight: 700;
-        color: var(--el-text-color-primary);
-        margin-bottom: 4px;
-        letter-spacing: 0.5px;
-      }
+      /* ========== 关键价位区 ========== */
+      .prices-section {
+        margin-bottom: 24px;
 
-      .price-sub {
-        font-size: 12px;
-        color: var(--el-text-color-secondary);
+        .section-subtitle {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--el-text-color-secondary);
+          margin-bottom: 12px;
+        }
+
+        .price-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+
+        .price-chip {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 10px 20px;
+          border-radius: 10px;
+          min-width: 90px;
+
+          .chip-label {
+            font-size: 12px;
+            color: var(--el-text-color-secondary);
+            margin-bottom: 4px;
+          }
+          .chip-value {
+            font-size: 18px;
+            font-weight: 700;
+          }
+
+          &.support-chip { background: #f0fdf4; border: 1px solid #bbf7d0; .chip-value { color: #16a34a; } }
+          &.resistance-chip { background: #fef2f2; border: 1px solid #fecaca; .chip-value { color: #dc2626; } }
+          &.target-chip { background: #fffbeb; border: 1px solid #fde68a; .chip-value { color: #d97706; } }
+          &.stop-chip { background: #fef2f2; border: 1px solid #fecaca; .chip-value { color: #dc2626; } }
+        }
       }
 
       /* ========== 核心洞察 & 多维度评分 公共区块标题 */

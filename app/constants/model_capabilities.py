@@ -150,6 +150,30 @@ DEFAULT_MODEL_CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "performance_metrics": {"speed": 4, "cost": 5, "quality": 4},
         "description": "DeepSeek Chat，性价比高"
     },
+    "deepseek-v4-flash": {
+        "capability_level": 3,
+        "suitable_roles": [ModelRole.BOTH],
+        "features": [ModelFeature.TOOL_CALLING, ModelFeature.FAST_RESPONSE, ModelFeature.COST_EFFECTIVE],
+
+        "performance_metrics": {"speed": 5, "cost": 5, "quality": 4},
+        "description": "DeepSeek V4 Flash，快速版本"
+    },
+    "deepseek-v4-pro": {
+        "capability_level": 5,
+        "suitable_roles": [ModelRole.BOTH],
+        "features": [ModelFeature.TOOL_CALLING, ModelFeature.REASONING, ModelFeature.LONG_CONTEXT],
+
+        "performance_metrics": {"speed": 3, "cost": 3, "quality": 5},
+        "description": "DeepSeek V4 Pro，旗舰版本"
+    },
+    "deepseek-reasoner": {
+        "capability_level": 4,
+        "suitable_roles": [ModelRole.DEEP_ANALYSIS],
+        "features": [ModelFeature.TOOL_CALLING, ModelFeature.REASONING],
+
+        "performance_metrics": {"speed": 2, "cost": 3, "quality": 5},
+        "description": "DeepSeek Reasoner，深度推理"
+    },
     
     # ==================== 百度文心 (Qianfan) ====================
     "ernie-3.5": {

@@ -294,20 +294,21 @@ class TradingAgentsGraph:
         if updates:
             self.memory_log.batch_update_with_outcomes(updates)
 
-    def propagate(self, company_name, trade_date):
+    def propagate(self, company_name, trade_date, quick_analysis_result=None):
         """Run the trading agents graph for a company on a specific date.
 
         When ``checkpoint_enabled`` is set in config, the graph is recompiled
         with a per-ticker SqliteSaver so a crashed run can resume from the last
         successful node on a subsequent invocation with the same ticker+date.
         """
-        return self._run_graph(company_name, trade_date)
+        return self._run_graph(company_name, trade_date, quick_analysis_result=quick_analysis_result)
 
     def prepare_graph_run(
         self,
         company_name,
         trade_date,
         callbacks: Optional[List] = None,
+        quick_analysis_result: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any], Optional[int]]:
         """Prepare graph input/args for a fresh or resumed run.
 
@@ -358,7 +359,8 @@ class TradingAgentsGraph:
         # LangGraph would start a new run and replay completed nodes.
         past_context = self.memory_log.get_past_context(company_name)
         init_agent_state = self.propagator.create_initial_state(
-            company_name, trade_date, past_context=past_context
+            company_name, trade_date, past_context=past_context,
+            quick_analysis_result=quick_analysis_result
         )
         return init_agent_state, args, resume_step
 
@@ -391,9 +393,12 @@ class TradingAgentsGraph:
             self._checkpointer_ctx = None
             self.graph = self.workflow.compile()
 
-    def _run_graph(self, company_name, trade_date):
+    def _run_graph(self, company_name, trade_date, quick_analysis_result=None):
         """Execute the graph and write the resulting state to disk and memory log."""
-        init_agent_state, args, _ = self.prepare_graph_run(company_name, trade_date, callbacks=self.callbacks)
+        init_agent_state, args, _ = self.prepare_graph_run(
+            company_name, trade_date, callbacks=self.callbacks,
+            quick_analysis_result=quick_analysis_result
+        )
 
         try:
             if self.debug:

@@ -306,3 +306,18 @@ class DataSourceManager:
                 logger.error(f"Failed to fetch news from {adapter.name}: {e}")
                 continue
         return None, None
+
+    def get_stock_realtime_fundamental_with_fallback(self, code: str) -> Tuple[Optional[Dict], Optional[str]]:
+        """按优先级尝试获取单只股票的实时行情+基本面数据，返回(data, source)"""
+        available_adapters = self.get_available_adapters()
+        for adapter in available_adapters:
+            try:
+                logger.info(f"Trying to fetch realtime fundamental from {adapter.name}")
+                if hasattr(adapter, 'get_stock_realtime_fundamental'):
+                    data = adapter.get_stock_realtime_fundamental(code=code)
+                    if data and data.get('name'):
+                        return data, adapter.name
+            except Exception as e:
+                logger.error(f"Failed to fetch realtime fundamental from {adapter.name}: {e}")
+                continue
+        return None, None

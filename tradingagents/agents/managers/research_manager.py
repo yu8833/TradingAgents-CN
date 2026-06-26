@@ -18,13 +18,35 @@ def create_research_manager(llm):
         history = state["investment_debate_state"].get("history", "")
 
         investment_debate_state = state["investment_debate_state"]
+        
+        # 获取速览分析结果（如果有）
+        quick_result = state.get("quick_analysis_result", {})
+        quick_context_text = ""
+        if quick_result and isinstance(quick_result, dict) and quick_result.get("buy_signal"):
+            quick_context_text = f"""
+---
+
+**Quantitative Quick Scan (Baseline Reference):**
+- Trend: {quick_result.get('trend_status', 'N/A')}
+- Signal: {quick_result.get('buy_signal', 'N/A')}
+- Score: {quick_result.get('signal_score', 'N/A')}/100
+- Confidence: {quick_result.get('confidence', 'N/A')}%
+- Summary: {quick_result.get('summary', 'N/A')}
+- Key Prices: Support {quick_result.get('support_levels', ['N/A'])[0] if quick_result.get('support_levels') else 'N/A'} | Resistance {quick_result.get('resistance_levels', ['N/A'])[0] if quick_result.get('resistance_levels') else 'N/A'} | Stop Loss {quick_result.get('stop_loss', 'N/A')} | Target {quick_result.get('target', 'N/A')}
+
+**Your Responsibility:**
+1. Acknowledge the quick scan conclusion explicitly in your analysis
+2. State clearly whether you "Agree", "Modify", or "Disagree" with the quick scan
+3. If you modify or disagree, you MUST provide strong reasons supported by the debate evidence
+4. Your final decision should generally align with the quick scan direction unless there is significant new evidence from the debate that changes the picture
+"""
 
         prompt = f"""As the Research Manager and debate facilitator, your role is to critically evaluate this round of debate and deliver a clear, actionable investment plan for the trader.
 
 {instrument_context}
 
 Note: This is an A-share (China mainland) stock. Factor in regulatory policy impact, hot money / capital flow dynamics, and lockup expiry / insider reduction risks when synthesising the debate.
-
+{quick_context_text}
 ---
 
 **Rating Scale** (use exactly one):

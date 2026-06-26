@@ -33,6 +33,7 @@ from app.services.config_service import ConfigService
 from app.services.memory_state_manager import get_memory_state_manager, TaskStatus
 from app.services.redis_progress_tracker import RedisProgressTracker, get_progress_by_id
 from app.services.progress_log_handler import register_analysis_tracker, unregister_analysis_tracker
+from app.services.quick_analysis_service import get_quick_analysis_service
 
 # 股票基础信息获取（用于补充显示名称）
 try:
@@ -47,8 +48,183 @@ except Exception:
 # 设置日志
 logger = logging.getLogger("app.services.simple_analysis_service")
 
+
+# =============================================
+# MongoDB 连接池管理器（解决连接泄漏问题）
+# =============================================
+class MongoDBConnectionPool:
+    """MongoDB 连接池管理器，复用连接避免泄漏"""
+    
+    _instance = None
+    _client = None
+    _db = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def get_client(self):
+        """获取 MongoDB 客户端（单例）"""
+        if self._client is None:
+            from pymongo import MongoClient
+            from app.core.config import settings
+            self._client = MongoClient(
+                settings.MONGO_URI,
+                maxPoolSize=10,
+                minPoolSize=2,
+                maxIdleTimeMS=30000
+            )
+            self._db = self._client[settings.MONGO_DB]
+            logger.info("✅ MongoDB 连接池初始化完成")
+        return self._client
+    
+    def get_db(self):
+        """获取数据库实例"""
+        self.get_client()
+        return self._db
+    
+    def close(self):
+        """关闭连接池"""
+        if self._client:
+            self._client.close()
+            self._client = None
+            self._db = None
+            logger.info("🔴 MongoDB 连接池已关闭")
+
+
+# 全局连接池实例
+_mongo_pool: Optional[MongoDBConnectionPool] = None
+
+
+def get_mongo_pool() -> MongoDBConnectionPool:
+    """获取 MongoDB 连接池实例"""
+    global _mongo_pool
+    if _mongo_pool is None:
+        _mongo_pool = MongoDBConnectionPool()
+    return _mongo_pool
+
 # 配置服务实例
 config_service = ConfigService()
+
+# ============================================================
+# 分析师相关常量
+# ============================================================
+
+# 支持的分析师列表
+SUPPORTED_ANALYSTS = {"market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"}
+
+# 所有分析师（默认全部启用）
+ALL_ANALYSTS = ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
+
+# 中文名到英文 key 的映射（兼容前端发送中文的情况）
+ANALYST_CN_TO_EN = {
+    "市场分析师": "market",
+    "技术分析师": "market",
+    "社交媒体分析师": "social",
+    "情绪分析师": "social",
+    "新闻分析师": "news",
+    "基本面分析师": "fundamentals",
+    "政策分析师": "policy",
+    "游资追踪师": "hot_money",
+    "资金追踪师": "hot_money",
+    "解禁追踪师": "lockup",
+    "限售解禁师": "lockup",
+}
+
+# 分析师显示名称（用于日志和UI）
+ANALYST_DISPLAY_NAMES = {
+    "market": "市场分析师",
+    "social": "情绪分析师",
+    "news": "新闻分析师",
+    "fundamentals": "基本面分析师",
+    "policy": "政策分析师",
+    "hot_money": "游资追踪师",
+    "lockup": "解禁追踪师",
+}
+
+
+def normalize_analysts(raw_analysts: List[str]) -> List[str]:
+    """
+    规范化分析师名称列表
+    
+    1. 过滤不支持的分析师
+    2. 将中文名转换为英文 key
+    3. 去重
+    
+    Args:
+        raw_analysts: 原始分析师列表（可能包含中英文）
+        
+    Returns:
+        List[str]: 规范化后的分析师列表
+    """
+    filtered = []
+    for analyst in raw_analysts:
+        # 已经是英文 key
+        if analyst in SUPPORTED_ANALYSTS:
+            if analyst not in filtered:
+                filtered.append(analyst)
+        # 中文名称，尝试映射
+        elif analyst in ANALYST_CN_TO_EN:
+            en_key = ANALYST_CN_TO_EN[analyst]
+            if en_key not in filtered:
+                filtered.append(en_key)
+        else:
+            logger.warning(f"⚠️ 跳过不支持的分析师: {analyst}")
+    return filtered
+
+
+# ============================================================
+# 模型供应商查询缓存
+# ============================================================
+
+from threading import Lock
+import time
+
+class ModelProviderCache:
+    """模型供应商信息缓存"""
+
+    def __init__(self, ttl_seconds: int = 300):  # 默认5分钟缓存
+        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._timestamps: Dict[str, float] = {}
+        self._ttl = ttl_seconds
+        self._lock = Lock()
+
+    def get(self, model_name: str) -> Optional[Dict[str, Any]]:
+        """获取缓存的模型供应商信息"""
+        with self._lock:
+            if model_name in self._cache:
+                # 检查是否过期
+                if time.time() - self._timestamps.get(model_name, 0) < self._ttl:
+                    logger.debug(f"📦 [缓存命中] 模型供应商: {model_name}")
+                    return self._cache[model_name]
+                else:
+                    # 过期，删除
+                    del self._cache[model_name]
+                    del self._timestamps[model_name]
+                    logger.debug(f"🗑️ [缓存过期] 模型供应商: {model_name}")
+            return None
+
+    def set(self, model_name: str, info: Dict[str, Any]):
+        """设置模型供应商信息缓存"""
+        with self._lock:
+            self._cache[model_name] = info
+            self._timestamps[model_name] = time.time()
+            logger.debug(f"💾 [缓存写入] 模型供应商: {model_name}")
+
+    def clear(self):
+        """清空缓存"""
+        with self._lock:
+            self._cache.clear()
+            self._timestamps.clear()
+            logger.info("🗑️ [缓存清空] 模型供应商缓存已清空")
+
+
+# 全局模型供应商缓存实例
+_model_provider_cache = ModelProviderCache(ttl_seconds=300)
+
+
+# 异步查询模型供应商
 
 
 async def get_provider_by_model_name(model_name: str) -> str:
@@ -102,11 +278,38 @@ def get_provider_and_url_by_model_sync(model_name: str) -> dict:
     """
     根据模型名称从数据库配置中查找对应的供应商和 API URL（同步版本）
 
+    使用内存缓存避免重复查询 MongoDB。
+
     Args:
         model_name: 模型名称，如 'qwen-turbo', 'gpt-4' 等
 
     Returns:
         dict: {"provider": "google", "backend_url": "https://...", "api_key": "xxx"}
+    """
+    # 先检查缓存
+    cached = _model_provider_cache.get(model_name)
+    if cached:
+        return cached
+
+    # 缓存未命中，执行实际查询
+    result = _get_provider_and_url_by_model_sync_impl(model_name)
+
+    # 写入缓存
+    if result:
+        _model_provider_cache.set(model_name, result)
+
+    return result
+
+
+def _get_provider_and_url_by_model_sync_impl(model_name: str) -> dict:
+    """
+    实际的模型供应商查询实现（内部使用）
+
+    Args:
+        model_name: 模型名称
+
+    Returns:
+        dict: {"provider": "...", "backend_url": "...", "api_key": "..."}
     """
     try:
         # 使用同步 MongoDB 客户端直接查询
@@ -136,22 +339,23 @@ def get_provider_and_url_by_model_sync(model_name: str) -> dict:
 
                     # 🔥 确定 API Key（优先级：模型配置 > 厂家配置 > 环境变量）
                     api_key = None
-                    if model_api_key and model_api_key.strip() and model_api_key != "your-api-key":
+                    if model_api_key and _is_valid_api_key(model_api_key):
                         api_key = model_api_key
                         logger.info(f"✅ [同步查询] 使用模型配置的 API Key")
                     elif provider_doc and provider_doc.get("api_key"):
                         provider_api_key = provider_doc["api_key"]
-                        if provider_api_key and provider_api_key.strip() and provider_api_key != "your-api-key":
+                        if _is_valid_api_key(provider_api_key):
                             api_key = provider_api_key
                             logger.info(f"✅ [同步查询] 使用厂家配置的 API Key")
 
                     # 如果数据库中没有有效的 API Key，尝试从环境变量获取
                     if not api_key:
-                        api_key = _get_env_api_key_for_provider(provider)
-                        if api_key:
+                        env_key = _get_env_api_key_for_provider(provider)
+                        if _is_valid_api_key(env_key):
+                            api_key = env_key
                             logger.info(f"✅ [同步查询] 使用环境变量的 API Key")
                         else:
-                            logger.warning(f"⚠️ [同步查询] 未找到 {provider} 的 API Key")
+                            logger.warning(f"⚠️ [同步查询] 未找到 {provider} 的有效 API Key")
 
                     # 确定 backend_url
                     backend_url = None
@@ -201,14 +405,15 @@ def get_provider_and_url_by_model_sync(model_name: str) -> dict:
 
                 if provider_doc.get("api_key"):
                     provider_api_key = provider_doc["api_key"]
-                    if provider_api_key and provider_api_key.strip() and provider_api_key != "your-api-key":
+                    if _is_valid_api_key(provider_api_key):
                         api_key = provider_api_key
                         logger.info(f"✅ [同步查询] 使用厂家 {provider} 的 API Key")
 
             # 如果厂家配置中没有 API Key，尝试从环境变量获取
             if not api_key:
-                api_key = _get_env_api_key_for_provider(provider)
-                if api_key:
+                env_key = _get_env_api_key_for_provider(provider)
+                if _is_valid_api_key(env_key):
+                    api_key = env_key
                     logger.info(f"✅ [同步查询] 使用环境变量的 API Key")
 
             from tradingagents.llm_clients.provider_keys import normalize_provider_key, default_backend_url
@@ -260,13 +465,15 @@ def get_provider_and_url_by_model_sync(model_name: str) -> dict:
 
                 if provider_doc.get("api_key"):
                     provider_api_key = provider_doc["api_key"]
-                    if provider_api_key and provider_api_key.strip() and provider_api_key != "your-api-key":
+                    if _is_valid_api_key(provider_api_key):
                         api_key = provider_api_key
                         logger.info(f"✅ [同步查询] 使用厂家 {provider} 的 API Key")
 
             # 如果厂家配置中没有 API Key，尝试从环境变量获取
             if not api_key:
-                api_key = _get_env_api_key_for_provider(provider)
+                env_key = _get_env_api_key_for_provider(provider)
+                if _is_valid_api_key(env_key):
+                    api_key = env_key
 
             client.close()
             return {
@@ -283,6 +490,46 @@ def get_provider_and_url_by_model_sync(model_name: str) -> dict:
             "backend_url": _get_default_backend_url(provider),
             "api_key": _get_env_api_key_for_provider(provider)
         }
+
+
+def _is_valid_api_key(api_key: Optional[str]) -> bool:
+    """
+    检查 API Key 是否有效（不是占位符）
+    
+    Args:
+        api_key: API Key
+    
+    Returns:
+        bool: 是否有效
+    """
+    if not api_key or not api_key.strip():
+        return False
+    
+    # 常见的占位符值
+    placeholder_keys = [
+        "your-api-key",
+        "your_api_key",
+        "your-api-key-here",
+        "your_api_key_here",
+        "sk-xxxx",
+        "sk-xxxxx",
+        "test",
+        "placeholder",
+        "xxx",
+        "xxxxx",
+        "your_dashscope_api_key_here",
+    ]
+    
+    key_lower = api_key.strip().lower()
+    for placeholder in placeholder_keys:
+        if key_lower == placeholder or key_lower.startswith(placeholder):
+            return False
+    
+    # 有效 API Key 通常有一定长度
+    if len(api_key.strip()) < 10:
+        return False
+    
+    return True
 
 
 def _get_env_api_key_for_provider(provider: str) -> str:
@@ -307,7 +554,7 @@ def _get_env_api_key_for_provider(provider: str) -> str:
         env_key_name = "AIHUBMIX_API_KEY"
     if env_key_name:
         api_key = os.getenv(env_key_name)
-        if api_key and api_key.strip() and api_key != "your-api-key":
+        if _is_valid_api_key(api_key):
             return api_key
 
     return None
@@ -366,6 +613,9 @@ def _get_default_provider_by_model(model_name: str) -> str:
         # DeepSeek
         'deepseek-chat': 'deepseek',
         'deepseek-coder': 'deepseek',
+        'deepseek-v4-flash': 'deepseek',
+        'deepseek-v4-pro': 'deepseek',
+        'deepseek-reasoner': 'deepseek',
 
         # 智谱AI
         'glm-4': 'glm',
@@ -486,8 +736,68 @@ class SimpleAnalysisService:
         except ImportError:
             logger.warning("⚠️ WebSocket 管理器不可用")
 
-    async def _update_progress_async(self, task_id: str, progress: int, message: str):
-        """异步更新进度（内存和MongoDB）"""
+    def update_progress_sync(
+        self,
+        task_id: str,
+        progress: int,
+        message: str,
+        step: str = "",
+        progress_tracker: Optional['RedisProgressTracker'] = None
+    ):
+        """
+        统一的同步进度更新方法
+
+        同时更新：
+        - Redis 进度跟踪器（如果提供）
+        - 内存管理器
+        - MongoDB
+
+        Args:
+            task_id: 任务ID
+            progress: 进度百分比 (0-100)
+            message: 进度消息
+            step: 步骤标识
+            progress_tracker: 可选的 Redis 进度跟踪器
+        """
+        try:
+            # 1. 更新 Redis 进度跟踪器
+            if progress_tracker:
+                progress_tracker.update_progress({
+                    "progress_percentage": progress,
+                    "last_message": message
+                })
+
+            # 2. 更新内存和 MongoDB（使用新事件循环）
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    self._update_progress_async(task_id, progress, message, step)
+                )
+            finally:
+                loop.close()
+
+            logger.debug(f"✅ [进度更新] {task_id}: {progress}% - {message}")
+        except Exception as e:
+            logger.warning(f"⚠️ [进度更新] 失败: {e}")
+
+    async def _update_progress_async(
+        self,
+        task_id: str,
+        progress: int,
+        message: str,
+        step: str = ""
+    ):
+        """
+        统一的异步进度更新方法
+
+        Args:
+            task_id: 任务ID
+            progress: 进度百分比 (0-100)
+            message: 进度消息
+            step: 步骤标识
+        """
         try:
             # 更新内存
             await self.memory_manager.update_task_status(
@@ -495,7 +805,7 @@ class SimpleAnalysisService:
                 status=TaskStatus.RUNNING,
                 progress=progress,
                 message=message,
-                current_step=message
+                current_step=step or message
             )
 
             # 更新 MongoDB
@@ -507,7 +817,7 @@ class SimpleAnalysisService:
                 {
                     "$set": {
                         "progress": progress,
-                        "current_step": message,
+                        "current_step": step or message,
                         "message": message,
                         "updated_at": datetime.utcnow()
                     }
@@ -606,13 +916,21 @@ class SimpleAnalysisService:
 
         TradingAgentsGraph 实例包含可变状态（self.ticker, self.curr_state等），
         如果多个线程共享同一个实例，会导致数据混淆。
-        
+
         Args:
             config: 配置字典
             callbacks: 可选的回调函数列表，用于接收 LangGraph 的进度更新
         """
         # 🔧 [并发安全] 每次都创建新实例，避免多线程共享状态
-        # 不再使用缓存，因为 TradingAgentsGraph 有可变的实例变量
+        # 注意：如果需要启用缓存，可以取消下面的注释，但需要确保线程安全
+        # from app.services.graph_cache import get_graph_cache
+        # cache = get_graph_cache()
+        # selected_analysts = config.get("selected_analysts", ["market", "fundamentals"])
+        # cached_graph = cache.get(config, selected_analysts)
+        # if cached_graph:
+        #     logger.info(f"📊 [图缓存] 复用图实例...")
+        #     return cached_graph
+
         logger.info(f"🔧 创建新的TradingAgents实例（并发安全模式）...")
         logger.info(f"🔍 [_get_trading_graph] config中的selected_analysts: {config.get('selected_analysts')}")
 
@@ -899,9 +1217,9 @@ class SimpleAnalysisService:
                     payload=NotificationCreate(
                         user_id=str(user_id),
                         type='analysis',
-                        title=f"{request.stock_code} 分析完成",
+                        title=f"{request.get_symbol()} 分析完成",
                         content=summary,
-                        link=f"/stocks/{request.stock_code}",
+                        link=f"/stocks/{request.get_symbol()}",
                         source='analysis'
                     )
                 )
@@ -969,7 +1287,7 @@ class SimpleAnalysisService:
         # 🔧 使用共享线程池，支持多个任务并发执行
         # 不再每次创建新的线程池，避免串行执行
         loop = asyncio.get_event_loop()
-        logger.info(f"🚀 [线程池] 提交分析任务到共享线程池: {task_id} - {request.stock_code}")
+        logger.info(f"🚀 [线程池] 提交分析任务到共享线程池: {task_id} - {request.get_symbol()}")
         result = await loop.run_in_executor(
             self._thread_pool,  # 使用共享线程池
             self._run_analysis_sync,
@@ -995,8 +1313,8 @@ class SimpleAnalysisService:
             init_logging()
             thread_logger = get_logger('analysis_thread')
 
-            thread_logger.info(f"🔄 [线程池] 开始执行分析: {task_id} - {request.stock_code}")
-            logger.info(f"🔄 [线程池] 开始执行分析: {task_id} - {request.stock_code}")
+            thread_logger.info(f"🔄 [线程池] 开始执行分析: {task_id} - {request.get_symbol()}")
+            logger.info(f"🔄 [线程池] 开始执行分析: {task_id} - {request.get_symbol()}")
 
             # 🔧 根据 RedisProgressTracker 的步骤权重计算准确的进度
             # 基础准备阶段 (10%): 0.03 + 0.02 + 0.01 + 0.02 + 0.02 = 0.10
@@ -1013,44 +1331,36 @@ class SimpleAnalysisService:
                             "last_message": message
                         })
 
-                    # 🔥 使用同步方式更新内存和 MongoDB，避免事件循环冲突
-                    # 1. 更新内存中的任务状态（使用新事件循环）
+                    # 🔥 使用共享事件循环更新内存状态
                     import asyncio
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
                     try:
-                        loop.run_until_complete(
-                            self.memory_manager.update_task_status(
-                                task_id=task_id,
-                                status=TaskStatus.RUNNING,
-                                progress=progress,
-                                message=message,
-                                current_step=step
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # 如果事件循环正在运行，在新线程中创建新循环
+                            import concurrent.futures
+                            with concurrent.futures.ThreadPoolExecutor() as pool:
+                                future = pool.submit(
+                                    self._update_memory_status_sync,
+                                    task_id, progress, message, step
+                                )
+                                future.result(timeout=5)
+                        else:
+                            loop.run_until_complete(
+                                self.memory_manager.update_task_status(
+                                    task_id=task_id,
+                                    status=TaskStatus.RUNNING,
+                                    progress=progress,
+                                    message=message,
+                                    current_step=step
+                                )
                             )
-                        )
-                    finally:
-                        loop.close()
+                    except Exception as loop_error:
+                        logger.warning(f"⚠️ 内存状态更新失败: {loop_error}")
+                        # 使用线程方式更新
+                        self._update_memory_status_sync(task_id, progress, message, step)
 
-                    # 2. 更新 MongoDB（使用同步客户端，避免事件循环冲突）
-                    from pymongo import MongoClient
-                    from app.core.config import settings
-                    from datetime import datetime
-
-                    sync_client = MongoClient(settings.MONGO_URI)
-                    sync_db = sync_client[settings.MONGO_DB]
-
-                    sync_db.analysis_tasks.update_one(
-                        {"task_id": task_id},
-                        {
-                            "$set": {
-                                "progress": progress,
-                                "current_step": step,
-                                "message": message,
-                                "updated_at": datetime.utcnow()
-                            }
-                        }
-                    )
-                    sync_client.close()
+                    # 3. 使用连接池更新 MongoDB（避免每次创建新连接）
+                    self._update_mongo_status(task_id, progress, message, step)
 
                 except Exception as e:
                     logger.warning(f"⚠️ 进度更新失败: {e}")
@@ -1063,18 +1373,26 @@ class SimpleAnalysisService:
             capability_service = get_model_capability_service()
 
             # 1. 检查前端是否指定了模型
+            use_user_model = False
             if (request.parameters and
                 hasattr(request.parameters, 'quick_analysis_model') and
                 hasattr(request.parameters, 'deep_analysis_model') and
                 request.parameters.quick_analysis_model and
                 request.parameters.deep_analysis_model):
 
-                # 使用前端指定的模型
-                quick_model = request.parameters.quick_analysis_model
-                deep_model = request.parameters.deep_analysis_model
-
-                logger.info(f"📝 [分析服务] 用户指定模型: quick={quick_model}, deep={deep_model}")
-            else:
+                # 验证前端指定的模型是否有有效的 API Key
+                quick_provider_info_check = get_provider_and_url_by_model_sync(request.parameters.quick_analysis_model)
+                deep_provider_info_check = get_provider_and_url_by_model_sync(request.parameters.deep_analysis_model)
+                
+                if quick_provider_info_check.get("api_key") and deep_provider_info_check.get("api_key"):
+                    quick_model = request.parameters.quick_analysis_model
+                    deep_model = request.parameters.deep_analysis_model
+                    use_user_model = True
+                    logger.info(f"📝 [分析服务] 用户指定模型: quick={quick_model}, deep={deep_model}")
+                else:
+                    logger.warning(f"⚠️ 用户指定的模型没有有效 API Key，使用推荐模型")
+            
+            if not use_user_model:
                 # 2. 自动推荐默认模型
                 quick_model, deep_model = capability_service.recommend_default_models()
                 logger.info(f"🤖 自动推荐模型: quick={quick_model}, deep={deep_model}")
@@ -1103,47 +1421,14 @@ class SimpleAnalysisService:
             market_type = request.parameters.market_type if request.parameters else "A股"
             logger.info(f"📊 [市场类型] 使用市场类型: {market_type}")
 
-            # 🧹 [过滤] 只保留 setup.py 支持的 7 种分析师
-            # 支持的: market, social, news, fundamentals, policy, hot_money, lockup
-            supported_analysts = {"market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"}
-            raw_analysts = request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
-
-            # 中文名到英文 key 的映射（兼容前端发送中文的情况）
-            cn_to_en = {
-                "市场分析师": "market",
-                "技术分析师": "market",
-                "社交媒体分析师": "social",
-                "情绪分析师": "social",
-                "新闻分析师": "news",
-                "基本面分析师": "fundamentals",
-                "政策分析师": "policy",
-                "游资追踪师": "hot_money",
-                "资金追踪师": "hot_money",
-                "解禁追踪师": "lockup",
-                "限售解禁师": "lockup",
-            }
-
-            filtered_analysts = []
-            for a in raw_analysts:
-                # 已经是英文 key
-                if a in supported_analysts:
-                    if a not in filtered_analysts:
-                        filtered_analysts.append(a)
-                # 中文名称，尝试映射
-                elif a in cn_to_en:
-                    en_key = cn_to_en[a]
-                    if en_key not in filtered_analysts:
-                        filtered_analysts.append(en_key)
-                else:
-                    logger.warning(f"⚠️  跳过不支持的分析师: {a}")
-
-            # 🔧 强制使用全部7个分析师（用户需求：7个分析师是都要选择的）
-            # 无论前端传什么，都确保包含全部7个分析师
-            all_analysts = ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
-            for analyst in all_analysts:
-                if analyst not in filtered_analysts:
-                    filtered_analysts.append(analyst)
-                    logger.info(f"📊 [分析师] 补全缺失的分析师: {analyst}")
+            # 🧹 [过滤] 使用统一的分析师规范化函数
+            raw_analysts = request.parameters.selected_analysts if request.parameters else ALL_ANALYSTS
+            filtered_analysts = normalize_analysts(raw_analysts)
+            
+            # 如果没有选择任何分析师，使用全部
+            if not filtered_analysts:
+                filtered_analysts = ALL_ANALYSTS.copy()
+                logger.warning(f"⚠️ 未选择任何分析师，使用全部7个: {filtered_analysts}")
 
             logger.info(f"📊 [分析师] 原始: {raw_analysts}")
             logger.info(f"📊 [分析师] 过滤后: {filtered_analysts}")
@@ -1296,20 +1581,26 @@ class SimpleAnalysisService:
                 except Exception as e:
                     logger.error(f"❌ Graph进度回调失败: {e}", exc_info=True)
 
-            # 初始化分析引擎 - 对应步骤4 "🚀 启动引擎" (8-10%)
-            update_progress_sync(9, "🚀 初始化AI分析引擎", "engine_initialization")
-            trading_graph = self._get_trading_graph(config, callbacks=[graph_progress_callback])
-
-            # 🔍 验证TradingGraph实例中的配置
-            logger.info(f"🔍 [引擎验证] TradingGraph配置中的快速模型: {trading_graph.config.get('quick_think_llm')}")
-            logger.info(f"🔍 [引擎验证] TradingGraph配置中的深度模型: {trading_graph.config.get('deep_think_llm')}")
-
-            # 准备分析数据
-            start_time = datetime.now()
-
-            # 🔧 使用前端传递的分析日期，如果没有则使用当前日期
+            # ===== 速览分析（quick模式直接返回，deep模式注入到深度分析中）
+            mode = request.parameters.mode if request.parameters and hasattr(request.parameters, 'mode') else 'deep'
+            logger.info(f"📊 分析模式: {mode}")
+            
+            # 🆕 从 request 中获取股票代码和名称
+            stock_code = request.get_symbol() if hasattr(request, 'get_symbol') else request.stock_code
+            
+            # 🆕 同步获取股票名称（用于速览分析）
+            stock_name = ""
+            try:
+                from tradingagents.dataflows.a_stock import resolve_ticker
+                info = resolve_ticker(stock_code)
+                stock_name = info.get("name", "") if isinstance(info, dict) else ""
+                logger.info(f"📊 股票名称: {stock_name}")
+            except Exception as e:
+                logger.warning(f"⚠️ 获取股票名称失败: {e}")
+                stock_name = request.parameters.stock_name if request.parameters and hasattr(request.parameters, 'stock_name') else ""
+            
+            # 🔧 定义分析日期（在速览分析之前定义，确保两种模式都可用）
             if request.parameters and hasattr(request.parameters, 'analysis_date') and request.parameters.analysis_date:
-                # 前端传递的是 datetime 对象或字符串
                 if isinstance(request.parameters.analysis_date, datetime):
                     analysis_date = request.parameters.analysis_date.strftime("%Y-%m-%d")
                 elif isinstance(request.parameters.analysis_date, str):
@@ -1320,6 +1611,230 @@ class SimpleAnalysisService:
             else:
                 analysis_date = datetime.now().strftime("%Y-%m-%d")
                 logger.info(f"📅 使用当前日期作为分析日期: {analysis_date}")
+            
+            # 记录开始时间
+            start_time = datetime.now()
+            
+            # 执行速览分析（无论什么模式都先做速览）
+            quick_result_dict = None
+            try:
+                update_progress_sync(5, "📊 快速分析中...", "quick_analysis")
+                quick_service = get_quick_analysis_service()
+                quick_result = quick_service.analyze(stock_code, stock_name)
+                quick_result_dict = quick_result.to_dict()
+                logger.info(f"✅ 快速分析完成: {quick_result.buy_signal}, 评分: {quick_result.signal_score}")
+            except Exception as quick_err:
+                logger.warning(f"⚠️ 快速分析失败: {quick_err}")
+                quick_result_dict = None
+            
+            # 如果是 quick 模式，使用增强版快速分析报告服务
+            if mode == 'quick':
+                # 设置快速分析模式，更新预估时间
+                progress_tracker.set_analysis_mode('quick')
+                
+                update_progress_sync(15, "📊 收集多维数据...", "data_collection")
+                
+                # 调用增强版快速分析报告服务
+                from app.services.quick_analysis_report_service import get_quick_analysis_report_service
+                report_service = get_quick_analysis_report_service()
+                
+                update_progress_sync(50, "🤖 生成分析报告...", "report_generation")
+                
+                full_report = report_service.analyze(stock_code, stock_name)
+                full_report_dict = full_report.to_dict()
+                
+                update_progress_sync(95, "📊 整理分析结果", "result_processing")
+                
+                # 构建前端期望的数据结构
+                # 使用完整报告的内容，同时保留向后兼容的字段
+                summary = full_report.operation_advice or full_report_dict.get('technical_data', {}).get('summary', '')
+                recommendation = full_report_dict.get('report_markdown', '')
+                
+                # 从技术数据中提取决策信息
+                tech_data = full_report_dict.get('technical_data', {})
+                action_map = {
+                    'strong_buy': '强烈买入',
+                    'buy': '可买入',
+                    'hold': '持有',
+                    'wait': '观望',
+                    'sell': '卖出',
+                    'strong_sell': '强烈卖出',
+                }
+                signal_type = tech_data.get('signal_type', 'wait')
+                decision_action = full_report.operation_advice or action_map.get(signal_type, '观望')
+                
+                # 构建简短的分析依据（核心逻辑摘要）
+                reasoning_parts = []
+                ts = tech_data.get('trend_status', '')
+                ma_al = tech_data.get('ma_alignment', '')
+                ms = tech_data.get('macd_status', '')
+                
+                if ts:
+                    reasoning_parts.append(f"技术面{ts}")
+                if ma_al:
+                    reasoning_parts.append(f"均线{ma_al}")
+                if tech_data.get('bias_ma5', 0) != 0:
+                    bias = tech_data.get('bias_ma5', 0)
+                    if abs(bias) < 2:
+                        reasoning_parts.append(f"股价贴近MA5（乖离{bias:+.2f}%）")
+                    elif bias > 5:
+                        reasoning_parts.append(f"股价偏离MA5过大（+{bias:.2f}%）")
+                    elif bias < -5:
+                        reasoning_parts.append(f"股价偏离MA5过大（{bias:.2f}%）")
+                if tech_data.get('rsi_6', 0) != 0:
+                    rsi = tech_data.get('rsi_6', 0)
+                    if rsi < 30:
+                        reasoning_parts.append("RSI超卖")
+                    elif rsi > 70:
+                        reasoning_parts.append("RSI超买")
+                if ms:
+                    reasoning_parts.append(f"MACD{ms}")
+                
+                reasoning = "；".join(reasoning_parts) if reasoning_parts else "技术面信号中性"
+                if len(reasoning) > 200:
+                    reasoning = reasoning[:197] + "..."
+                
+                decision = {
+                    'action': decision_action,
+                    'target_price': tech_data.get('target', 0),
+                    'confidence': (full_report.sentiment_score or tech_data.get('signal_score', 50)) / 100,
+                    'risk_score': 1 - ((full_report.sentiment_score or tech_data.get('signal_score', 50)) / 100),
+                    'reasoning': reasoning,
+                }
+                
+                # 构建 state（技术面状态）
+                state = {
+                    'trend': tech_data.get('trend_status', ''),
+                    'ma_alignment': tech_data.get('ma_alignment', ''),
+                    'bias': tech_data.get('bias_ma5', 0),
+                    'macd': {
+                        'status': tech_data.get('macd_status', ''),
+                        'signal': tech_data.get('macd_signal', ''),
+                    },
+                    'rsi': {
+                        'status': tech_data.get('rsi_status', ''),
+                        'signal': tech_data.get('rsi_signal', ''),
+                        'rsi_6': tech_data.get('rsi_6', 0),
+                        'rsi_12': tech_data.get('rsi_12', 0),
+                        'rsi_24': tech_data.get('rsi_24', 0),
+                    },
+                    'volume': {
+                        'status': tech_data.get('volume_status', ''),
+                        'ratio': tech_data.get('volume_ratio', 0),
+                    },
+                    'support': tech_data.get('support_levels', []),
+                    'resistance': tech_data.get('resistance_levels', []),
+                }
+                
+                # 构建 reports（多维度报告内容）- 与深度分析格式一致：直接存字符串
+                reports = {
+                    'quick_analysis': full_report_dict.get('report_markdown', ''),
+                    'dimension_analysis': full_report.dimension_analysis,
+                    'bull_bear_debate': full_report.bull_bear_debate,
+                    'final_conclusion': full_report.final_conclusion,
+                }
+                
+                # 最终结果（完整的六维度+多空辩论报告）
+                quick_final_result = {
+                    'mode': 'quick',
+                    'stock_code': stock_code,
+                    'stock_name': full_report.stock_name or stock_name,
+                    'quick_result': quick_result_dict,  # 保留原始技术面结果
+                    'full_report': full_report_dict,   # 新增：完整的快速分析报告
+                    # 前端显示需要的字段
+                    'summary': summary,
+                    'recommendation': recommendation,
+                    'decision': decision,
+                    'state': state,
+                    'reports': reports,
+                    # 新增字段：维度分析、多空辩论
+                    'dimension_analysis': full_report.dimension_analysis,
+                    'bull_bear_debate': full_report.bull_bear_debate,
+                    'final_conclusion': full_report.final_conclusion,
+                    'sentiment_score': full_report.sentiment_score or tech_data.get('signal_score', 50),
+                    'analysis_date': analysis_date,
+                    'execution_time': (datetime.now() - start_time).total_seconds(),
+                    # 操作建议和风险提示（确保前端可以访问）
+                    'operation_advice': full_report.operation_advice or '',
+                    'core_risks': full_report_dict.get('core_risks', ''),
+                }
+
+                # 保存到数据库（使用同步客户端，避免事件循环冲突）
+                try:
+                    from pymongo import MongoClient
+                    from app.core.config import settings
+                    sync_client = MongoClient(settings.MONGO_URI)
+                    sync_db = sync_client[settings.MONGO_DB]
+                    sync_db.analysis_tasks.update_one(
+                        {"task_id": task_id},
+                        {"$set": {
+                            "result": quick_final_result,
+                            "quick_result": quick_result_dict,
+                            "mode": "quick",
+                        }}
+                    )
+                    sync_client.close()
+                    logger.info(f"✅ 快速分析结果已更新到 analysis_tasks: {task_id}")
+                except Exception as save_err:
+                    logger.error(f"保存快速分析结果失败: {save_err}")
+
+                # 更新任务状态为完成（使用同步方式避免事件循环冲突）
+                try:
+                    # 更新内存状态
+                    import asyncio
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(
+                            self.memory_manager.update_task_status(
+                                task_id=task_id,
+                                status=AnalysisStatus.COMPLETED,
+                                progress=100,
+                                result_data=quick_final_result
+                            )
+                        )
+                    finally:
+                        loop.close()
+
+                    # 使用连接池同步更新 MongoDB（避免事件循环冲突）
+                    self._update_mongo_status(task_id, 100, "快速分析完成", "completed")
+
+                except Exception as status_err:
+                    logger.warning(f"⚠️ 更新任务状态失败: {status_err}")
+
+                # 发送通知（使用新事件循环运行异步方法）
+                try:
+                    from app.services.notifications_service import get_notifications_service
+                    notif_service = get_notifications_service()
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(
+                            notif_service.create_notification(
+                                user_id=user_id,
+                                type="analysis_complete",
+                                title="快速分析完成",
+                                content=f"{stock_code} 快速分析完成",
+                                data={"task_id": task_id, "stock_code": stock_code}
+                            )
+                        )
+                    finally:
+                        loop.close()
+                except Exception as notif_err:
+                    logger.warning(f"发送通知失败: {notif_err}")
+
+                logger.info(f"✅ 速览分析任务完成: {task_id}")
+                return quick_final_result
+
+            # 初始化分析引擎 - 对应步骤4 "🚀 启动引擎" (8-10%)
+            update_progress_sync(9, "🚀 初始化AI分析引擎", "engine_initialization")
+            trading_graph = self._get_trading_graph(config, callbacks=[graph_progress_callback])
+
+            # 🔍 验证TradingGraph实例中的配置
+            logger.info(f"🔍 [引擎验证] TradingGraph配置中的快速模型: {trading_graph.config.get('quick_think_llm')}")
+            logger.info(f"🔍 [引擎验证] TradingGraph配置中的深度模型: {trading_graph.config.get('deep_think_llm')}")
+
+            # 准备分析数据（analysis_date 和 start_time 已在速览分析前定义）
 
             # 🔧 智能日期范围处理：获取最近10天的数据，自动处理周末/节假日
             # 这样可以确保即使是周末或节假日，也能获取到最后一个交易日的数据
@@ -1331,86 +1846,19 @@ class SimpleAnalysisService:
             logger.info(f"💡 说明: 获取10天数据可自动处理周末、节假日和数据延迟问题")
 
             # 开始分析 - 进度10%，即将进入分析师阶段
-            # 注意：不要手动设置过高的进度，让 graph_progress_callback 来更新实际的分析进度
+            # 注意：进度由 graph_progress_callback 实时更新，不再使用模拟线程
             update_progress_sync(10, "🤖 开始多智能体协作分析", "agent_analysis")
 
-            # 启动一个异步任务来模拟进度更新
-            import threading
-            import time
-
-            def simulate_progress():
-                """模拟TradingAgents内部进度"""
-                try:
-                    if not progress_tracker:
-                        return
-
-                    # 分析师阶段 - 根据选择的分析师数量动态调整
-                    analysts = request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
-
-                    # 模拟分析师执行
-                    for i, analyst in enumerate(analysts):
-                        time.sleep(15)  # 每个分析师大约15秒
-                        if analyst == "market":
-                            progress_tracker.update_progress("📊 市场分析师正在分析")
-                        elif analyst == "fundamentals":
-                            progress_tracker.update_progress("💼 基本面分析师正在分析")
-                        elif analyst == "news":
-                            progress_tracker.update_progress("📰 新闻分析师正在分析")
-                        elif analyst == "social":
-                            progress_tracker.update_progress("💬 社交媒体分析师正在分析")
-
-                    # 研究团队阶段
-                    time.sleep(10)
-                    progress_tracker.update_progress("🐂 看涨研究员构建论据")
-
-                    time.sleep(8)
-                    progress_tracker.update_progress("🐻 看跌研究员识别风险")
-
-                    # 辩论阶段 - 使用默认配置的辩论轮次
-                    debate_rounds = 1
-
-                    for round_num in range(debate_rounds):
-                        time.sleep(12)
-                        progress_tracker.update_progress(f"🎯 研究辩论 第{round_num+1}轮")
-
-                    time.sleep(8)
-                    progress_tracker.update_progress("👔 研究经理形成共识")
-
-                    # 交易员阶段
-                    time.sleep(10)
-                    progress_tracker.update_progress("💼 交易员制定策略")
-
-                    # 风险管理阶段
-                    time.sleep(8)
-                    progress_tracker.update_progress("🔥 激进风险评估")
-
-                    time.sleep(6)
-                    progress_tracker.update_progress("🛡️ 保守风险评估")
-
-                    time.sleep(6)
-                    progress_tracker.update_progress("⚖️ 中性风险评估")
-
-                    time.sleep(8)
-                    progress_tracker.update_progress("🎯 风险经理制定策略")
-
-                    # 最终阶段
-                    time.sleep(5)
-                    progress_tracker.update_progress("📡 信号处理")
-
-                except Exception as e:
-                    logger.warning(f"⚠️ 进度模拟失败: {e}")
-
-            # 启动进度模拟线程
-            progress_thread = threading.Thread(target=simulate_progress, daemon=True)
-            progress_thread.start()
-
-            logger.info(f"🚀 准备调用 trading_graph.propagate（适配新接口，不再传 progress_callback）")
+            logger.info(f"🚀 准备调用 trading_graph.propagate（进度由 graph_progress_callback 实时更新）")
 
             # 执行实际分析 - 新接口 propagate(company_name, trade_date)
             # 进度回调通过 LangChain callbacks 注入到 TradingAgentsGraph.__init__ 中
+            # 🔧 使用 get_symbol() 方法获取股票代码（兼容 symbol 和 stock_code 字段）
+            stock_code = request.get_symbol()
             state, decision = trading_graph.propagate(
-                request.stock_code,
+                stock_code,
                 analysis_date,
+                quick_analysis_result=quick_result_dict,
             )
 
             logger.info(f"✅ trading_graph.propagate 执行完成")
@@ -1687,7 +2135,7 @@ class SimpleAnalysisService:
 
             # 5. 最后的备用方案
             if not summary:
-                summary = f"对{request.stock_code}的分析已完成，请查看详细报告。"
+                summary = f"对{request.get_symbol()}的分析已完成，请查看详细报告。"
                 logger.warning(f"⚠️ [SUMMARY] 使用备用摘要")
 
             if not recommendation:
@@ -1700,8 +2148,8 @@ class SimpleAnalysisService:
             # 构建结果
             result = {
                 "analysis_id": str(uuid.uuid4()),
-                "stock_code": request.stock_code,
-                "stock_symbol": request.stock_code,  # 添加stock_symbol字段以保持兼容性
+                "stock_code": request.get_symbol(),
+                "stock_symbol": request.get_symbol(),  # 添加stock_symbol字段以保持兼容性
                 "analysis_date": analysis_date,
                 "summary": summary,
                 "recommendation": recommendation,
@@ -1721,7 +2169,10 @@ class SimpleAnalysisService:
                 # 🔥 添加模型信息字段
                 "model_info": model_info,
                 # 🆕 性能指标数据
-                "performance_metrics": state.get("performance_metrics", {}) if isinstance(state, dict) else {}
+                "performance_metrics": state.get("performance_metrics", {}) if isinstance(state, dict) else {},
+                # 🆕 速览分析结果和模式
+                "mode": mode,
+                "quick_result": quick_result_dict
             }
 
             logger.info(f"✅ [线程池] 分析完成: {task_id} - 耗时{execution_time:.2f}秒")
@@ -1736,7 +2187,9 @@ class SimpleAnalysisService:
             return result
 
         except Exception as e:
+            import traceback
             logger.error(f"❌ [线程池] 分析执行失败: {task_id} - {e}")
+            logger.error(f"❌ [线程池] 完整错误栈:\n{traceback.format_exc()}")
 
             # 格式化错误信息为用户友好的提示
             from ..utils.error_formatter import ErrorFormatter
@@ -2286,6 +2739,57 @@ class SimpleAnalysisService:
         except Exception as e:
             logger.error(f"❌ 更新任务状态失败: {task_id} - {e}")
 
+    def _update_memory_status_sync(
+        self,
+        task_id: str,
+        progress: int,
+        message: str,
+        step: str
+    ):
+        """同步方式更新内存状态（用于线程中调用）"""
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    self.memory_manager.update_task_status(
+                        task_id=task_id,
+                        status=TaskStatus.RUNNING,
+                        progress=progress,
+                        message=message,
+                        current_step=step
+                    )
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.warning(f"⚠️ 内存状态同步更新失败: {e}")
+
+    def _update_mongo_status(
+        self,
+        task_id: str,
+        progress: int,
+        message: str,
+        step: str
+    ):
+        """使用连接池更新 MongoDB 状态（避免每次创建新连接）"""
+        try:
+            db = get_mongo_pool().get_db()
+            db.analysis_tasks.update_one(
+                {"task_id": task_id},
+                {
+                    "$set": {
+                        "progress": progress,
+                        "current_step": step,
+                        "message": message,
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ MongoDB 状态更新失败: {e}")
+
     async def _save_analysis_result(self, task_id: str, result: Dict[str, Any]):
         """保存分析结果（原始方法）"""
         try:
@@ -2309,9 +2813,19 @@ class SimpleAnalysisService:
             stock_symbol = result.get('stock_symbol') or result.get('stock_code', 'UNKNOWN')
             analysis_id = f"{stock_symbol}_{timestamp.strftime('%Y%m%d_%H%M%S')}"
 
-            # 处理reports字段 - 从state中提取所有分析报告
+            # 处理reports字段
             reports = {}
-            if 'state' in result:
+            mode = result.get('mode', 'deep')
+            
+            if mode == 'quick':
+                # 快速分析模式：直接从result['reports']获取
+                if 'reports' in result and isinstance(result['reports'], dict):
+                    reports = result['reports']
+                # 同时保存full_report
+                if 'full_report' in result:
+                    reports['full_report'] = result['full_report']
+                logger.info(f"⚡ 快速分析模式，reports数量: {len(reports)}")
+            elif 'state' in result:
                 try:
                     state = result['state']
 
@@ -2536,7 +3050,12 @@ class SimpleAnalysisService:
                 "tokens_used": result.get("tokens_used", 0),
 
                 # 🆕 性能指标数据
-                "performance_metrics": result.get("performance_metrics", {})
+                "performance_metrics": result.get("performance_metrics", {}),
+
+                # 🆕 速览分析结果和模式
+                "mode": result.get("mode", "deep"),
+                "quick_result": result.get("quick_result", {}),
+                "full_report": result.get("full_report", None)
             }
 
             # 保存到analysis_reports集合（与web目录保持一致）

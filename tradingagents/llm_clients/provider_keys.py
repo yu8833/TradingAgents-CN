@@ -14,9 +14,9 @@ CANONICAL_ALIASES = {
     "zhipuai": "zhipuai",
     "glm": "zhipuai",
     "bigmodel": "zhipuai",
-    "qwen": "dashscope",
-    "dashscope": "dashscope",
-    "tongyi": "dashscope",
+    "qwen": "qwen",  # 🔥 修复：qwen 应该映射到 qwen（factory.py 中已支持）
+    "dashscope": "qwen",  # 🔥 修复：dashscope 也映射到 qwen
+    "tongyi": "qwen",  # 🔥 修复：通义千问映射到 qwen
     "302ai": "302ai",
     "anthropic": "anthropic",
     "claude": "anthropic",
@@ -35,6 +35,7 @@ ENV_KEY_MAP = {
     "deepseek": "DEEPSEEK_API_KEY",
     "moonshot": "MOONSHOT_API_KEY",
     "zhipuai": "ZHIPUAI_API_KEY",
+    "qwen": "DASHSCOPE_API_KEY",  # 🔥 修复：qwen 使用 DASHSCOPE_API_KEY
     "dashscope": "DASHSCOPE_API_KEY",
     "302ai": "302AI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
@@ -51,6 +52,7 @@ DEFAULT_BACKEND_URLS = {
     "deepseek": "https://api.deepseek.com/v1",
     "moonshot": "https://api.moonshot.cn/v1",
     "zhipuai": "https://open.bigmodel.cn/api/paas/v4",
+    "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",  # 🔥 修复：qwen 使用阿里云 API
     "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "302ai": "https://api.302ai.cn/v1",
     "openrouter": "https://openrouter.ai/api/v1",

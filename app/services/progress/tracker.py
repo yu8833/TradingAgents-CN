@@ -238,7 +238,12 @@ class RedisProgressTracker:
         start = self.progress_data.get('start_time', now)
         elapsed = now - start
         pct = self.progress_data.get('progress_percentage', 0)
-        base_total = self._get_base_total_time()
+        
+        # 检查是否有base_time覆盖（快速分析模式）
+        if self.progress_data.get('_base_time_override'):
+            base_total = self.progress_data['_base_time_override']
+        else:
+            base_total = self._get_base_total_time()
 
         if pct >= 100:
             # 任务已完成
@@ -276,6 +281,16 @@ class RedisProgressTracker:
         progress_data['remaining_time'] = remaining
         return progress_data
 
+    def set_analysis_mode(self, mode: str) -> None:
+        """设置分析模式并调整预估时间
+        mode: 'quick' 或 'deep'
+        """
+        if mode == 'quick':
+            # 快速分析模式：预估总时长30秒
+            self.progress_data['estimated_total_time'] = 30
+            self.progress_data['_base_time_override'] = 30
+            logger.debug(f"[RedisProgress] Quick mode set, estimated_total_time=30s")
+    
     def update_progress(self, progress_update: Any) -> Dict[str, Any]:
         """update progress and persist; accepts dict or plain message string"""
         try:

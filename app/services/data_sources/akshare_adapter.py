@@ -1,7 +1,7 @@
 """
 AKShare data source adapter
 """
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 import logging
 from datetime import datetime, timedelta
 import pandas as pd
@@ -189,6 +189,111 @@ class AKShareAdapter(DataSourceAdapter):
                 return None
             return float(value)
         except (ValueError, TypeError):
+            return None
+
+    def get_stock_realtime_fundamental(self, code: str) -> Optional[Dict[str, Any]]:
+        """
+        获取单只股票的实时行情+基本面数据（来自东方财富）
+        返回包含 PE、PB、换手率、市值、量比等数据的字典
+        
+        Args:
+            code: 股票代码（6位数字）
+            
+        Returns:
+            dict with keys: name, price, change_pct, pe, pb, total_mv, circ_mv, 
+                          turnover_rate, volume_ratio, high, low, open, volume, amount, etc.
+        """
+        if not self.is_available():
+            return None
+        try:
+            import akshare as ak
+            code6 = str(code).zfill(6)
+            
+            # 使用 stock_zh_a_spot_em 获取全市场实时行情，然后过滤出目标股票
+            # 这个接口更稳定，包含 PE、PB、换手率、量比等数据
+            df = ak.stock_zh_a_spot_em()
+            if df is None or getattr(df, "empty", True):
+                return None
+            
+            # 找到目标股票
+            code_col = next((c for c in ["代码", "code", "symbol", "股票代码"] if c in df.columns), None)
+            if not code_col:
+                return None
+            
+            # 标准化股票代码进行匹配
+            target_row = None
+            for _, row in df.iterrows():
+                code_raw = str(row.get(code_col, '')).strip()
+                code_digits = ''.join(filter(str.isdigit, code_raw))
+                if len(code_digits) >= 6:
+                    code_digits = code_digits[-6:]
+                if code_digits == code6:
+                    target_row = row
+                    break
+            
+            if target_row is None:
+                return None
+            
+            # 列名映射
+            name_col = next((c for c in ["名称", "name", "股票简称", "股票名称"] if c in df.columns), None)
+            price_col = next((c for c in ["最新价", "现价", "最新价(元)", "price", "最新", "trade"] if c in df.columns), None)
+            pct_col = next((c for c in ["涨跌幅", "涨跌幅(%)", "涨幅", "pct_chg", "changepercent"] if c in df.columns), None)
+            amount_col = next((c for c in ["成交额", "成交额(元)", "amount", "成交额(万元)", "amount(万元)"] if c in df.columns), None)
+            open_col = next((c for c in ["今开", "开盘", "open", "今开(元)"] if c in df.columns), None)
+            high_col = next((c for c in ["最高", "high"] if c in df.columns), None)
+            low_col = next((c for c in ["最低", "low"] if c in df.columns), None)
+            pre_close_col = next((c for c in ["昨收", "昨收(元)", "pre_close", "昨收价", "settlement"] if c in df.columns), None)
+            volume_col = next((c for c in ["成交量", "成交量(手)", "volume", "成交量(股)", "vol"] if c in df.columns), None)
+            turnover_col = next((c for c in ["换手率", "换手率(%)", "turnover_rate", "换手"] if c in df.columns), None)
+            vol_ratio_col = next((c for c in ["量比", "volume_ratio", "量比-"] if c in df.columns), None)
+            pe_col = next((c for c in ["市盈率-动态", "市盈率", "市盈率动", "pe", "市盈率TTM", "市盈率(动)"] if c in df.columns), None)
+            pb_col = next((c for c in ["市净率", "pb", "市净率-"] if c in df.columns), None)
+            total_mv_col = next((c for c in ["总市值", "total_mv", "总市值(元)"] if c in df.columns), None)
+            circ_mv_col = next((c for c in ["流通市值", "circ_mv", "流通市值(元)"] if c in df.columns), None)
+            amplitude_col = next((c for c in ["振幅", "amplitude", "振幅(%)"] if c in df.columns), None)
+            change_col = next((c for c in ["涨跌额", "涨跌", "change", "change_amount"] if c in df.columns), None)
+            
+            # 解析数据
+            result = {
+                "code": code6,
+                "name": str(target_row.get(name_col, '')) if name_col else '',
+                "price": self._safe_float(target_row.get(price_col)),
+                "change_pct": self._safe_float(target_row.get(pct_col)),
+                "change_amount": self._safe_float(target_row.get(change_col)),
+                "open": self._safe_float(target_row.get(open_col)),
+                "high": self._safe_float(target_row.get(high_col)),
+                "low": self._safe_float(target_row.get(low_col)),
+                "pre_close": self._safe_float(target_row.get(pre_close_col)),
+                "volume": self._safe_float(target_row.get(volume_col)),
+                "amount": self._safe_float(target_row.get(amount_col)),
+                "turnover_rate": self._safe_float(target_row.get(turnover_col)),
+                "volume_ratio": self._safe_float(target_row.get(vol_ratio_col)),
+                "pe": self._safe_float(target_row.get(pe_col)),
+                "pb": self._safe_float(target_row.get(pb_col)),
+                "total_mv": self._safe_float(target_row.get(total_mv_col)),
+                "circ_mv": self._safe_float(target_row.get(circ_mv_col)),
+                "amplitude": self._safe_float(target_row.get(amplitude_col)),
+            }
+            
+            # 单位转换：总市值/流通市值从 元 转换为 亿元
+            if result['total_mv'] is not None and result['total_mv'] > 100000000:
+                result['total_mv'] = result['total_mv'] / 100000000.0
+            if result['circ_mv'] is not None and result['circ_mv'] > 100000000:
+                result['circ_mv'] = result['circ_mv'] / 100000000.0
+            
+            # 成交量转换：手 → 股（东方财富成交量单位通常是手）
+            if result['volume'] is not None and result['volume'] < 100000000:
+                result['volume'] = result['volume'] * 100
+            
+            # 成交额转换：元 → 万元
+            if result['amount'] is not None and result['amount'] > 10000:
+                result['amount'] = result['amount'] / 10000.0
+            
+            logger.info(f"✅ AKShare 获取 {code6}({result['name']}) 基本面数据: PE={result['pe']}, PB={result['pb']}, 换手率={result['turnover_rate']}%")
+            return result
+            
+        except Exception as e:
+            logger.error(f"AKShare 获取 {code} 实时基本面失败: {e}")
             return None
 
 

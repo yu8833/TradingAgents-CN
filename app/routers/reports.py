@@ -79,13 +79,35 @@ def _match_price(text: str, aliases: List[str]) -> Optional[str]:
     if not text:
         return None
 
+    # 第一步：检测并移除表格部分（避免从表格中错误提取价格）
+    lines = text.split("\n")
+    in_table = False
+    table_lines = set()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        # 检测表格行：| xxx | xxx | 或 |---:|----:|
+        if stripped.startswith("|") and stripped.endswith("|"):
+            in_table = True
+            table_lines.add(i)
+            continue
+        # 表格分隔行
+        if in_table and re.match(r'^\s*\|?[\s\-:]+\|\|?', stripped):
+            table_lines.add(i)
+            continue
+        # 空行或非表格内容结束表格区域
+        if in_table and not stripped.startswith("|") and stripped:
+            in_table = False
+    # 重建文本，排除表格行
+    filtered_lines = [line for i, line in enumerate(lines) if i not in table_lines]
+    filtered_text = "\n".join(filtered_lines)
+
     for alias in aliases:
         # 尝试 "N. 名称：价格 元（注释）"
         pattern1 = re.compile(
             r"(?:^|\n)\s*\*?\s*(?:\d+[\.、]\s*)?\*?\s*" + re.escape(alias) +
             r"\s*\*?\s*[:：]\s*([^\n，。；,;（(]{0,80})",
         )
-        m = pattern1.search(text)
+        m = pattern1.search(filtered_text)
         if m:
             val = m.group(1).strip()
             if "不适用" in val:
@@ -101,7 +123,7 @@ def _match_price(text: str, aliases: List[str]) -> Optional[str]:
             r"(?:^|\n)\s*\*+\s*(?:\d+[\.、]\s*)?" + re.escape(alias) +
             r"\s*\*+\s*\n\s*([^\n，。；,;（(]{0,80})",
         )
-        m = pattern2.search(text)
+        m = pattern2.search(filtered_text)
         if m:
             val = m.group(1).strip(" *\n")
             if "不适用" in val:
@@ -116,7 +138,7 @@ def _match_price(text: str, aliases: List[str]) -> Optional[str]:
         pattern3 = re.compile(
             re.escape(alias) + r"\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:元|块)?",
         )
-        m = pattern3.search(text)
+        m = pattern3.search(filtered_text)
         if m:
             return f"{m.group(1)} 元"
 
@@ -127,7 +149,30 @@ def _match_score(text: str, aliases: List[str]) -> Optional[str]:
     """从文本中抽取类似 `置信度：0.75` 或 `**11. 置信度**`\n0.75 的数值"""
     if not text:
         return None
+
+    # 第一步：检测并移除表格部分（避免从表格中错误提取分数）
     lines = text.split("\n")
+    in_table = False
+    table_lines = set()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        # 检测表格行：| xxx | xxx |
+        if stripped.startswith("|") and stripped.endswith("|"):
+            in_table = True
+            table_lines.add(i)
+            continue
+        # 表格分隔行
+        if in_table and re.match(r'^\s*\|?[\s\-:]+\|\|?', stripped):
+            table_lines.add(i)
+            continue
+        # 结束表格区域
+        if in_table and not stripped.startswith("|") and stripped:
+            in_table = False
+    # 重建文本，排除表格行
+    filtered_lines = [line for i, line in enumerate(lines) if i not in table_lines]
+    filtered_text = "\n".join(filtered_lines)
+
+    lines = filtered_text.split("\n")
     n = len(lines)
 
     for alias in aliases:
@@ -177,8 +222,29 @@ def _extract_section(text: str, aliases: List[str], max_chars: int) -> Optional[
         s = s.strip("* \t")
         return bool(re.match(r"^\d+[\.、]\s*.{1,30}$", s))
 
+    def is_table_line(line: str) -> bool:
+        """判断是否为表格行"""
+        s = line.strip()
+        return (s.startswith("|") and s.endswith("|")) or re.match(r'^\s*\|?[\s\-:]+\|\|?', s)
+
     lines = text.split("\n")
     n = len(lines)
+
+    # 检测并标记表格行
+    in_table = False
+    table_line_indices = set()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            in_table = True
+            table_line_indices.add(i)
+            continue
+        if in_table and re.match(r'^\s*\|?[\s\-:]+\|\|?', stripped):
+            table_line_indices.add(i)
+            continue
+        if in_table and not stripped.startswith("|") and stripped:
+            in_table = False
+
     # 寻找包含任意 alias 的标题行
     start_idx = None
     matched_alias = None
@@ -207,6 +273,9 @@ def _extract_section(text: str, aliases: List[str], max_chars: int) -> Optional[
     collected = []
     for j in range(start_idx + 1, n):
         line = lines[j]
+        # 跳过表格行
+        if j in table_line_indices or is_table_line(line):
+            continue
         if is_heading_line(line):
             break
         # 标题之后的第一个空行可以忽略
@@ -442,7 +511,7 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     # 从优先级最高的模块开始提取，找到第一个非空的评级
     text_rating = None
     for module_text in _priority_texts():
-        val = _match_rating(module_text, ["操作建议", "评级", "投资建议", "建议"])
+        val = _match_rating(module_text, ["操作建议", "评级", "投资建议", "建议", "综合决策", "最终决策", "最终结论"])
         if val:
             text_rating = _normalize_rating(val)
             break
@@ -527,18 +596,18 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     #    每个卡片对应的章节标题别名，由长到短匹配，防止误识别
     section_aliases = [
         # 1. 核心洞察：研究经理总结的主要矛盾/关键结论
-        (["核心洞察", "核心结论", "核心观点", "核心要点", "核心逻辑", "核心矛盾"], "核心洞察", 300),
+        (["核心洞察", "核心结论", "核心观点", "核心要点", "核心逻辑", "核心矛盾"], "核心洞察", 200),
         # 2. 投资逻辑：支撑买入/卖出评级的底层理由（基本面+技术面+情绪面综合）
-        (["投资逻辑", "投资依据", "投资理由", "投资论证", "分析逻辑", "判断依据"], "投资逻辑", 300),
+        (["投资逻辑", "投资依据", "投资理由", "投资论证", "分析逻辑", "判断依据"], "投资逻辑", 200),
         # 3. 情绪分析：市场情绪、资金流向、散户/主力态度
-        (["情绪分析", "市场情绪", "舆情分析", "情绪面", "情绪面分析", "资金情绪"], "情绪分析", 300),
+        (["情绪分析", "市场情绪", "舆情分析", "情绪面", "情绪面分析", "资金情绪"], "情绪分析", 200),
         # 4. 趋势预测：短期/中期走势判断、趋势方向、技术形态结论
-        (["趋势预测", "趋势展望", "走势判断", "走势预测", "方向判断", "中期展望"], "趋势预测", 300),
+        (["趋势预测", "趋势展望", "走势判断", "走势预测", "方向判断", "中期展望"], "趋势预测", 200),
         # 5. 策略点位：入场/加仓/离场的关键价格位置
         (["策略点位", "关键点位", "交易策略", "操作策略", "关键支撑", "关键阻力", "关键支撑位/阻力位"],
-         "策略点位", 300),
+         "策略点位", 250),
         # 6. 风险提示：所有可能影响结论的负面因素
-        (["风险提示", "风险因素", "风险分析", "主要风险", "风险预警", "风险说明"], "风险提示", 300),
+        (["风险提示", "风险因素", "风险分析", "主要风险", "风险预警", "风险说明"], "风险提示", 150),
     ]
     price_aliases = [
         (["理想买入"], "理想买入"),
@@ -874,22 +943,235 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
         if full_content and len(full_content) > len(result.get(field_name, "")):
             result[field_name + "_full"] = full_content
 
-    # 2b) 价格字段
+    # 1c) 从市场报告中提取当前股价作为价格校验基准
+    def _extract_current_price() -> Optional[float]:
+        """从 market_report 中提取最新收盘价，用于价格合理性校验"""
+        market_text = reports.get("market_report")
+        if not isinstance(market_text, str):
+            return None
+        # 匹配"最新收盘价：30.01 元 或 收盘价：**30.01 元
+        m = re.search(r"最新收盘价[^\d]*(\d+(?:\.\d+)?)", market_text)
+        if m:
+            try:
+                return float(m.group(1))
+            except ValueError:
+                pass
+        m = re.search(r"收盘价[^\d]*(\d+(?:\.\d+)?)", market_text)
+        if m:
+            try:
+                return float(m.group(1))
+            except ValueError:
+                pass
+        # 尝试从表格行中提取 | **最新收盘价** | **30.01 元**
+        m = re.search(r"最新收盘价.*?(\d+(?:\.\d+)?)\s*元", market_text)
+        if m:
+            try:
+                return float(m.group(1))
+            except ValueError:
+                pass
+        return None
+
+    base_price = _extract_current_price()
+
+    def _is_price_reasonable(price_val: str) -> bool:
+        """判断提取的价格是否合理（在基准价的 0.3~3 倍范围内）"""
+        if not base_price:
+            return True  # 没有基准价时不校验
+        num_match = re.search(r"(\d+(?:\.\d+)?)", price_val)
+        if not num_match:
+            return False
+        try:
+            p = float(num_match.group(1))
+            if p <= 0:
+                return False
+            # 价格应在基准价的 0.3 倍 ~ 3 倍之间
+            return base_price * 0.3 <= p <= base_price * 3.0
+        except ValueError:
+            return False
+
+    # 1d) 提取核心洞察的一句话结论（优先从最高优先级模块）
+    def _extract_one_line_conclusion() -> Optional[str]:
+        """
+        从最高优先级模块中提取一句话结论。
+        优先找"综合决策：xxx"、"结论：xxx"等格式，
+        找不到则取第一段第一句有实际内容的句子。
+        """
+        # 优先找明确的结论格式
+        conclusion_patterns = [
+            r"综合决策[：:]\s*([^\n。！？；;]+[。！？]?)",
+            r"综合结论[：:]\s*([^\n。！？；;]+[。！？]?)",
+            r"最终结论[：:]\s*([^\n。！？；;]+[。！？]?)",
+            r"最终决策[：:]\s*([^\n。！？；;]+[。！？]?)",
+            r"核心结论[：:]\s*([^\n。！？；;]+[。！？]?)",
+            r"核心观点[：:]\s*([^\n。！？；;]+[。！？]?)",
+        ]
+        for module_text in _priority_texts():
+            for pat in conclusion_patterns:
+                try:
+                    m = re.search(pat, module_text)
+                    if m:
+                        conclusion = m.group(1).strip()
+                        conclusion = re.sub(r'[\*_`]+', '', conclusion).strip()
+                        if len(conclusion) >= 10:
+                            return conclusion
+                except re.error:
+                    continue
+
+        # 兜底：取 final_trade_decision 的第一段第一句有意义的话
+        for key in ["final_trade_decision", "research_team_decision", "trader_investment_plan"]:
+            text = reports.get(key)
+            if not isinstance(text, str):
+                continue
+            lines = text.strip().split("\n")
+            for line in lines:
+                stripped = line.strip()
+                # 跳过空行、分隔线、标题行
+                if not stripped:
+                    continue
+                if re.match(r'^[-=_]{2,}$', stripped):
+                    continue
+                if re.match(r'^#{1,6}\s+', stripped):
+                    continue
+                if len(stripped) < 10:
+                    continue
+                # 跳过"好的，各位同事。"这类开场白
+                if "各位同事" in stripped or "作为" in stripped and len(stripped) < 30:
+                    continue
+                # 找到第一句有意义的
+                clean = re.sub(r'[\*_`]+', '', stripped).strip()
+                # 如果有句号，取第一句
+                first_sentence = re.split(r'[。！？]', clean)[0]
+                if len(first_sentence) >= 10:
+                    return first_sentence + "。"
+                if len(clean) >= 10:
+                    return clean
+        return None
+
+    one_line_conclusion = _extract_one_line_conclusion()
+    if one_line_conclusion:
+        result["一句话结论"] = one_line_conclusion
+        # 同时也作为核心洞察的优先内容
+        if "核心洞察" not in result or len(result.get("核心洞察", "")) < len(one_line_conclusion):
+            pass
+
+    # 1e) 从 market_report 表格中提取支撑位/阻力位（最可靠的技术面数据）
+    def _extract_price_from_table(text: str, keyword: str) -> Optional[str]:
+        """
+        从 markdown 表格中提取指定关键词对应的价格。
+        表格格式：| 支撑位 | 价格 | 依据 |
+                 | S1 - 10日EMA | 29.96 | 短期动态支撑 |
+        """
+        if not text:
+            return None
+        lines = text.split("\n")
+        in_table = False
+        header_found = False
+        price_col_idx = -1
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped.startswith("|") or not stripped.endswith("|"):
+                if in_table and stripped:
+                    in_table = False
+                    header_found = False
+                    price_col_idx = -1
+                continue
+
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            if len(cells) < 2:
+                continue
+
+            # 检测是否是分隔行
+            if all(re.match(r'^[\-:]+$', c) for c in cells if c):
+                in_table = True
+                continue
+
+            if not in_table:
+                # 检查表头是否包含关键词
+                for idx, cell in enumerate(cells):
+                    if keyword in cell and idx + 1 < len(cells):
+                        header_found = True
+                        # 找到"价格"列在哪
+                        for j, c in enumerate(cells):
+                            if "价格" in c or "价位" in c or "目标" in c:
+                                price_col_idx = j
+                                break
+                        if price_col_idx < 0:
+                            price_col_idx = idx + 1 if idx + 1 < len(cells) else idx
+                        in_table = True
+                        break
+                continue
+
+            if header_found and price_col_idx >= 0 and price_col_idx < len(cells):
+                price_cell = cells[price_col_idx]
+                # 移除加粗符号
+                price_clean = price_cell.replace("*", "").replace("**", "").strip()
+                num = re.search(r"(\d+(?:\.\d+)?)", price_clean)
+                if num:
+                    return f"{num.group(1)} 元"
+
+            # 另一种情况：行首包含关键词，价格在后面的列
+            first_cell = cells[0].replace("*", "").replace("**", "").strip()
+            if keyword in first_cell and len(cells) > 1:
+                for j in range(1, len(cells)):
+                    num = re.search(r"(\d+(?:\.\d+)?)", cells[j])
+                    if num:
+                        return f"{num.group(1)} 元"
+
+        return None
+
+    # 优先从 market_report 表格中提取支撑/阻力位
+    market_text = reports.get("market_report")
+    if isinstance(market_text, str):
+        if "支撑位" not in result:
+            sup = _extract_price_from_table(market_text, "支撑位")
+            if sup and _is_price_reasonable(sup):
+                result["支撑位"] = sup
+        if "阻力位" not in result:
+            res = _extract_price_from_table(market_text, "阻力位")
+            if res and _is_price_reasonable(res):
+                result["阻力位"] = res
+
+    # 2b) 价格字段（带合理性校验）
+    # 交易类价格（止盈/止损/买入）只从决策相关模块提取，避免从估值/基本面中误提取
+    trade_only_fields = {"止盈目标", "止损价格", "理想买入", "二次买入"}
+    trade_modules = [
+        "final_trade_decision",
+        "trader_plan",
+        "risk_analysis",
+        "trading_plan",
+    ]
+
     for aliases, field_name in price_aliases:
         if result.get(field_name):
             continue
-        for module_text in _priority_texts():
-            val = _match_price(module_text, aliases)
-            if val and not result.get(field_name):
-                result[field_name] = val
-                break
-        if field_name not in result:
-            for v in reports.values():
+        found_price = None
+
+        if field_name in trade_only_fields:
+            # 交易类价格：只从交易决策模块中提取，严格限制范围
+            for mod_key in trade_modules:
+                v = reports.get(mod_key)
                 if isinstance(v, str):
                     val = _match_price(v, aliases)
-                    if val:
-                        result[field_name] = val
+                    if val and _is_price_reasonable(val):
+                        found_price = val
                         break
+        else:
+            # 支撑/阻力位等：可以从所有模块提取
+            for module_text in _priority_texts():
+                val = _match_price(module_text, aliases)
+                if val and _is_price_reasonable(val):
+                    found_price = val
+                    break
+            if not found_price:
+                for v in reports.values():
+                    if isinstance(v, str):
+                        val = _match_price(v, aliases)
+                        if val and _is_price_reasonable(val):
+                            found_price = val
+                            break
+        if found_price:
+            result[field_name] = found_price
 
     # 2c) 评分/置信度/风险
     for aliases, field_name in score_aliases:
@@ -951,6 +1233,182 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
                 if extracted:
                     result["空仓者建议"] = extracted
                     break
+
+    # ===== 精简版核心洞察（3个，每个1-2句话，让用户一眼看懂）=====
+    def _first_meaningful_sentence(text: str, max_len: int = 80, skip_header: bool = True) -> Optional[str]:
+        """从文本中提取第一句有实际意义的话（跳过开场白、标题、元数据等）"""
+        if not text:
+            return None
+        lines = text.split("\n")
+        passed_header = not skip_header
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                if passed_header:
+                    continue
+                else:
+                    # 空行可能表示头部结束
+                    passed_header = True
+                    continue
+            # 跳过标题
+            if re.match(r'^#{1,6}\s+', stripped) or re.match(r'^[-\*]+\s*$', stripped):
+                continue
+            # 跳过表格行
+            if stripped.startswith("|") and stripped.endswith("|"):
+                continue
+            # 跳过重音符号开头的行
+            clean = re.sub(r'[\*_`]+', '', stripped).strip()
+            if not clean:
+                continue
+            # 跳过明显的元数据/开场白
+            skip_patterns = [
+                "各位同事", "报告日期", "分析日期", "标的代码", "分析周期",
+                "数据截止", "当前股价", "分析目标", "本报告基于",
+                "仅供研究参考", "不构成投资建议", "免责声明",
+            ]
+            if any(p in clean for p in skip_patterns):
+                continue
+            if clean.startswith("作为") and len(clean) < 40:
+                continue
+            # 跳过太短的
+            if len(clean) < 8:
+                continue
+            # 取第一句
+            first = re.split(r'[。！？；]', clean)[0]
+            if len(first) >= 8:
+                if len(first) > max_len:
+                    first = first[:max_len] + "..."
+                return first + "。"
+        return None
+
+    def _extract_first_bullet(text: str, max_len: int = 80, skip_summaries: bool = True) -> Optional[str]:
+        """提取列表中的第一个要点（- 或 数字. 开头的），跳过摘要/综合决策类内容"""
+        if not text:
+            return None
+        lines = text.split("\n")
+        for line in lines:
+            stripped = line.strip()
+            # 匹配列表项: - xxx 或 1. xxx 或 （1）xxx
+            m = re.match(r'^(?:[-*•]|\d+[.、]|[（(]\d+[）)])\s*[-*\s]*(.+)', stripped)
+            if m:
+                content = re.sub(r'[\*_`]+', '', m.group(1)).strip()
+                if len(content) < 5:
+                    continue
+                # 跳过摘要/综合决策类列表项（通常在开头）
+                if skip_summaries:
+                    skip_keywords = ["综合决策", "最终结论", "核心结论", "一句话结论"]
+                    if any(kw in content for kw in skip_keywords):
+                        continue
+                # 取第一句
+                first = re.split(r'[。！？；]', content)[0]
+                if len(first) > max_len:
+                    first = first[:max_len] + "..."
+                return first + "。"
+        return None
+
+    def _find_section_bullet(text: str, section_keywords: List[str], max_len: int = 80) -> Optional[str]:
+        """找到指定章节后的第一个列表项，支持中文数字标题（如"七、总结"）"""
+        if not text:
+            return None
+        lines = text.split("\n")
+        in_section = False
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            # 检测章节标题
+            if not in_section:
+                # 去掉 markdown 标记和序号前缀
+                clean = re.sub(r'[\*_`#]+', '', stripped).strip()
+                # 去掉"一、二、三..."或"1.2.3..."等序号前缀
+                clean = re.sub(r'^[一二三四五六七八九十百千\d]+[、.\.\s]+', '', clean).strip()
+                for kw in section_keywords:
+                    if kw in clean and len(clean) < 40:
+                        in_section = True
+                        break
+                continue
+            # 在章节内找第一个列表项
+            if in_section:
+                m = re.match(r'^(?:[-*•]|\d+[.、]|[（(]\d+[）)])\s*[-*\s]*(.+)', stripped)
+                if m:
+                    content = re.sub(r'[\*_`]+', '', m.group(1)).strip()
+                    if len(content) >= 5:
+                        first = re.split(r'[。！？；]', content)[0]
+                        if len(first) > max_len:
+                            first = first[:max_len] + "..."
+                        return first + "。"
+                # 遇到下一个章节标题则停止
+                if re.match(r'^#{1,6}\s+', stripped) or re.match(r'^[一二三四五六七八九十]+[、.]', stripped) or re.match(r'^\d+[.、]', stripped):
+                    if len(stripped) < 40:
+                        break
+        return None
+
+    # 1) 精简核心结论：一句话结论 + 最核心理由
+    core_parts = []
+    if one_line_conclusion:
+        core_parts.append(one_line_conclusion)
+    # 从研究经理/投资计划中找第一个核心理由
+    for mod_key in ["research_team_decision", "investment_plan", "final_trade_decision"]:
+        text = reports.get(mod_key)
+        if isinstance(text, str):
+            # 优先从"核心逻辑"、"投资逻辑"、"核心论据"等章节找
+            reason = _find_section_bullet(text, ["核心逻辑", "投资逻辑", "核心论据", "核心结论", "主要逻辑", "核心理由"])
+            if not reason:
+                reason = _extract_first_bullet(text, 70)
+            if not reason:
+                reason = _first_meaningful_sentence(text, 70)
+            if reason and reason not in core_parts:
+                core_parts.append(reason)
+                break
+    if core_parts:
+        result["精简核心结论"] = " ".join(core_parts[:2])
+
+    # 2) 精简关键风险：从风险分析中找第一个风险点
+    for mod_key in ["risk_management_decision", "risky_analyst", "bear_researcher", "lockup_report"]:
+        text = reports.get(mod_key)
+        if isinstance(text, str):
+            # 优先从"风险"相关章节找
+            risk = _find_section_bullet(text, ["风险提示", "风险因素", "主要风险", "关键风险", "风险点", "风险警告"])
+            if not risk:
+                risk = _extract_first_bullet(text, 80)
+            if not risk:
+                # 尝试找"风险"相关段落的第一句
+                risk_match = re.search(r'(?:风险提示|风险因素|主要风险|关键风险)[^\n]*[\r\n]+(.{10,120}?)(?=\n\s*\n|\n#|$)', text)
+                if risk_match:
+                    risk = _first_meaningful_sentence(risk_match.group(1), 80)
+            if risk:
+                result["精简关键风险"] = risk
+                break
+
+    # 3) 精简资金情绪：从情绪/资金报告中找核心判断
+    for mod_key in ["sentiment_report", "hot_money_report", "news_report"]:
+        text = reports.get(mod_key)
+        if isinstance(text, str):
+            senti = None
+            # 策略1：优先找"核心结论"引用块或段落
+            for pattern in [
+                r'核心结论[：:：]\s*(.{10,120}?)(?=\n\n|\n---|\n<|$)',
+                r'综合情绪评分[^\n]*\n[^\n]*',
+                r'整体情绪[：:：]\s*(.{10,100}?)(?=\n|$)',
+            ]:
+                m = re.search(pattern, text)
+                if m:
+                    senti_text = re.sub(r'[\*_`>|⚠️\s]+', ' ', m.group(0) if '综合情绪' in pattern else m.group(1)).strip()
+                    if len(senti_text) >= 10:
+                        # 只取前两句
+                        sents = re.split(r'[。！？；]', senti_text)
+                        senti = "。".join(s for s in sents[:2] if s.strip()) + "。"
+                        break
+            # 策略2：找总结章节后的第一个列表项
+            if not senti:
+                senti = _find_section_bullet(text, ["总结与情绪信号", "情绪总结", "总结与建议", "核心结论", "情绪判断", "资金判断", "整体情绪", "市场情绪", "资金面", "情绪评分"])
+            # 策略3：找第一个列表项
+            if not senti:
+                senti = _extract_first_bullet(text, 80)
+            # 策略4：找第一句有意义的话
+            if not senti:
+                senti = _first_meaningful_sentence(text, 80)
+            if senti:
+                result["精简资金情绪"] = senti
+                break
 
     return result
 
@@ -1336,6 +1794,23 @@ async def get_report_detail(
         query = _build_report_query(report_id)
         doc = await db.analysis_reports.find_one(query)
 
+        # 🔥 兜底：如果 analysis_reports 中没有 dimension_analysis，尝试从 reports 集合读取
+        if doc and not doc.get("dimension_analysis"):
+            logger.info(f"⚠️ analysis_reports 中没有 dimension_analysis，尝试从 reports 集合读取: {report_id}")
+            task_id = doc.get("task_id", report_id)
+            reports_doc = await db.reports.find_one({"task_id": task_id})
+            if reports_doc:
+                logger.info(f"✅ 从 reports 集合找到补充数据")
+                # 合并 reports 集合中的数据
+                doc["dimension_analysis"] = reports_doc.get("dimension_analysis", "")
+                doc["bull_bear_debate"] = reports_doc.get("bull_bear_debate", "")
+                doc["final_conclusion"] = reports_doc.get("final_conclusion", "")
+                doc["full_report"] = reports_doc.get("full_report", {})
+                if reports_doc.get("quick_result"):
+                    doc["quick_result"] = reports_doc.get("quick_result")
+                if reports_doc.get("summary"):
+                    doc["summary"] = reports_doc.get("summary")
+
         if not doc:
             # 兜底：从 analysis_tasks.result 中还原报告详情
             logger.info(f"⚠️ 未在analysis_reports找到，尝试从analysis_tasks还原: {report_id}")
@@ -1384,7 +1859,19 @@ async def get_report_detail(
                 "risk_level": r.get("risk_level", "中等"),
                 "key_points": r.get("key_points", []),
                 "execution_time": r.get("execution_time", 0),
-                "tokens_used": r.get("tokens_used", 0)
+                "tokens_used": r.get("tokens_used", 0),
+                # 🆕 速览分析结果和模式
+                "mode": r.get("mode", "deep"),
+                "quick_result": r.get("quick_result", {}),
+                # 🆕 快速分析报告的各个部分
+                "dimension_analysis": r.get("dimension_analysis", ""),
+                "bull_bear_debate": r.get("bull_bear_debate", ""),
+                "final_conclusion": r.get("final_conclusion", ""),
+                "reports": r.get("reports", {}) or {
+                    "dimension_analysis": r.get("dimension_analysis", ""),
+                    "bull_bear_debate": r.get("bull_bear_debate", ""),
+                    "final_conclusion": r.get("final_conclusion", ""),
+                }
             }
             # 🔥 合并顶层的 decision/detailed_analysis 到 reports，便于统一抽取
             _decision = r.get("decision") or r.get("detailed_analysis") or r.get("final_decision")
@@ -1432,7 +1919,19 @@ async def get_report_detail(
                 "risk_level": doc.get("risk_level", "中等"),
                 "key_points": doc.get("key_points", []),
                 "execution_time": doc.get("execution_time", 0),
-                "tokens_used": doc.get("tokens_used", 0)
+                "tokens_used": doc.get("tokens_used", 0),
+                # 🆕 速览分析结果和模式
+                "mode": doc.get("mode", "deep"),
+                "quick_result": doc.get("quick_result", {}),
+                # 🆕 快速分析报告的各个部分
+                "dimension_analysis": doc.get("dimension_analysis", ""),
+                "bull_bear_debate": doc.get("bull_bear_debate", ""),
+                "final_conclusion": doc.get("final_conclusion", ""),
+                "reports": doc.get("reports", {}) or {
+                    "dimension_analysis": doc.get("dimension_analysis", ""),
+                    "bull_bear_debate": doc.get("bull_bear_debate", ""),
+                    "final_conclusion": doc.get("final_conclusion", ""),
+                }
             }
             # 🔥 合并顶层的 decision/detailed_analysis 到 reports，便于统一抽取
             _decision = doc.get("decision") or doc.get("detailed_analysis") or doc.get("final_decision")

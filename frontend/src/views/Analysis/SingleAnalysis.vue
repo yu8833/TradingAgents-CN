@@ -95,6 +95,29 @@
                     :disabled-date="disabledDate"
                   />
                 </el-form-item>
+
+                <!-- 分析模式切换 -->
+                <el-form-item label="分析模式">
+                  <div class="analysis-mode-selector">
+                    <el-radio-group v-model="analysisForm.analysisMode" size="large">
+                      <el-radio-button value="quick">
+                        <span class="mode-label">
+                          <span class="mode-icon">⚡</span>
+                          <span class="mode-text">快速分析</span>
+                        </span>
+                      </el-radio-button>
+                      <el-radio-button value="deep">
+                        <span class="mode-label">
+                          <span class="mode-icon">🧠</span>
+                          <span class="mode-text">深度分析</span>
+                        </span>
+                      </el-radio-button>
+                    </el-radio-group>
+                    <div class="mode-description">
+                      {{ analysisForm.analysisMode === 'quick' ? '⚡ 秒级返回，基于技术指标的快速分析' : '🧠 多智能体辩论，2-5分钟深度分析' }}
+                    </div>
+                  </div>
+                </el-form-item>
               </div>
 
               <!-- 操作按钮 -->
@@ -407,33 +430,6 @@
               </template>
 
               <div class="results-content">
-                <!-- 风险提示 -->
-                <div class="risk-disclaimer">
-                  <el-alert
-                    type="warning"
-                    :closable="false"
-                    show-icon
-                  >
-                    <template #title>
-                      <div class="disclaimer-content">
-                        <el-icon class="disclaimer-icon"><WarningFilled /></el-icon>
-                        <div class="disclaimer-text">
-                          <p style="margin: 0 0 8px 0;"><strong>⚠️ 重要风险提示与免责声明</strong></p>
-                          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                            <li><strong>工具性质：</strong>本系统为股票分析辅助工具，使用AI技术对公开市场数据进行分析，不具备证券投资咨询资质。</li>
-                            <li><strong>非投资建议：</strong>所有分析结果、评分、建议仅为技术分析参考，不构成任何买卖建议或投资决策依据。</li>
-                            <li><strong>数据局限性：</strong>分析基于历史数据和公开信息，可能存在延迟、不完整或不准确的情况，无法预测未来市场走势。</li>
-                            <li><strong>投资风险：</strong>股票投资存在市场风险、流动性风险、政策风险等多种风险，可能导致本金损失。</li>
-                            <li><strong>独立决策：</strong>投资者应基于自身风险承受能力、投资目标和财务状况独立做出投资决策。</li>
-                            <li><strong>专业咨询：</strong>重大投资决策建议咨询具有合法资质的专业投资顾问或金融机构。</li>
-                            <li><strong>责任声明：</strong>使用本工具产生的任何投资决策及其后果由投资者自行承担，本系统不承担任何责任。</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </template>
-                  </el-alert>
-                </div>
-
                 <!-- 最终决策 -->
                 <div v-if="analysisResults.decision" class="decision-section">
                   <h4>🎯 分析参考</h4>
@@ -492,11 +488,6 @@
                     <div v-if="analysisResults.summary" class="overview-summary">
                       <h5>分析摘要:</h5>
                       <p>{{ analysisResults.summary }}</p>
-                    </div>
-
-                    <div v-if="analysisResults.recommendation" class="overview-recommendation">
-                      <h5>投资建议:</h5>
-                      <p>{{ analysisResults.recommendation }}</p>
                     </div>
                   </div>
                 </div>
@@ -658,7 +649,7 @@
       <div class="pipeline-section section--debate">
         <div class="section-header">
           <h3>⚔️ 多空辩论 · 三方风控 · 最终决策</h3>
-          <p class="section-subtitle">研究团队通过对抗性辩论形成共识，风控团队从三个视角兜底，最终给出可操作的投资建议</p>
+          <p class="section-subtitle">研究团队通过对抗性辩论形成共识，风控团队从三个视角兜底，最终给出可操作的决策建议</p>
         </div>
 
         <!-- 辩论流程时间线 -->
@@ -784,6 +775,7 @@ marked.setOptions({
 
 // 市场类型定义
 type MarketType = 'A股' | '美股' | '港股'
+type AnalysisModeType = 'quick' | 'deep'
 
 // 表单类型定义
 interface AnalysisForm {
@@ -791,6 +783,7 @@ interface AnalysisForm {
   symbol: string
   market: MarketType
   analysisDate: Date
+  analysisMode: AnalysisModeType  // 分析模式: quick=速览, deep=深度
   selectedAnalysts: string[]
   includeSentiment: boolean
   includeRisk: boolean
@@ -821,6 +814,28 @@ const progressInfo = ref({
 })
 const pollingTimer = ref<any>(null)
 
+// 轮询配置
+const pollingConfig = {
+  baseInterval: 2000,        // 基础轮询间隔（毫秒）
+  maxInterval: 10000,        // 最大轮询间隔（毫秒）
+  runningInterval: 2000,     // 运行中状态的轮询间隔
+  waitingInterval: 5000,    // 等待中状态的轮询间隔
+  maxRetries: 3,             // 最大重试次数
+  retryDelay: 2000,          // 重试间隔（毫秒）
+  timeout: 600000            // 超时时间（10分钟）
+}
+
+// 轮询状态
+const pollingState = reactive({
+  retryCount: 0,             // 当前重试次数
+  lastStatus: '',            // 上次状态
+  isWaiting: false,          // 是否处于等待状态
+  startTime: 0               // 轮询开始时间
+})
+
+// 当前轮询间隔
+const currentPollingInterval = ref(pollingConfig.baseInterval)
+
 // 分析步骤定义（动态生成）
 const analysisSteps = ref<any[]>([])
 
@@ -840,8 +855,8 @@ const generateStepsFromBackend = (backendSteps: any[]) => {
 
 // 模型设置
 const modelSettings = ref({
-  quickAnalysisModel: 'qwen-turbo',
-  deepAnalysisModel: 'qwen-max'
+  quickAnalysisModel: 'deepseek-v4-flash',
+  deepAnalysisModel: 'deepseek-v4-pro'
 })
 
 // 可用的模型列表（从配置中获取）
@@ -862,6 +877,7 @@ const analysisForm = reactive<AnalysisForm>({
   symbol: '',
   market: 'A股',
   analysisDate: new Date(),
+  analysisMode: 'deep',  // 默认使用深度分析
   // 默认启用全部 7 位分析师
   selectedAnalysts: [
     '市场分析师',
@@ -983,11 +999,11 @@ const submitAnalysis = async () => {
       : new Date(analysisForm.analysisDate)
 
     const request: SingleAnalysisRequest = {
-      symbol: analysisForm.symbol,
-      stock_code: analysisForm.symbol,
+      symbol: analysisForm.symbol,  // 统一使用 symbol 字段
       parameters: {
         market_type: analysisForm.market,
         analysis_date: analysisDate.toISOString().split('T')[0],
+        mode: analysisForm.analysisMode,  // 分析模式: quick=速览, deep=深度
         selected_analysts: convertAnalystNamesToIds(analysisForm.selectedAnalysts),
         include_sentiment: analysisForm.includeSentiment,
         include_risk: analysisForm.includeRisk,
@@ -997,13 +1013,15 @@ const submitAnalysis = async () => {
       }
     }
 
+    // 根据模式显示不同的提示
+    const modeText = analysisForm.analysisMode === 'quick' ? '快速分析' : '深度分析'
+    ElMessage.success(`${modeText}任务已提交，正在处理中...`)
+
     const response = await analysisApi.startSingleAnalysis(request)
 
     console.log('🔍 分析响应数据:', response)
     console.log('🔍 响应数据结构:', response.data)
     console.log('🔍 任务ID:', response.data?.task_id)
-
-    ElMessage.success('分析任务已提交，正在处理中...')
 
     // 响应拦截器已返回 response.data，所以直接访问 response.data.task_id
     currentTaskId.value = response.data.task_id
@@ -1064,11 +1082,192 @@ const submitAnalysis = async () => {
   }
 }
 
-// 轮询任务状态
-const startPollingTaskStatus = () => {
+// 停止轮询
+const stopPolling = () => {
   if (pollingTimer.value) {
     clearInterval(pollingTimer.value)
+    pollingTimer.value = null
   }
+  // 重置轮询状态
+  pollingState.retryCount = 0
+  pollingState.lastStatus = ''
+  pollingState.isWaiting = false
+  pollingState.startTime = 0
+  currentPollingInterval.value = pollingConfig.baseInterval
+}
+
+// 获取自适应轮询间隔
+const getAdaptiveInterval = (status: string, progress: number): number => {
+  // 根据任务状态和进度调整轮询间隔
+  if (status === 'running') {
+    // 运行中：进度较低时频繁轮询，进度较高时适当延长间隔
+    if (progress < 30) {
+      return pollingConfig.runningInterval
+    } else if (progress < 70) {
+      return pollingConfig.runningInterval * 1.5
+    } else {
+      return pollingConfig.runningInterval * 2
+    }
+  } else if (status === 'pending' || status === 'queued') {
+    // 等待中：使用较长的轮询间隔
+    return pollingConfig.waitingInterval
+  }
+  return pollingConfig.baseInterval
+}
+
+// 处理轮询错误
+const handlePollingError = (error: any, taskId: string) => {
+  pollingState.retryCount++
+
+  if (pollingState.retryCount >= pollingConfig.maxRetries) {
+    // 超过最大重试次数
+    console.error(`❌ 轮询失败，已达到最大重试次数 (${pollingConfig.maxRetries})`)
+    ElMessage.error({
+      message: `网络连接不稳定，请检查网络后重试`,
+      duration: 5000,
+      showClose: true
+    })
+    stopPolling()
+    analysisStatus.value = 'failed'
+    progressInfo.value.currentStep = '连接失败'
+    progressInfo.value.message = '网络连接不稳定，请检查网络后重试'
+    clearTaskCache()
+    return false
+  }
+
+  // 指数退避：每次失败后增加轮询间隔
+  const backoffInterval = pollingConfig.retryDelay * Math.pow(2, pollingState.retryCount - 1)
+  console.warn(`⚠️ 轮询失败，第 ${pollingState.retryCount} 次重试，${backoffInterval}ms 后重试`)
+  return true
+}
+
+// 检查轮询超时
+const checkPollingTimeout = (): boolean => {
+  const elapsed = Date.now() - pollingState.startTime
+  if (elapsed > pollingConfig.timeout) {
+    console.error(`❌ 轮询超时 (${pollingConfig.timeout}ms)`)
+    ElMessage.error({
+      message: `分析任务超时（超过${Math.floor(pollingConfig.timeout / 60000)}分钟），请稍后重试`,
+      duration: 8000,
+      showClose: true
+    })
+    stopPolling()
+    analysisStatus.value = 'failed'
+    progressInfo.value.currentStep = '任务超时'
+    progressInfo.value.message = '分析任务超时，请稍后重试'
+    clearTaskCache()
+    return true
+  }
+  return false
+}
+
+// 执行一次状态查询
+const pollTaskStatus = async (): Promise<boolean> => {
+  if (!currentTaskId.value) {
+    console.error('❌ 轮询中任务ID为空')
+    return false
+  }
+
+  try {
+    const response = await analysisApi.getTaskStatus(currentTaskId.value)
+    const status = response.data
+
+    // 重置重试计数
+    pollingState.retryCount = 0
+
+    console.log('🔍 任务状态:', status.status, '进度:', status.progress)
+
+    // 获取新的自适应轮询间隔
+    const newInterval = getAdaptiveInterval(status.status, status.progress || 0)
+    if (newInterval !== currentPollingInterval.value) {
+      currentPollingInterval.value = newInterval
+      console.log(`📊 轮询间隔调整为: ${newInterval}ms`)
+      // 重新设置定时器
+      stopPolling()
+      pollingTimer.value = setInterval(pollTaskStatus, currentPollingInterval.value)
+    }
+
+    // 检查状态变化
+    if (status.status !== pollingState.lastStatus) {
+      console.log(`🔄 状态变化: ${pollingState.lastStatus} -> ${status.status}`)
+      pollingState.lastStatus = status.status
+    }
+
+    if (status.status === 'completed') {
+      // 分析完成
+      await handleAnalysisComplete(status)
+      return true
+    } else if (status.status === 'failed') {
+      // 分析失败
+      handleAnalysisFailed(status)
+      return true
+    } else if (status.status === 'running' || status.status === 'pending' || status.status === 'queued') {
+      // 更新进度
+      analysisStatus.value = 'running'
+      updateProgressInfo(status)
+    }
+
+    return false
+
+  } catch (error) {
+    console.error('获取任务状态失败:', error)
+    return !handlePollingError(error, currentTaskId.value)
+  }
+}
+
+// 处理分析完成
+const handleAnalysisComplete = async (status: any) => {
+  console.log('🎉 分析完成，正在获取完整结果...')
+
+  try {
+    const resultResponse = await analysisApi.getTaskResult(currentTaskId.value)
+
+    if (resultResponse.success) {
+      analysisResults.value = resultResponse.data
+      console.log('✅ 获取完整分析结果成功')
+    } else {
+      console.error('❌ 获取分析结果失败:', resultResponse.message)
+      analysisResults.value = status.result_data || {}
+    }
+  } catch (error) {
+    console.error('❌ 获取分析结果异常:', error)
+    analysisResults.value = status.result_data || {}
+  }
+
+  analysisStatus.value = 'completed'
+  showResults.value = true
+  progressInfo.value.progress = 100
+  progressInfo.value.currentStep = '分析完成'
+  progressInfo.value.message = '分析已完成！'
+
+  stopPolling()
+  ElMessage.success('分析完成！')
+}
+
+// 处理分析失败
+const handleAnalysisFailed = (status: any) => {
+  analysisStatus.value = 'failed'
+  progressInfo.value.currentStep = '分析失败'
+
+  const errorMessage = status.error_message || '分析过程中发生错误'
+  progressInfo.value.message = errorMessage
+
+  stopPolling()
+  clearTaskCache()
+
+  ElMessage({
+    type: 'error',
+    message: errorMessage.replace(/\n/g, '<br>'),
+    dangerouslyUseHTMLString: true,
+    duration: 10000,
+    showClose: true
+  })
+}
+
+// 轮询任务状态
+const startPollingTaskStatus = () => {
+  // 先停止现有轮询
+  stopPolling()
 
   // 检查任务ID是否有效
   if (!currentTaskId.value) {
@@ -1076,120 +1275,20 @@ const startPollingTaskStatus = () => {
     return
   }
 
+  // 初始化轮询状态
+  pollingState.startTime = Date.now()
+  pollingState.lastStatus = ''
+  pollingState.retryCount = 0
+  pollingState.isWaiting = false
+  currentPollingInterval.value = pollingConfig.baseInterval
+
   console.log('🔄 开始轮询任务状态:', currentTaskId.value)
 
-  pollingTimer.value = setInterval(async () => {
-    try {
-      if (!currentTaskId.value) {
-        console.error('❌ 轮询中任务ID为空')
-        if (pollingTimer.value) {
-          clearInterval(pollingTimer.value)
-        }
-        return
-      }
+  // 立即执行一次查询
+  pollTaskStatus()
 
-      console.log('🔄 开始查询任务状态:', currentTaskId.value)
-      const response = await analysisApi.getTaskStatus(currentTaskId.value)
-      const status = response.data // 响应拦截器已返回 response.data
-
-      console.log('🔍 任务状态响应:', response)
-      console.log('🔍 任务状态数据:', status)
-      console.log('🔍 当前状态:', status.status, '进度:', status.progress)
-
-      if (status.status === 'completed') {
-        // 分析完成，调用专门的结果API获取完整数据
-        console.log('🎉 分析完成，正在获取完整结果...')
-
-        try {
-          const resultResponse = await fetch(`/api/analysis/tasks/${currentTaskId.value}/result`, {
-            headers: {
-              'Authorization': `Bearer ${authStore.token}`,
-              'Content-Type': 'application/json'
-            }
-          })
-
-          if (resultResponse.ok) {
-            const resultData = await resultResponse.json()
-            if (resultData.success) {
-              analysisResults.value = resultData.data
-              console.log('✅ 获取完整分析结果成功:', resultData.data)
-
-              // 添加调试信息
-              console.log('🔍 完整结果数据结构:', {
-                hasDecision: !!resultData.data?.decision,
-                hasState: !!resultData.data?.state,
-                hasReports: !!resultData.data?.reports,
-                hasSummary: !!resultData.data?.summary,
-                hasRecommendation: !!resultData.data?.recommendation,
-                keys: Object.keys(resultData.data || {})
-              })
-            } else {
-              console.error('❌ 获取分析结果失败:', resultData.message)
-              analysisResults.value = status.result_data // 回退到状态中的数据
-            }
-          } else {
-            console.error('❌ 结果API调用失败:', resultResponse.status)
-            analysisResults.value = status.result_data // 回退到状态中的数据
-          }
-        } catch (error) {
-          console.error('❌ 获取分析结果异常:', error)
-          analysisResults.value = status.result_data // 回退到状态中的数据
-        }
-
-        analysisStatus.value = 'completed'
-        showResults.value = true
-        progressInfo.value.progress = 100
-        progressInfo.value.currentStep = '分析完成'
-        progressInfo.value.message = '分析已完成！'
-
-        if (pollingTimer.value) {
-          clearInterval(pollingTimer.value)
-          pollingTimer.value = null
-        }
-
-        // 任务完成后保持缓存，以便刷新后能看到结果
-        // clearTaskCache() // 不清除，让用户能在30分钟内刷新查看结果
-
-        ElMessage.success('分析完成！')
-
-      } else if (status.status === 'failed') {
-        // 分析失败
-        analysisStatus.value = 'failed'
-        progressInfo.value.currentStep = '分析失败'
-
-        // 格式化错误消息（保留换行符）
-        const errorMessage = status.error_message || '分析过程中发生错误'
-        progressInfo.value.message = errorMessage
-
-        if (pollingTimer.value) {
-          clearInterval(pollingTimer.value)
-          pollingTimer.value = null
-        }
-
-        // 任务失败时清除缓存
-        clearTaskCache()
-
-        // 显示友好的错误提示（使用 dangerouslyUseHTMLString 支持换行）
-        ElMessage({
-          type: 'error',
-          message: errorMessage.replace(/\n/g, '<br>'),
-          dangerouslyUseHTMLString: true,
-          duration: 10000, // 显示10秒，让用户有时间阅读
-          showClose: true
-        })
-
-      } else if (status.status === 'running') {
-        // 分析进行中，更新进度
-        console.log('🔄 轮询中设置 analysisStatus 为 running')
-        analysisStatus.value = 'running'
-        updateProgressInfo(status)
-      }
-
-    } catch (error) {
-      console.error('获取任务状态失败:', error)
-      // 继续轮询，不中断
-    }
-  }, 5000) // 每5秒轮询一次
+  // 设置定时器
+  pollingTimer.value = setInterval(pollTaskStatus, currentPollingInterval.value)
 }
 
 // 更新进度信息
@@ -1293,7 +1392,24 @@ const getAnalysisReports = (data: any) => {
 
   // 优先从 reports 字段获取数据（新的API格式）
   let reportsData = data
-  if (data && data.reports && typeof data.reports === 'object') {
+  if (data && data.mode === 'quick') {
+    // 快速模式：使用 full_report 或 reports 中的 quick_analysis
+    if (data.full_report && data.full_report.report_markdown) {
+      reportsData = { 'quick_analysis': data.full_report.report_markdown }
+    } else if (data.reports && data.reports.quick_analysis) {
+      reportsData = data.reports
+    } else if (data.quick_result && data.quick_result.report_markdown) {
+      reportsData = { 'quick_analysis': data.quick_result.report_markdown }
+    } else {
+      // 兼容：把分开的部分组合成一个报告
+      const parts = []
+      if (data.dimension_analysis) parts.push(data.dimension_analysis)
+      if (data.bull_bear_debate) parts.push(data.bull_bear_debate)
+      if (data.final_conclusion) parts.push(data.final_conclusion)
+      reportsData = { 'quick_analysis': parts.join('\n\n') }
+    }
+    console.log('📊 快速模式报告数据:', reportsData)
+  } else if (data && data.reports && typeof data.reports === 'object') {
     reportsData = data.reports
     console.log('📊 使用 data.reports:', reportsData)
   } else if (data && data.state && typeof data.state === 'object') {
@@ -1306,7 +1422,10 @@ const getAnalysisReports = (data: any) => {
 
   // 定义报告映射（按照完整的分析流程顺序）
   const reportMappings = [
-    // 分析师团队 (7个)
+    // 快速分析模式：只显示一个完整的快速分析报告
+    { key: 'quick_analysis', title: '⚡ 快速分析报告', category: '快速分析' },
+    
+    // 深度分析模式：分析师团队 (7个)
     { key: 'market_report', title: '📈 市场技术分析', category: '分析师团队' },
     { key: 'sentiment_report', title: '💭 市场情绪分析', category: '分析师团队' },
     { key: 'news_report', title: '📰 新闻事件分析', category: '分析师团队' },
@@ -1333,7 +1452,6 @@ const getAnalysisReports = (data: any) => {
     { key: 'final_trade_decision', title: '🎯 最终交易决策', category: '最终决策' },
 
     // 兼容旧格式
-    { key: 'investment_plan', title: '📋 投资建议', category: '其他' },
     { key: 'investment_debate_state', title: '🔬 研究团队决策（旧）', category: '其他' },
     { key: 'risk_debate_state', title: '⚖️ 风险管理团队（旧）', category: '其他' }
   ]
@@ -1384,11 +1502,14 @@ const getReportName = (title: string) => {
 // 获取报告描述
 const getReportDescription = (title: string) => {
   const descMap: Record<string, string> = {
+    '⚡ 快速分析报告': '完整的快速分析报告，包含所有维度分析',
+    '📊 维度分析摘要': '六大维度综合分析：宏观行业、基本面、技术面、资金情绪、事件驱动、风险控制',
+    '⚔️ 多空辩论': '多空双方观点对比，全面评估投资价值',
+    '🎯 最终决策': '综合评分、操作建议和核心结论',
     '📈 市场技术分析': '技术指标、价格趋势、支撑阻力位分析',
     '💰 基本面分析': '财务数据、估值水平、盈利能力分析',
     '📰 新闻事件分析': '相关新闻事件、市场动态影响分析',
     '💭 市场情绪分析': '投资者情绪、社交媒体情绪指标',
-    '📋 投资建议': '具体投资策略、仓位管理建议',
     '🔬 研究团队决策': '多头/空头研究员辩论分析，研究经理综合决策',
     '💼 交易团队计划': '专业交易员制定的具体交易执行计划',
     '⚖️ 风险管理团队': '激进/保守/中性分析师风险评估，投资组合经理最终决策',
@@ -1418,7 +1539,10 @@ const formatReportContent = (content: any) => {
     console.log('✅ [DEBUG] content是字符串，长度:', stringContent.length)
   } else if (typeof content === 'object') {
     // 如果是对象，尝试提取有用信息
-    if (content.judge_decision) {
+    if (content.content && typeof content.content === 'string') {
+      stringContent = content.content
+      console.log('📝 [DEBUG] 从对象中提取content字段')
+    } else if (content.judge_decision) {
       stringContent = content.judge_decision
       console.log('📝 [DEBUG] 从对象中提取judge_decision')
     } else {
@@ -1803,10 +1927,7 @@ const goSimOrder = async () => {
 
 // 组件销毁时清理定时器
 onUnmounted(() => {
-  if (pollingTimer.value) {
-    clearInterval(pollingTimer.value)
-    pollingTimer.value = null
-  }
+  stopPolling()
 })
 
 // 页面可见性变化时的处理
@@ -3136,6 +3257,51 @@ onMounted(async () => {
 .step-current .step-icon {
   animation: pulse 2s ease-in-out infinite;
 }
+
+/* 分析模式切换样式 */
+.analysis-mode-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analysis-mode-selector .el-radio-group {
+  width: 100%;
+}
+
+.analysis-mode-selector .el-radio-button {
+  flex: 1;
+}
+
+.analysis-mode-selector .el-radio-button__inner {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+.mode-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mode-icon {
+  font-size: 16px;
+}
+
+.mode-text {
+  font-weight: 500;
+}
+
+.mode-description {
+  font-size: 12px;
+  color: #909399;
+  padding-left: 4px;
+}
 </style>
 
 <style>
@@ -3706,6 +3872,40 @@ onMounted(async () => {
     border-radius: 0 8px 8px 0 !important;
     font-style: italic !important;
     color: var(--el-text-color-regular) !important;
+  }
+
+  /* 表格样式 */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 16px 0 !important;
+    font-size: 15px !important;
+  }
+
+  th {
+    background: var(--el-fill-color-light) !important;
+    color: var(--el-text-color-primary) !important;
+    font-weight: 600 !important;
+    padding: 12px 16px !important;
+    text-align: left !important;
+    border-bottom: 2px solid var(--el-border-color) !important;
+  }
+
+  td {
+    padding: 10px 16px !important;
+    border-bottom: 1px solid var(--el-border-color-lighter) !important;
+    color: var(--el-text-color-regular) !important;
+  }
+
+  tr:hover {
+    background: var(--el-fill-color-light) !important;
+  }
+
+  /* 分隔线样式 */
+  hr {
+    border: none !important;
+    border-top: 1px solid var(--el-border-color) !important;
+    margin: 20px 0 !important;
   }
 }
 

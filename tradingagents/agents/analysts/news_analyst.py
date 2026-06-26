@@ -4,6 +4,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_global_news,
     get_language_instruction,
     get_news,
+    get_quick_scan_summary,
 )
 from tradingagents.dataflows.config import get_config
 
@@ -12,11 +13,18 @@ def create_news_analyst(llm):
     def news_analyst_node(state):
         current_date = state["trade_date"]
         instrument_context = build_instrument_context(state["company_of_interest"])
+        quick_scan_summary = get_quick_scan_summary(state)
 
         tools = [
             get_news,
             get_global_news,
         ]
+
+        # 注入速览摘要到系统提示
+        quick_scan_note = (
+            f"\n\n📈 **速览分析参考**: {quick_scan_summary}\n"
+            "结合速览分析的技术面信号，重点关注近期新闻是否与技术面趋势一致。"
+        ) if quick_scan_summary else ""
 
         system_message = (
             "你是一位专注于 A 股市场的新闻与政策分析师。你的任务是分析近期新闻动态，评估其对目标公司和 A 股市场的影响。"
@@ -25,6 +33,7 @@ def create_news_analyst(llm):
             "\n- **消息来源权重**：财联社快讯（最快）> 新华财经/证券时报（权威）> 东方财富/同花顺（广泛）。注意区分官方消息与市场传闻。"
             "\n- **行业轮动**：A 股板块轮动特征明显，一个行业利好政策可能带动整个板块，分析时需关注产业链上下游联动。"
             "\n- **事件驱动**：关注财报预告/业绩快报、股东大会决议、重大合同公告、机构调研记录等公司层面事件。"
+            + quick_scan_note +
             "\n\n请使用以下工具："
             "\n- `get_news(query, start_date, end_date)`：获取公司相关的个股新闻"
             "\n- `get_global_news(curr_date, look_back_days, limit)`：获取宏观经济和市场整体新闻"

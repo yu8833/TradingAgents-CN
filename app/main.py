@@ -70,6 +70,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from app.services.quotes_ingestion_service import QuotesIngestionService
 from app.routers import paper as paper_router
+from app.routers import quick_analysis
 
 
 def get_version() -> str:
@@ -687,6 +688,7 @@ async def test_log():
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
+app.include_router(quick_analysis.router, prefix="/api", tags=["quick-analysis"])
 app.include_router(reports.router, tags=["reports"])
 app.include_router(screening.router, prefix="/api/screening", tags=["screening"])
 app.include_router(queue.router, prefix="/api/queue", tags=["queue"])
