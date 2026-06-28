@@ -16,7 +16,13 @@ def create_bull_researcher(llm):
         lockup_report = state.get("lockup_report", "")
         data_quality_summary = state.get("data_quality_summary", "")
 
+        # 获取速览分析结果作为辩论起点
+        from tradingagents.agents.utils.agent_utils import get_quick_scan_summary
+        quick_scan_summary = get_quick_scan_summary(state)
+
         prompt = f"""You are a Bull Analyst advocating for investing in this A-share (China mainland) stock. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
+
+{quick_scan_summary}
 
 A-Share Bull Framework — prioritize these China-specific bullish catalysts:
 - Policy Tailwinds: Government subsidies, industry support policies (e.g. "专精特新", national strategic sectors), favorable regulatory signals from CSRC/State Council

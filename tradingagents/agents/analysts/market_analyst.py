@@ -4,6 +4,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_indicators,
     get_language_instruction,
     get_stock_data,
+    get_quick_analysis_context,
 )
 from tradingagents.dataflows.config import get_config
 
@@ -15,13 +16,17 @@ def create_market_analyst(llm):
         company = state["company_of_interest"]
         instrument_context = build_instrument_context(company)
 
+        # 获取速览分析上下文（如果存在）
+        quick_scan_context = get_quick_analysis_context(state)
+
         tools = [
             get_stock_data,
             get_indicators,
         ]
 
         system_message = (
-            """你是一位专注于 A 股市场的技术分析师。你的任务是从以下技术指标中选择最多 **8 个**最相关的指标，为给定的 A 股标的提供技术面分析。选择时应注重指标间的互补性，避免冗余。
+            f"""你是一位专注于 A 股市场的技术分析师。你的任务是从以下技术指标中选择最多 **8 个**最相关的指标，为给定的 A 股标的提供技术面分析。选择时应注重指标间的互补性，避免冗余。
+{quick_scan_context}
 
 ⚠️ A 股市场特殊规则（分析时必须纳入考量）：
 - **涨跌停制度**：主板 ±10%，科创板/创业板 ±20%，ST 股 ±5%。触及涨跌停后流动性骤降，技术指标可能失真。

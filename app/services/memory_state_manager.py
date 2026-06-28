@@ -139,20 +139,28 @@ class MemoryStateManager:
 
     def _calculate_estimated_duration(self, parameters: Dict[str, Any]) -> float:
         """根据分析参数计算预估总时长（秒）"""
-        # 基础时间（秒）- 环境准备、配置等
+        # 获取分析模式
+        analysis_mode = parameters.get('analysis_mode', parameters.get('mode', 'deep'))
+        
+        # 🔧 根据分析模式设置不同的预估时长
+        if analysis_mode == 'quick':
+            # 快速分析模式：约1-2分钟
+            return 120  # 2分钟
+        
+        # 深度分析模式的基础时间（秒）- 环境准备、配置等
         base_time = 60
-
+        
         # 获取分析参数
         selected_analysts = parameters.get('selected_analysts', [])
         from tradingagents.llm_clients.provider_keys import normalize_provider_key
 
         llm_provider = normalize_provider_key(parameters.get('llm_provider', 'dashscope'))
-
+        
         # 每个分析师的基础耗时（基于真实测试数据）
         analyst_base_time = 360  # 默认：每个分析师约6分钟
-
+        
         analyst_time = len(selected_analysts) * analyst_base_time
-
+        
         # 模型速度影响（基于实际测试）
         model_multiplier = {
             'qwen': 1.0,
@@ -160,7 +168,7 @@ class MemoryStateManager:
             'deepseek': 0.7,
             'google': 1.3
         }.get(llm_provider, 1.0)
-
+        
         total_time = (base_time + analyst_time) * model_multiplier
         return total_time
 

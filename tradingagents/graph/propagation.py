@@ -1,6 +1,7 @@
 # TradingAgents/graph/propagation.py
 
 from typing import Dict, Any, List, Optional
+from langchain_core.messages import HumanMessage
 from tradingagents.agents.utils.agent_states import (
     AgentState,
     InvestDebateState,
@@ -16,14 +17,17 @@ class Propagator:
         self.max_recur_limit = max_recur_limit
 
     def create_initial_state(
-        self, company_name: str, trade_date: str, past_context: str = ""
+        self, company_name: str, trade_date: str, past_context: str = "",
+        quick_analysis_result: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Create the initial state for the agent graph."""
         return {
-            "messages": [("human", company_name)],
+            "messages": [HumanMessage(content=company_name)],
             "company_of_interest": company_name,
             "trade_date": str(trade_date),
             "past_context": past_context,
+            "quick_analysis_result": quick_analysis_result or {},
+            "sender": "user",
             "investment_debate_state": InvestDebateState(
                 {
                     "bull_history": "",
@@ -55,6 +59,10 @@ class Propagator:
             "policy_report": "",
             "hot_money_report": "",
             "lockup_report": "",
+            "data_quality_summary": "",
+            "investment_plan": "",
+            "trader_investment_plan": "",
+            "final_trade_decision": "",
         }
 
     def get_graph_args(self, callbacks: Optional[List] = None) -> Dict[str, Any]:

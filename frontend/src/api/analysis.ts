@@ -21,11 +21,11 @@ export interface AnalysisRequest {
 
 // 后端期望的请求格式
 export interface SingleAnalysisRequest {
-  symbol?: string  // 主字段：6位股票代码
-  stock_code?: string  // 兼容字段（已废弃）
+  symbol: string  // 主字段：股票代码 (6位代码，如: 000001)
   parameters?: {
     market_type?: string
     analysis_date?: string
+    mode?: 'quick' | 'deep'  // 分析模式: quick=速览分析, deep=深度分析
     selected_analysts?: string[]
     custom_prompt?: string
     include_sentiment?: boolean

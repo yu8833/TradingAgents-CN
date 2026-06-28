@@ -39,6 +39,10 @@ class AnalysisParameters(BaseModel):
     include_sentiment: bool = True
     include_risk: bool = True
     language: str = "zh-CN"
+    # 分析模式：quick=速览, deep=深度
+    mode: str = Field("deep", description="分析模式: quick=速览分析, deep=深度分析")
+    # 速览分析结果（深度模式下复用）
+    quick_result: Optional[Dict[str, Any]] = None
     # 模型配置
     quick_analysis_model: Optional[str] = "qwen-turbo"
     deep_analysis_model: Optional[str] = "qwen-max"
@@ -143,14 +147,30 @@ class StockInfo(BaseModel):
 # API请求/响应模型
 
 class SingleAnalysisRequest(BaseModel):
-    """单股分析请求"""
-    symbol: Optional[str] = Field(None, description="6位股票代码")
-    stock_code: Optional[str] = Field(None, description="股票代码(已废弃,使用symbol)")
+    """单股分析请求
+
+    注意: stock_code 字段已废弃，请使用 symbol 字段
+    """
+    symbol: Optional[str] = Field(None, description="股票代码 (6位代码，如: 000001)")
+    stock_code: Optional[str] = Field(None, description="⚠️ 已废弃，请使用 symbol 字段")
     parameters: Optional[AnalysisParameters] = None
 
     def get_symbol(self) -> str:
-        """获取股票代码(兼容旧字段)"""
+        """获取股票代码(优先使用symbol，兼容旧字段stock_code)"""
         return self.symbol or self.stock_code or ""
+
+    def __init__(self, **data):
+        """初始化时自动处理废弃字段"""
+        super().__init__(**data)
+        # 如果只有 stock_code 而没有 symbol，自动迁移
+        if not self.symbol and self.stock_code:
+            import warnings
+            warnings.warn(
+                "stock_code 字段已废弃，请使用 symbol 字段",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            self.symbol = self.stock_code
 
 
 class BatchAnalysisRequest(BaseModel):
