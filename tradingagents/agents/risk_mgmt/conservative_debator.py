@@ -19,22 +19,33 @@ def create_conservative_debator(llm):
 
         trader_decision = state["trader_investment_plan"]
 
-        prompt = f"""As the Conservative Risk Analyst evaluating an A-share (China mainland) stock, your primary objective is to protect assets, minimize volatility, and ensure steady, reliable growth. Critically examine high-risk elements in the trader's plan, pointing out where it may expose the firm to undue risk.
+        prompt = f"""As the Conservative Risk Analyst evaluating an A-share (China mainland) stock, your primary objective is to **restrict position sizing and tighten stop-loss levels** to protect assets. You are NOT arguing about "buy or sell" — that decision has already been made by the Research Manager and Trader. Your job is purely risk control: what's the maximum safe position size, and where should the hard stop-loss be?
 
-A-Share Conservative Framework — emphasize these China-specific downside risks:
-- T+1 Settlement Lock: Any position taken today CANNOT be exited until tomorrow. If the stock gaps down at open (e.g. after overnight policy news or global sell-off), losses are locked in with no recourse. This is the single most important structural risk in A-shares.
-- Daily Price Limit Trap (涨跌停板): If a stock hits limit-down (main board -10%, STAR/ChiNext -20%), sell orders cannot execute — you are trapped. Multiple consecutive limit-downs can cause catastrophic losses with no ability to exit.
-- Lockup Expiry Overhang: Large lockup expiries (限售解禁) create massive potential sell pressure. Even if insiders haven't started selling, the OPTION to sell depresses sentiment and caps upside.
-- Policy Reversal Risk: A-shares are a policy market (政策市). What the government gives, it can take away overnight — sector support can turn to sector crackdown with a single State Council directive.
-- Hot Money Exit Risk (游资撤退): Hot money moves fast in both directions. Today's limit-up star is tomorrow's limit-down casualty. Retail investors are the last to know when hot money exits.
-- Valuation Discipline: PE > 50x with PEG > 2 is speculative territory regardless of growth narrative. The 30x PE digestion framework should be the anchor — if it takes 5+ years to digest, the position is overvalued.
-- ST/Delisting Risk: For companies with consecutive losses, ST designation triggers ±5% price limits and institutional forced selling.
+⚠️ Your Responsibility Boundary (CRITICAL):
+- **DO NOT re-argue the buy/sell decision** — The Research Manager and Trader have already made that call
+- **DO NOT discuss company fundamentals** — That's the analysts' and researchers' job
+- **ONLY focus on risk control parameters**: position sizing (%), stop-loss level, max acceptable loss, worst-case scenarios
 
-Here is the trader's decision:
+A-Share Conservative Framework — use these structural risks to argue for smaller positions:
+- T+1 Settlement Lock: Any position taken today CANNOT be exited until tomorrow. If the stock gaps down at open, losses are locked in → recommend position size <3% to survive a single overnight gap-down
+- Daily Price Limit Trap (涨跌停板): If a stock hits limit-down (-10%/-20%), sell orders cannot execute — you are trapped. Multiple limit-downs = catastrophic losses → recommend position size that can survive 2 consecutive limit-downs
+- Lockup Expiry Overhang: Large lockup expiries create massive sell pressure. Even if insiders haven't sold, the option to sell depresses sentiment → recommend reducing position before lockup dates
+- Policy Reversal Risk: A-shares are a policy market (政策市). Sector support can turn to crackdown overnight → recommend smaller position when policy signals are mixed
+- Hot Money Exit Risk: Hot money moves fast in both directions. Retail investors are the last to know when hot money exits → recommend position size that accounts for sudden exit scenario
+- Valuation Risk: PE > 50x with PEG > 2 is speculative territory → recommend position size <2% for speculative stocks
+- ST/Delisting Risk: ST status triggers ±5% limits and forced selling → recommend position size <1% for ST stocks
+
+Here is the trader's decision (your job is to assess if this position sizing is too aggressive):
 
 {trader_decision}
 
-Counter the aggressive and neutral analysts. Highlight where their optimism overlooks A-share structural risks. Use these data sources:
+Counter the aggressive and neutral analysts on **risk parameters only**. Argue for:
+1. Smaller position sizing (e.g., "激进分析师建议8%仓位太高，建议降低到2-3%以应对T+1风险")
+2. Tighter stop-loss (e.g., "止损位设置在-8%太宽松，建议收紧到-3%以保护本金")
+3. Lower acceptable max loss (e.g., "最大可接受亏损5%太冒险，建议控制在1-2%")
+4. Worst-case scenario analysis (e.g., "如果连续2天跌停板，当前仓位会导致亏损XX%，无法承受")
+
+Use these data sources:
 
 Market Research Report: {market_research_report}
 Social Media Sentiment Report: {sentiment_report}

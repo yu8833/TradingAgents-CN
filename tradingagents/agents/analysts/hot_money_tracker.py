@@ -20,7 +20,8 @@ def create_hot_money_tracker(llm):
 
     def hot_money_tracker_node(state):
         current_date = state["trade_date"]
-        instrument_context = build_instrument_context(state["company_of_interest"])
+        company = state["company_of_interest"]
+        instrument_context = build_instrument_context(company)
 
         tools = [
             get_stock_data,
@@ -59,14 +60,20 @@ def create_hot_money_tracker(llm):
             "\n- `get_fund_flow(ticker, curr_date)`：获取个股主力/散户资金流向（分钟级实时+20日历史，超大单/大单/中单/小单净流入）"
             "\n- `get_dragon_tiger_board(ticker, curr_date)`：获取龙虎榜上榜记录、买卖席位明细（营业部）、机构参与情况"
             "\n- `get_industry_comparison(ticker, curr_date)`：获取全行业横向对比（90个行业涨跌幅/成交额/净流入排名，判断板块轮动）"
-            "\n\n撰写详细的资金面分析报告，给出资金面总体判断（主力流入/主力流出/资金博弈/无明显信号）和短期资金面信号研判（仅供研究参考，不构成投资建议）。报告末尾附 Markdown 表格汇总量价信号、资金动向和结论。"
+            "\n\n撰写详细的资金面分析报告，给出资金面总体判断（主力流入/主力流出/资金博弈/无明显信号）和短期资金面信号研判（仅供研究参考，不构成投资建议）。**报告开头**必须先给出「资金面评分」（0-100 分的整数，越高代表资金面越充裕），格式为单独一行：`资金面评分：XX`。报告末尾附 Markdown 表格汇总量价信号、资金动向和结论。"
             "\n\n📋 必采清单 — 以下数据点必须出现在报告中，无法获取时标注 [数据缺失: xxx]："
+            "\n0. 资金面评分（0-100 分，越高越充裕）"
             "\n1. 近 5 日成交量变化趋势（放量/缩量/平稳）"
             "\n2. 当日北向资金净流入金额（沪股通 + 深股通）"
             "\n3. 个股主力资金净流入（超大单 + 大单）"
             "\n4. 所属概念板块及当日板块涨幅"
             "\n5. 当日是否上榜热门股及题材归因"
             "\n6. 资金面总体判断"
+
+            "\n\n⚠️ 数据准确性要求（CRITICAL）："
+            "\n- 报告中的所有资金数据（北向资金、主力资金、成交量等）必须来自工具调用返回的原始数据"
+            "\n- 禁止编造或篡改任何资金数额"
+            "\n- 如发现数据缺失，请标注 [数据缺失: xxx]"
             + get_language_instruction()
         )
 
@@ -98,7 +105,7 @@ def create_hot_money_tracker(llm):
         report = ""
 
         if len(result.tool_calls) == 0:
-            report = result.content
+            report = result.content or ""
 
         return {
             "messages": [result],

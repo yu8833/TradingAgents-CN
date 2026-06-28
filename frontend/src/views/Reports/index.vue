@@ -108,25 +108,18 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="目标价 / 止损价" width="160">
-          <template #default="{ row }">
-            <div class="price-info">
-              <div v-if="row.target_price" class="price-row">
-                <span class="price-label target">目标:</span>
-                <span class="price-value">{{ formatPrice(row.target_price) }}</span>
-              </div>
-              <div v-if="row.stop_loss" class="price-row">
-                <span class="price-label stop">止损:</span>
-                <span class="price-value">{{ formatPrice(row.stop_loss) }}</span>
-              </div>
-              <span v-if="!row.target_price && !row.stop_loss" style="color: var(--el-text-color-placeholder); font-size: 13px;">-</span>
-            </div>
-          </template>
-        </el-table-column>
-
         <el-table-column prop="created_at" label="创建时间" width="180">
           <template #default="{ row }">
             {{ formatTime(row.created_at) }}
+          </template>
+        </el-table-column>
+
+        <el-table-column label="耗时" width="120">
+          <template #default="{ row }">
+            <span v-if="row.execution_time && row.execution_time > 0">
+              {{ formatDuration(row.execution_time) }}
+            </span>
+            <span v-else style="color: var(--el-text-color-placeholder); font-size: 13px;">-</span>
           </template>
         </el-table-column>
 
@@ -207,8 +200,6 @@ type ReportListItem = {
   stock_name: string
   action?: string
   confidence?: number
-  target_price?: string | number
-  stop_loss?: string | number
   created_at: string
   analysis_date?: string
 }
@@ -438,6 +429,19 @@ const formatTime = (time: string) => {
   return formatDateTime(time)
 }
 
+const formatDuration = (seconds: number) => {
+  if (!seconds || seconds <= 0) return '-'
+  if (seconds < 60) return `${Math.round(seconds)}秒`
+  if (seconds < 3600) {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.round(seconds % 60)
+    return secs > 0 ? `${mins}分${secs}秒` : `${mins}分钟`
+  }
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.round((seconds % 3600) / 60)
+  return mins > 0 ? `${hours}小时${mins}分` : `${hours}小时`
+}
+
 const handleSizeChange = (size: number) => {
   pageSize.value = size
   currentPage.value = 1
@@ -467,14 +471,6 @@ const getConfidenceColor = (confidence: number): string => {
   if (confidence >= 60) return '#409eff'
   if (confidence >= 40) return '#e6a23c'
   return '#909399'
-}
-
-// 🔥 格式化价格
-const formatPrice = (price: string | number): string => {
-  if (!price) return '-'
-  const num = typeof price === 'number' ? price : parseFloat(String(price).replace(/[^\d.-]/g, ''))
-  if (isNaN(num)) return String(price)
-  return num.toFixed(2)
 }
 
 // 生命周期
@@ -520,33 +516,6 @@ onMounted(() => {
         font-size: 12px;
         color: var(--el-text-color-placeholder);
         margin-top: 2px;
-      }
-    }
-
-    .price-info {
-      font-size: 13px;
-
-      .price-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        line-height: 1.6;
-      }
-
-      .price-label {
-        font-weight: 600;
-        font-size: 12px;
-
-        &.target {
-          color: var(--el-color-success);
-        }
-        &.stop {
-          color: var(--el-color-danger);
-        }
-      }
-
-      .price-value {
-        color: var(--el-text-color-primary);
       }
     }
 

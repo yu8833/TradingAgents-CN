@@ -484,68 +484,6 @@
                   </div>
                 </div>
 
-                <!-- 分析概览 -->
-                <div v-if="analysisResults" class="overview-section">
-                  <h4>📊 分析概览</h4>
-                  <div class="overview-card">
-  
-                    <div v-if="analysisResults.summary" class="overview-summary">
-                      <h5>分析摘要:</h5>
-                      <p>{{ analysisResults.summary }}</p>
-                    </div>
-
-                    <div v-if="analysisResults.recommendation" class="overview-recommendation">
-                      <h5>投资建议:</h5>
-                      <p>{{ analysisResults.recommendation }}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 详细分析报告 -->
-                <div v-if="analysisResults.state || analysisResults.reports" class="reports-section">
-                  <h4>📋 详细分析报告</h4>
-
-                  <!-- 美观的标签页展示 -->
-                  <div class="analysis-tabs-container">
-                    <el-tabs
-                      v-model="activeReportTab"
-                      type="card"
-                      class="analysis-tabs"
-                      tab-position="top"
-                      :key="analysisResults?.id || 'default'"
-                    >
-                      <el-tab-pane
-                        v-for="(report, key) in getAnalysisReports(analysisResults)"
-                        :key="key"
-                        :name="key.toString()"
-                        :label="report.title"
-                        class="report-tab-pane"
-                      >
-                        <!-- 标签页内容头部 -->
-                        <div class="report-header">
-                          <div class="report-title">
-                            <span class="report-icon">{{ getReportIcon(report.title) }}</span>
-                            <span class="report-name">{{ getReportName(report.title) }}</span>
-                          </div>
-                          <div class="report-description">{{ getReportDescription(report.title) }}</div>
-                        </div>
-
-                        <!-- 报告内容 -->
-                        <div class="report-content-wrapper">
-                          <div
-                            class="report-content"
-                            v-html="formatReportContent(report.content)"
-                            v-if="report.content"
-                          ></div>
-                          <div v-else class="no-content">
-                            <el-empty description="暂无内容" />
-                          </div>
-                        </div>
-                      </el-tab-pane>
-                    </el-tabs>
-                  </div>
-                </div>
-
                 <!-- 操作按钮 -->
                 <div class="result-actions">
                   <el-button type="success" @click="goSimOrder">
@@ -610,12 +548,12 @@
             <div class="team-cards">
               <div class="analyst-chip analyst-chip--market">
                 <span class="chip-icon">📊</span>
-                <span class="chip-name">市场分析师</span>
+                <span class="chip-name">技术分析师</span>
                 <span class="chip-desc">技术指标 · 均线/KDJ/MACD</span>
               </div>
               <div class="analyst-chip analyst-chip--social">
                 <span class="chip-icon">💬</span>
-                <span class="chip-name">社交媒体分析师</span>
+                <span class="chip-name">市场情绪分析师</span>
                 <span class="chip-desc">情绪拐点 · 散户逆向指标</span>
               </div>
               <div class="analyst-chip analyst-chip--fund">
@@ -864,8 +802,8 @@ const analysisForm = reactive<AnalysisForm>({
   analysisDate: new Date(),
   // 默认启用全部 7 位分析师
   selectedAnalysts: [
-    '市场分析师',
-    '社交媒体分析师',
+    '技术分析师',
+    '市场情绪分析师',
     '新闻分析师',
     '基本面分析师',
     '政策分析师',

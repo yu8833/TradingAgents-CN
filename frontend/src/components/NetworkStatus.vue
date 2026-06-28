@@ -66,12 +66,22 @@ const retryConnection = async () => {
 let checkInterval: number | null = null
 
 onMounted(() => {
-  // 每30秒检查一次API连接状态
+  // 每10秒检查一次API连接状态（加快重试频率）
   checkInterval = window.setInterval(() => {
-    if (appStore.isOnline && !appStore.apiConnected) {
+    // 🔥 改进：无论网络状态如何，只要后端未连接就尝试重连
+    if (!appStore.apiConnected) {
+      console.log('🔄 尝试重连后端服务...')
       appStore.checkApiConnection()
     }
-  }, 30000)
+  }, 10000)
+
+  // 🔥 额外：在组件挂载时立即尝试一次连接检查
+  setTimeout(() => {
+    if (!appStore.apiConnected) {
+      console.log('🔄 组件挂载时尝试重连...')
+      appStore.checkApiConnection()
+    }
+  }, 1000)
 })
 
 onUnmounted(() => {

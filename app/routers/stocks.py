@@ -7,6 +7,7 @@
 from typing import Optional, Dict, Any, List, Tuple
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from datetime import datetime
+import asyncio  # 🔥 添加 asyncio 导入
 import logging
 import re
 
@@ -112,27 +113,122 @@ async def get_quote(
     db = get_mongo_db()
     code6 = normalized_code
 
-    # 🔥 如果强制刷新，直接从数据源获取最新数据
+    # 🔥 如果强制刷新，直接从数据源获取最新数据（优先使用单只股票快速查询）
     if force_refresh:
         logger.info(f"🔄 强制刷新：尝试从数据源获取 {code6} 的最新行情")
         try:
-            from app.services.data_sources.manager import DataSourceManager
-            manager = DataSourceManager()
-            # 获取实时行情快照（所有股票）
-            quotes_map, source = manager.get_realtime_quotes_with_fallback()
-            if quotes_map and code6 in quotes_map:
-                q = quotes_map[code6]
-                logger.info(f"✅ 从 {source} 获取到 {code6} 的实时行情: close={q.get('close')}, pct_chg={q.get('pct_chg')}")
-                # 更新缓存
+            from app.services.data_sources.akshare_adapter import AKShareAdapter
+            
+            # 🔥 优先使用单只股票快速查询（约 1 秒），而不是全市场获取（约 25 秒）
+            def _fetch_single_quote():
                 try:
-                    q["code"] = code6
-                    q["updated_at"] = datetime.now()
+                    adapter = AKShareAdapter()
+                    quote = adapter.get_realtime_quote_single(code6, timeout=5)
+                    return quote, "akshare_single"
+                except Exception as e:
+                    logger.warning(f"⚠️ 单只股票快速查询失败: {e}")
+                    return None, None
+            
+            # 使用 asyncio.wait_for 设置超时保护
+            loop = asyncio.get_event_loop()
+            try:
+                q, source = await asyncio.wait_for(
+                    loop.run_in_executor(None, _fetch_single_quote),
+                    timeout=10.0  # 🔥 10秒超时（单只股票查询约 1 秒）
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"⚠️ 单只股票快速查询超时（10秒），回退到全市场获取")
+                q, source = None, None
+            
+            # 如果单只股票快速查询失败，回退到全市场获取
+            if q is None:
+                logger.info(f"🔄 单只股票快速查询失败，回退到全市场获取")
+                from app.services.data_sources.manager import DataSourceManager
+                manager = DataSourceManager()
+                
+                def _fetch_realtime():
+                    try:
+                        quotes_map, fallback_source = manager.get_realtime_quotes_with_fallback()
+                        if quotes_map and code6 in quotes_map:
+                            return quotes_map[code6], fallback_source
+                        return None, None
+                    except Exception as e:
+                        logger.warning(f"⚠️ 获取实时行情异常: {e}")
+                        return None, None
+                
+                try:
+                    quotes_map_data, fallback_source = await asyncio.wait_for(
+                        loop.run_in_executor(None, _fetch_realtime),
+                        timeout=30.0  # 🔥 30秒超时（AKShare sina 接口约需 25 秒）
+                    )
+                    if quotes_map_data:
+                        q = quotes_map_data
+                        source = fallback_source
+                except asyncio.TimeoutError:
+                    logger.warning(f"⚠️ 全市场获取实时行情超时（30秒），使用缓存数据")
+                    q = await db["market_quotes"].find_one({"code": code6}, {"_id": 0})
+
+            if q:
+                logger.info(f"✅ 从 {source} 获取到 {code6} 的实时行情: close={q.get('close')}, pct_chg={q.get('pct_chg')}")
+                
+                # 🔥 如果快速查询返回的数据缺少涨跌幅和昨收价，从缓存获取昨收价计算
+                # 注意：数据库中存储的字段名可能是 pre_close 或 prev_close，需要兼容
+                # 🔥 如果快速查询只返回当前价格（high==low==close），保留缓存中的振幅和高低价数据
+                high_eq_low = (q.get("high") == q.get("low") and q.get("high") is not None)
+                if q.get("pct_chg") is None or (q.get("pre_close") is None and q.get("prev_close") is None) or high_eq_low:
+                    cached_quote = await db["market_quotes"].find_one({"code": code6}, {"_id": 0, "pre_close": 1, "prev_close": 1, "pct_chg": 1, "high": 1, "low": 1, "amplitude": 1})
+                    if cached_quote:
+                        # 兼容 pre_close 和 prev_close 两种字段名
+                        cached_pre_close = cached_quote.get("pre_close") or cached_quote.get("prev_close")
+                        cached_pct_chg = cached_quote.get("pct_chg")
+
+                        # 使用缓存的昨收价计算涨跌幅
+                        if q.get("pct_chg") is None and cached_pre_close and q.get("close") and cached_pre_close > 0:
+                            q["pct_chg"] = (q["close"] / cached_pre_close - 1.0) * 100.0
+                            logger.info(f"🔥 从缓存昨收价计算涨跌幅: pre_close={cached_pre_close}, pct_chg={q['pct_chg']}")
+
+                        # 使用缓存的昨收价（统一存储为 prev_close）
+                        if q.get("pre_close") is None and q.get("prev_close") is None and cached_pre_close:
+                            q["prev_close"] = cached_pre_close
+
+                        # 🔥 如果快速查询只返回当前价格（单时刻数据），保留缓存中的高低价和振幅
+                        if high_eq_low:
+                            cached_high = cached_quote.get("high")
+                            cached_low = cached_quote.get("low")
+                            cached_amplitude = cached_quote.get("amplitude")
+                            if cached_high and cached_low and cached_high != cached_low:
+                                q["high"] = cached_high
+                                q["low"] = cached_low
+                                logger.info(f"🔥 保留缓存的高低价: high={cached_high}, low={cached_low}")
+                            if cached_amplitude:
+                                # 直接保留缓存的振幅，避免重新计算为 0
+                                pass  # 振幅会在后面重新计算，这里先跳过
+                
+                # 更新缓存（保留振幅和高低价数据，避免被快速查询覆盖）
+                try:
+                    update_data = {
+                        "code": code6,
+                        "updated_at": datetime.now()
+                    }
+                    # 只更新必要的实时数据字段
+                    for key in ["close", "open", "volume", "amount", "pct_chg", "prev_close", "trade_date"]:
+                        if q.get(key) is not None:
+                            update_data[key] = q[key]
+
+                    # 🔥 如果快速查询只返回当前价格（high==low），不更新 high/low/amplitude
+                    # 保留缓存中的完整振幅数据
+                    if not high_eq_low:
+                        if q.get("high") is not None:
+                            update_data["high"] = q["high"]
+                        if q.get("low") is not None:
+                            update_data["low"] = q["low"]
+
                     await db["market_quotes"].update_one(
                         {"code": code6},
-                        {"$set": q},
+                        {"$set": update_data},
                         upsert=True
                     )
-                    logger.info(f"✅ 已更新 {code6} 的行情缓存")
+                    logger.info(f"✅ 已更新 {code6} 的行情缓存（保留振幅数据）")
                 except Exception as update_err:
                     logger.warning(f"⚠️ 更新行情缓存失败: {update_err}")
             else:
@@ -184,7 +280,8 @@ async def get_quote(
 
     close = (q or {}).get("close")
     pct = (q or {}).get("pct_chg")
-    pre_close_saved = (q or {}).get("pre_close")
+    # 兼容 pre_close 和 prev_close 两种字段名
+    pre_close_saved = (q or {}).get("pre_close") or (q or {}).get("prev_close")
     prev_close = pre_close_saved
     if prev_close is None:
         try:
@@ -210,13 +307,30 @@ async def get_quote(
     try:
         high = (q or {}).get("high")
         low = (q or {}).get("low")
-        logger.info(f"🔍 计算振幅: high={high}, low={low}, prev_close={prev_close}")
-        if high is not None and low is not None and prev_close is not None and prev_close > 0:
-            amplitude = round((float(high) - float(low)) / float(prev_close) * 100, 2)
-            amplitude_date = (q or {}).get("trade_date")  # 来自实时数据
-            logger.info(f"  ✅ 振幅计算成功: {amplitude}%")
-        else:
-            logger.warning(f"  ⚠️ 数据不完整，无法计算振幅")
+
+        # 🔥 如果高低价相同（快速查询数据），尝试从缓存获取完整的高低价
+        if high is not None and low is not None and high == low:
+            cached_quote_amp = await db["market_quotes"].find_one({"code": code6}, {"_id": 0, "high": 1, "low": 1, "amplitude": 1})
+            if cached_quote_amp:
+                cached_high = cached_quote_amp.get("high")
+                cached_low = cached_quote_amp.get("low")
+                cached_amp = cached_quote_amp.get("amplitude")
+                if cached_high and cached_low and cached_high != cached_low:
+                    high = cached_high
+                    low = cached_low
+                    logger.info(f"🔥 从缓存获取完整高低价: high={high}, low={low}")
+                elif cached_amp and cached_amp > 0:
+                    amplitude = cached_amp
+                    logger.info(f"🔥 直接使用缓存振幅: {amplitude}%")
+
+        if amplitude is None:
+            logger.info(f"🔍 计算振幅: high={high}, low={low}, prev_close={prev_close}")
+            if high is not None and low is not None and prev_close is not None and prev_close > 0:
+                amplitude = round((float(high) - float(low)) / float(prev_close) * 100, 2)
+                amplitude_date = (q or {}).get("trade_date")  # 来自实时数据
+                logger.info(f"  ✅ 振幅计算成功: {amplitude}%")
+            else:
+                logger.warning(f"  ⚠️ 数据不完整，无法计算振幅")
     except Exception as e:
         logger.warning(f"  ❌ 计算振幅失败: {e}")
         amplitude = None
@@ -241,6 +355,14 @@ async def get_quote(
         "trade_date": (q or {}).get("trade_date"),
         "updated_at": (q or {}).get("updated_at"),
     }
+
+    # 🔥 数据约束验证：清理行情数据中的异常值
+    try:
+        from tradingagents.dataflows.data_validator import validate_stock_data
+        validation_result = validate_stock_data(data, code6)
+        data = validation_result["clean_data"]
+    except Exception as e:
+        logger.warning(f"⚠️ 行情数据验证失败: {e}")
 
     return ok(data)
 
@@ -498,6 +620,17 @@ async def get_fundamentals(
     # 6. 如果财务数据中没有 ROE，使用 stock_basic_info 中的
     if data["roe"] is None:
         data["roe"] = b.get("roe")
+
+    # 7. 🔥 数据约束验证：清理异常值，避免"离谱"数据影响用户体验
+    try:
+        from tradingagents.dataflows.data_validator import validate_stock_data
+        validation_result = validate_stock_data(data, code6)
+        data = validation_result["clean_data"]
+        if validation_result["warnings"]:
+            data["data_warnings"] = validation_result["warnings"]
+            logger.info(f"📊 {code6} 数据验证: {validation_result['sanitized_count']}/{validation_result['total_fields']} 个字段被清理")
+    except Exception as e:
+        logger.warning(f"⚠️ 数据验证模块不可用，跳过验证: {e}")
 
     return ok(data)
 

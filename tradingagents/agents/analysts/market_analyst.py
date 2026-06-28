@@ -12,7 +12,8 @@ def create_market_analyst(llm):
 
     def market_analyst_node(state):
         current_date = state["trade_date"]
-        instrument_context = build_instrument_context(state["company_of_interest"])
+        company = state["company_of_interest"]
+        instrument_context = build_instrument_context(company)
 
         tools = [
             get_stock_data,
@@ -57,14 +58,21 @@ MACD 类：
 1. **必须**先调用 get_stock_data 获取 K 线数据
 2. 再调用 get_indicators 获取选定指标（参数名使用上述英文标识符，否则调用会失败）
 3. 撰写详细的技术分析报告，包含具体数值和技术信号研判结论（仅供研究参考，不构成投资建议）
-4. 报告末尾附 Markdown 表格汇总关键技术信号和结论
+4. **报告开头**必须先给出「技术面评分」（0-100 分的整数，越高代表技术面越强），格式为单独一行：`技术面评分：XX`
+5. 报告末尾附 Markdown 表格汇总关键技术信号和结论
 
 📋 必采清单 — 以下数据点必须出现在报告中，无法获取时标注 [数据缺失: xxx]：
+0. 技术面评分（0-100 分，越高越强势）
 1. 最新收盘价、日期、当日涨跌幅
 2. 近 30 日累计涨跌幅
 3. 近 5 日平均成交量 vs 近 20 日平均成交量（判断放量/缩量）
 4. 至少 3 个技术指标的当前数值和多空信号
-5. 关键支撑位和阻力位"""
+5. 关键支撑位和阻力位
+
+⚠️ 数据准确性要求（CRITICAL）：
+- 报告中的所有数字（股价、涨跌幅、成交量、指标数值等）必须来自工具调用返回的原始数据
+- 禁止编造或篡改任何数值
+- 如发现数据缺失，请标注 [数据缺失: xxx]"""
             + get_language_instruction()
         )
 
@@ -97,7 +105,7 @@ MACD 类：
         report = ""
 
         if len(result.tool_calls) == 0:
-            report = result.content
+            report = result.content or ""
 
         return {
             "messages": [result],

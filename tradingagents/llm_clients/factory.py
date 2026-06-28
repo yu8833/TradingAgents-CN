@@ -5,6 +5,8 @@ from .base_client import BaseLLMClient
 # Providers that use the OpenAI-compatible chat completions API
 _OPENAI_COMPATIBLE = (
     "openai", "xai", "deepseek", "qwen", "glm", "ollama", "openrouter", "minimax",
+    # dashscope（阿里百炼/通义千问）使用 OpenAI 兼容的 /compatible-mode/v1 端点
+    "dashscope", "tongyi",
 )
 
 

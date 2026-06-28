@@ -69,6 +69,63 @@ def _normalize_ticker(symbol: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 数据约束：安全格式化数值，避免离谱数据误导 LLM
+# ---------------------------------------------------------------------------
+
+# 常用指标的合理范围（超出范围标注为异常值）
+_VALUE_CONSTRAINTS = {
+    "pe": (-500, 1000),          # 市盈率
+    "pe_ttm": (-500, 1000),      # 滚动市盈率
+    "pe_static": (-500, 1000),   # 静态市盈率
+    "pb": (-50, 100),            # 市净率
+    "ps": (-100, 500),           # 市销率
+    "roe": (-200, 200),          # 净资产收益率 (%)
+    "roa": (-100, 100),          # 总资产收益率 (%)
+    "gross_margin": (-100, 100), # 毛利率 (%)
+    "net_margin": (-200, 100),   # 净利率 (%)
+    "turnover_rate": (0, 100),   # 换手率 (%)
+    "change_pct": (-20, 20),     # 涨跌幅 (%)
+    "debt_ratio": (0, 100),      # 资产负债率 (%)
+    "current_ratio": (0, 100),   # 流动比率
+    "quick_ratio": (0, 50),      # 速动比率
+}
+
+
+def _safe_format_value(value, field_name: str, suffix: str = "") -> str:
+    """安全格式化数值，超出合理范围的标注为异常值。
+
+    Args:
+        value: 待格式化的值
+        field_name: 字段名（用于查找约束）
+        suffix: 单位后缀（如 %、x 等）
+
+    Returns:
+        格式化后的字符串，异常值会标注 [异常值]
+    """
+    if value is None:
+        return "N/A"
+
+    try:
+        num = float(value)
+    except (ValueError, TypeError):
+        return str(value)
+
+    import math
+    if math.isnan(num) or math.isinf(num):
+        return f"[异常值: NaN/Inf]"
+
+    constraint = _VALUE_CONSTRAINTS.get(field_name)
+    if constraint is None:
+        return f"{num}{suffix}"
+
+    min_val, max_val = constraint
+    if num < min_val or num > max_val:
+        return f"{num}{suffix} [异常值: 超出合理范围 {min_val}~{max_val}]"
+
+    return f"{num}{suffix}"
+
+
+# ---------------------------------------------------------------------------
 # Stock name <-> code mapping (cached)
 # ---------------------------------------------------------------------------
 
@@ -720,13 +777,13 @@ def get_fundamentals(
                     [
                         f"Name: {q['name']}",
                         f"Price: {q['price']}",
-                        f"PE (TTM): {q['pe_ttm']}",
-                        f"PE (Static): {q['pe_static']}",
-                        f"PB: {q['pb']}",
+                        f"PE (TTM): {_safe_format_value(q['pe_ttm'], 'pe_ttm')}",
+                        f"PE (Static): {_safe_format_value(q['pe_static'], 'pe_static')}",
+                        f"PB: {_safe_format_value(q['pb'], 'pb')}",
                         f"Market Cap (100M CNY): {q['mcap_yi']}",
                         f"Float Market Cap (100M CNY): {q['float_mcap_yi']}",
-                        f"Turnover Rate: {q['turnover_pct']}%",
-                        f"Change: {q['change_pct']}%",
+                        f"Turnover Rate: {_safe_format_value(q['turnover_pct'], 'turnover_rate', '%')}",
+                        f"Change: {_safe_format_value(q['change_pct'], 'change_pct', '%')}",
                         f"Limit Up: {q['limit_up']}",
                         f"Limit Down: {q['limit_down']}",
                     ]
@@ -756,7 +813,8 @@ def get_fundamentals(
                     if field in idx:
                         val = row[field]
                         if val is not None and str(val) != "nan":
-                            lines.append(f"{label}: {val}")
+                            formatted_val = _safe_format_value(val, field)
+                            lines.append(f"{label}: {formatted_val}")
         except Exception as e:
             logger.warning("mootdx finance failed for %s: %s", code, e)
 
@@ -910,6 +968,44 @@ def _get_financial_report_sina(
     d = r.json()
 
     result = d.get("result", {}).get("data", {})
+
+    # ===== 新格式（2025年后的新浪API）：report_list 是日期->数据的字典 =====
+    report_list = result.get("report_list", {})
+    if isinstance(report_list, dict) and report_list:
+        rows = []
+        for date_str, report_data in sorted(report_list.items(), reverse=True):
+            if not isinstance(report_data, dict):
+                continue
+            data_items = report_data.get("data", [])
+            if not isinstance(data_items, list):
+                continue
+            row = {"报告日": date_str}
+            for item in data_items:
+                if not isinstance(item, dict):
+                    continue
+                title = item.get("item_title") or item.get("item_field")
+                value = item.get("item_value")
+                if title:
+                    row[title] = value
+            rows.append(row)
+
+        if rows:
+            df = pd.DataFrame(rows)
+
+            # Filter by curr_date
+            if curr_date and "报告日" in df.columns:
+                df["报告日"] = pd.to_datetime(df["报告日"], errors="coerce")
+                cutoff = pd.to_datetime(curr_date)
+                df = df[df["报告日"] <= cutoff]
+
+            # Filter by frequency (annual = month 12 reports only)
+            if freq.lower() == "annual" and "报告日" in df.columns:
+                months = pd.to_datetime(df["报告日"], errors="coerce").dt.month
+                df = df[months == 12]
+
+            return df.head(8)
+
+    # ===== 旧格式兼容：直接的 items 数组 =====
     items = result.get(source_type, [])
     if not isinstance(items, list) or not items:
         return pd.DataFrame()

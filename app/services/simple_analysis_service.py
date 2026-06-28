@@ -47,6 +47,73 @@ except Exception:
 # 设置日志
 logger = logging.getLogger("app.services.simple_analysis_service")
 
+
+def _sanitize_state_for_mongo(state: Any) -> Any:
+    """
+    清理 state 对象，移除不可序列化的 LangChain 消息对象，确保可以存入 MongoDB。
+
+    递归遍历 state，将以下对象转换为可序列化格式：
+    - LangChain Message 对象 (HumanMessage, AIMessage, ToolMessage, SystemMessage 等)
+    - 其他不可序列化的自定义对象
+
+    Args:
+        state: 要清理的 state 对象
+
+    Returns:
+        清理后的可序列化对象
+    """
+    # 处理 None
+    if state is None:
+        return None
+
+    # 处理基本类型
+    if isinstance(state, (str, int, float, bool, datetime, ObjectId)):
+        return state
+
+    # 处理列表
+    if isinstance(state, list):
+        result = []
+        for item in state:
+            # 检查是否是 LangChain Message 对象
+            if hasattr(item, 'content') and hasattr(item, 'type'):
+                # 转换为字典
+                msg_dict = {
+                    'type': getattr(item, 'type', 'unknown'),
+                    'content': str(getattr(item, 'content', '')),
+                }
+                # 保留 additional_kwargs 如果存在且可序列化
+                if hasattr(item, 'additional_kwargs'):
+                    try:
+                        kwargs = getattr(item, 'additional_kwargs', {})
+                        if isinstance(kwargs, dict):
+                            msg_dict['additional_kwargs'] = kwargs
+                    except Exception:
+                        pass
+                result.append(msg_dict)
+            else:
+                result.append(_sanitize_state_for_mongo(item))
+        return result
+
+    # 处理字典
+    if isinstance(state, dict):
+        result = {}
+        for key, value in state.items():
+            result[key] = _sanitize_state_for_mongo(value)
+        return result
+
+    # 处理有 __dict__ 属性的对象
+    if hasattr(state, '__dict__'):
+        try:
+            return _sanitize_state_for_mongo(vars(state))
+        except Exception:
+            return str(state)
+
+    # 其他类型，尝试转换为字符串
+    try:
+        return str(state)
+    except Exception:
+        return None
+
 # 配置服务实例
 config_service = ConfigService()
 
@@ -617,7 +684,7 @@ class SimpleAnalysisService:
         logger.info(f"🔍 [_get_trading_graph] config中的selected_analysts: {config.get('selected_analysts')}")
 
         trading_graph = TradingAgentsGraph(
-            selected_analysts=config.get("selected_analysts", ["market", "fundamentals"]),
+            selected_analysts=config.get("selected_analysts", ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]),
             debug=config.get("debug", False),
             config=config,
             callbacks=callbacks
@@ -802,7 +869,7 @@ class SimpleAnalysisService:
                 logger.info(f"📊 [线程] 创建进度跟踪器: {task_id}")
                 tracker = RedisProgressTracker(
                     task_id=task_id,
-                    analysts=request.parameters.selected_analysts or ["market", "fundamentals"],
+                    analysts=(request.parameters.selected_analysts if request.parameters else None) or ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"],
                     llm_provider="dashscope"
                 )
                 logger.info(f"✅ [线程] 进度跟踪器创建完成: {task_id}")
@@ -1106,7 +1173,7 @@ class SimpleAnalysisService:
             # 🧹 [过滤] 只保留 setup.py 支持的 7 种分析师
             # 支持的: market, social, news, fundamentals, policy, hot_money, lockup
             supported_analysts = {"market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"}
-            raw_analysts = request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
+            raw_analysts = request.parameters.selected_analysts if request.parameters else ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
 
             # 中文名到英文 key 的映射（兼容前端发送中文的情况）
             cn_to_en = {
@@ -1190,9 +1257,9 @@ class SimpleAnalysisService:
                 "🔥 激进风险评估": 81.75,    # 78% + 3.75%
                 "🛡️ 保守风险评估": 85.5,    # 78% + 7.5%
                 "⚖️ 中性风险评估": 89.25,   # 78% + 11.25%
-                "🎯 风险经理": 93,           # 78% + 15%
+                "🎯 投资组合经理": 93,           # 78% + 15%
                 # 最终阶段 (93% → 100%)
-                "📊 生成报告": 97,           # 93% + 4%
+                "📡 最终决策": 97,           # 93% + 4%
             }
 
             def graph_progress_callback(message: str):
@@ -1345,7 +1412,7 @@ class SimpleAnalysisService:
                         return
 
                     # 分析师阶段 - 根据选择的分析师数量动态调整
-                    analysts = request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
+                    analysts = request.parameters.selected_analysts if request.parameters else ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
 
                     # 模拟分析师执行
                     for i, analyst in enumerate(analysts):
@@ -1391,11 +1458,11 @@ class SimpleAnalysisService:
                     progress_tracker.update_progress("⚖️ 中性风险评估")
 
                     time.sleep(8)
-                    progress_tracker.update_progress("🎯 风险经理制定策略")
+                    progress_tracker.update_progress("🎯 投资组合经理（风险评估+最终决策）")
 
                     # 最终阶段
                     time.sleep(5)
-                    progress_tracker.update_progress("📡 信号处理")
+                    progress_tracker.update_progress("📡 生成最终决策报告")
 
                 except Exception as e:
                     logger.warning(f"⚠️ 进度模拟失败: {e}")
@@ -1444,6 +1511,7 @@ class SimpleAnalysisService:
                     'lockup_report',
                     'investment_plan',
                     'trader_investment_plan',
+                    'risk_control_decision',
                     'final_trade_decision'
                 ]
 
@@ -1456,11 +1524,11 @@ class SimpleAnalysisService:
                     else:
                         value = ""
 
-                    if isinstance(value, str) and len(value.strip()) > 10:  # 只保存有实际内容的报告
+                    if isinstance(value, str) and value.strip():  # 保存所有非空报告，包括失败/占位信息
                         reports[field] = value.strip()
                         logger.info(f"📊 [REPORTS] 提取报告: {field} - 长度: {len(value.strip())}")
                     else:
-                        logger.debug(f"⚠️ [REPORTS] 跳过报告: {field} - 内容为空或太短")
+                        logger.debug(f"⚠️ [REPORTS] 跳过报告: {field} - 内容为空")
 
                 # 处理研究团队辩论状态报告
                 if hasattr(state, 'investment_debate_state') or (isinstance(state, dict) and 'investment_debate_state' in state):
@@ -1506,25 +1574,31 @@ class SimpleAnalysisService:
                 if hasattr(state, 'risk_debate_state') or (isinstance(state, dict) and 'risk_debate_state' in state):
                     risk_state = getattr(state, 'risk_debate_state', None) if hasattr(state, 'risk_debate_state') else state.get('risk_debate_state')
                     if risk_state:
-                        # 提取激进分析师历史
-                        if hasattr(risk_state, 'risky_history'):
+                        # 提取激进分析师历史（兼容两种字段名：aggressive_history / risky_history）
+                        risky_content = ""
+                        if hasattr(risk_state, 'aggressive_history'):
+                            risky_content = getattr(risk_state, 'aggressive_history', "")
+                        elif isinstance(risk_state, dict) and 'aggressive_history' in risk_state:
+                            risky_content = risk_state['aggressive_history']
+                        elif hasattr(risk_state, 'risky_history'):
                             risky_content = getattr(risk_state, 'risky_history', "")
                         elif isinstance(risk_state, dict) and 'risky_history' in risk_state:
                             risky_content = risk_state['risky_history']
-                        else:
-                            risky_content = ""
 
                         if risky_content and len(risky_content.strip()) > 10:
                             reports['risky_analyst'] = risky_content.strip()
                             logger.info(f"📊 [REPORTS] 提取报告: risky_analyst - 长度: {len(risky_content.strip())}")
 
-                        # 提取保守分析师历史
-                        if hasattr(risk_state, 'safe_history'):
+                        # 提取保守分析师历史（兼容两种字段名：conservative_history / safe_history）
+                        safe_content = ""
+                        if hasattr(risk_state, 'conservative_history'):
+                            safe_content = getattr(risk_state, 'conservative_history', "")
+                        elif isinstance(risk_state, dict) and 'conservative_history' in risk_state:
+                            safe_content = risk_state['conservative_history']
+                        elif hasattr(risk_state, 'safe_history'):
                             safe_content = getattr(risk_state, 'safe_history', "")
                         elif isinstance(risk_state, dict) and 'safe_history' in risk_state:
                             safe_content = risk_state['safe_history']
-                        else:
-                            safe_content = ""
 
                         if safe_content and len(safe_content.strip()) > 10:
                             reports['safe_analyst'] = safe_content.strip()
@@ -1553,6 +1627,17 @@ class SimpleAnalysisService:
                         if risk_decision and len(risk_decision.strip()) > 10:
                             reports['risk_management_decision'] = risk_decision.strip()
                             logger.info(f"📊 [REPORTS] 提取报告: risk_management_decision - 长度: {len(risk_decision.strip())}")
+
+                        # 提取风控约束决策（portfolio_manager生成的结构化风险约束）
+                        risk_control = None
+                        if hasattr(state, 'risk_control_decision'):
+                            risk_control = getattr(state, 'risk_control_decision', "")
+                        elif isinstance(state, dict) and 'risk_control_decision' in state:
+                            risk_control = state['risk_control_decision']
+
+                        if risk_control and len(str(risk_control).strip()) > 10:
+                            reports['risk_control_decision'] = str(risk_control).strip()
+                            logger.info(f"📊 [REPORTS] 提取报告: risk_control_decision - 长度: {len(str(risk_control).strip())}")
 
                 logger.info(f"📊 [REPORTS] 从state中提取到 {len(reports)} 个报告: {list(reports.keys())}")
 
@@ -1711,7 +1796,7 @@ class SimpleAnalysisService:
                 "detailed_analysis": decision,
                 "execution_time": execution_time,
                 "tokens_used": decision.get("tokens_used", 0) if isinstance(decision, dict) else 0,
-                "state": state,
+                "state": _sanitize_state_for_mongo(state),
                 # 添加分析师信息
                 "analysts": request.parameters.selected_analysts if request.parameters else [],
                 # 添加提取的报告内容
@@ -2326,6 +2411,7 @@ class SimpleAnalysisService:
                         'lockup_report',
                         'investment_plan',
                         'trader_investment_plan',
+                        'risk_control_decision',
                         'final_trade_decision'
                     ]
 
@@ -2338,7 +2424,7 @@ class SimpleAnalysisService:
                         else:
                             value = ""
 
-                        if isinstance(value, str) and len(value.strip()) > 10:  # 只保存有实际内容的报告
+                        if isinstance(value, str) and value.strip():  # 保存所有非空报告，包括失败/占位信息
                             reports[field] = value.strip()
 
                     # 处理研究团队辩论状态报告
@@ -2382,24 +2468,30 @@ class SimpleAnalysisService:
                     if hasattr(state, 'risk_debate_state') or (isinstance(state, dict) and 'risk_debate_state' in state):
                         risk_state = getattr(state, 'risk_debate_state', None) if hasattr(state, 'risk_debate_state') else state.get('risk_debate_state')
                         if risk_state:
-                            # 提取激进分析师历史
-                            if hasattr(risk_state, 'risky_history'):
+                            # 提取激进分析师历史（兼容两种字段名：aggressive_history / risky_history）
+                            risky_content = ""
+                            if hasattr(risk_state, 'aggressive_history'):
+                                risky_content = getattr(risk_state, 'aggressive_history', "")
+                            elif isinstance(risk_state, dict) and 'aggressive_history' in risk_state:
+                                risky_content = risk_state['aggressive_history']
+                            elif hasattr(risk_state, 'risky_history'):
                                 risky_content = getattr(risk_state, 'risky_history', "")
                             elif isinstance(risk_state, dict) and 'risky_history' in risk_state:
                                 risky_content = risk_state['risky_history']
-                            else:
-                                risky_content = ""
 
                             if risky_content and len(risky_content.strip()) > 10:
                                 reports['risky_analyst'] = risky_content.strip()
 
-                            # 提取保守分析师历史
-                            if hasattr(risk_state, 'safe_history'):
+                            # 提取保守分析师历史（兼容两种字段名：conservative_history / safe_history）
+                            safe_content = ""
+                            if hasattr(risk_state, 'conservative_history'):
+                                safe_content = getattr(risk_state, 'conservative_history', "")
+                            elif isinstance(risk_state, dict) and 'conservative_history' in risk_state:
+                                safe_content = risk_state['conservative_history']
+                            elif hasattr(risk_state, 'safe_history'):
                                 safe_content = getattr(risk_state, 'safe_history', "")
                             elif isinstance(risk_state, dict) and 'safe_history' in risk_state:
                                 safe_content = risk_state['safe_history']
-                            else:
-                                safe_content = ""
 
                             if safe_content and len(safe_content.strip()) > 10:
                                 reports['safe_analyst'] = safe_content.strip()
@@ -2562,7 +2654,7 @@ class SimpleAnalysisService:
                         "execution_time": result.get("execution_time", 0),
                         "tokens_used": result.get("tokens_used", 0),
                         "reports": reports,
-                        "state": result.get("state", {}),
+                        "state": _sanitize_state_for_mongo(result.get("state", {})),
                         "decision": result.get("decision", {})
                     }}}
                 )
@@ -2733,6 +2825,11 @@ class SimpleAnalysisService:
                     'filename': 'trader_investment_plan.md',
                     'title': f'{stock_symbol} 交易计划报告',
                     'state_key': 'trader_investment_plan'
+                },
+                'risk_control_decision': {
+                    'filename': 'risk_control_decision.md',
+                    'title': f'{stock_symbol} 风控约束报告',
+                    'state_key': 'risk_control_decision'
                 },
                 'final_trade_decision': {
                     'filename': 'final_trade_decision.md',

@@ -21,6 +21,7 @@ from app.models.analysis import (
     SingleAnalysisRequest, BatchAnalysisRequest, AnalysisParameters,
     AnalysisTaskResponse, AnalysisBatchResponse, AnalysisHistoryQuery
 )
+from app.routers.reports import extract_structured_fields, _calculate_confidence
 
 router = APIRouter()
 logger = logging.getLogger("webapi")
@@ -441,13 +442,13 @@ async def get_task_result(
                     # 处理风险管理团队辩论状态报告
                     risk_debate_state = state.get('risk_debate_state', {})
                     if isinstance(risk_debate_state, dict):
-                        # 提取激进分析师历史
-                        risky_content = risk_debate_state.get('risky_history', "")
+                        # 提取激进分析师历史（兼容两种字段名：aggressive_history / risky_history）
+                        risky_content = risk_debate_state.get('aggressive_history') or risk_debate_state.get('risky_history', "")
                         if isinstance(risky_content, str) and len(risky_content.strip()) > 10:
                             reports['risky_analyst'] = risky_content.strip()
 
-                        # 提取保守分析师历史
-                        safe_content = risk_debate_state.get('safe_history', "")
+                        # 提取保守分析师历史（兼容两种字段名：conservative_history / safe_history）
+                        safe_content = risk_debate_state.get('conservative_history') or risk_debate_state.get('safe_history', "")
                         if isinstance(safe_content, str) and len(safe_content.strip()) > 10:
                             reports['safe_analyst'] = safe_content.strip()
 
@@ -641,6 +642,25 @@ async def get_task_result(
         if result_data.get('decision'):
             logger.info(f"🔍 [FINAL] decision内容: {result_data['decision']}")
 
+        # 从reports中提取结构化字段（维度评分、置信度详情等）
+        try:
+            reports = result_data.get('reports', {}) or {}
+            if reports:
+                extracted = extract_structured_fields(reports)
+                if extracted:
+                    for k, v in extracted.items():
+                        if v is not None and not result_data.get(k):
+                            result_data[k] = v
+                    logger.info(f"📊 [FINAL] 从reports提取结构化字段: {list(extracted.keys())}")
+                # 计算置信度详情
+                confidence_result = _calculate_confidence(reports)
+                if confidence_result and confidence_result.get("score"):
+                    result_data["confidence_score"] = confidence_result["score"]
+                    result_data["置信度详情"] = confidence_result["details"]
+                    logger.info(f"🎯 [FINAL] 计算置信度得分: {confidence_result['score']}")
+        except Exception as extract_err:
+            logger.warning(f"⚠️ [FINAL] 提取结构化字段失败: {extract_err}")
+
         # 构建严格验证的结果数据
         final_result_data = {
             "analysis_id": safe_string(result_data.get("analysis_id"), "unknown"),
@@ -680,6 +700,20 @@ async def get_task_result(
             validated_reports[safe_key] = validated_content
 
         final_result_data["reports"] = validated_reports
+
+        # 添加维度评分和置信度详情
+        dimension_fields = ['技术面评分', '基本面评分', '情绪面评分', '消息面评分', '资金面评分', '政策面评分', '解禁面评分', '维度评分详情']
+        for field in dimension_fields:
+            val = result_data.get(field)
+            if val is not None:
+                if isinstance(val, list):
+                    final_result_data[field] = safe_list(val)
+                elif isinstance(val, (int, float)):
+                    final_result_data[field] = safe_number(val)
+                else:
+                    final_result_data[field] = val
+        if result_data.get('置信度详情'):
+            final_result_data['置信度详情'] = safe_list(result_data.get('置信度详情'))
 
         logger.info(f"✅ [RESULT] 成功获取任务结果: {task_id}")
         logger.info(f"📊 [RESULT] 最终返回 {len(final_result_data.get('reports', {}))} 个报告")

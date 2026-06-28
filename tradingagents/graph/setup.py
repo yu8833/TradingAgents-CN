@@ -1,6 +1,6 @@
 # TradingAgents/graph/setup.py
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
@@ -8,6 +8,7 @@ from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
 
 from .conditional_logic import ConditionalLogic
+from .parallel_analysts import create_parallel_analysts_node
 
 
 class GraphSetup:
@@ -44,59 +45,10 @@ class GraphSetup:
         if len(selected_analysts) == 0:
             raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
 
-        # Create analyst nodes
-        analyst_nodes = {}
-        delete_nodes = {}
-        tool_nodes = {}
+        analyst_tool_nodes = {}
 
-        if "market" in selected_analysts:
-            analyst_nodes["market"] = create_market_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["market"] = create_msg_delete()
-            tool_nodes["market"] = self.tool_nodes["market"]
-
-        if "social" in selected_analysts:
-            analyst_nodes["social"] = create_social_media_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["social"] = create_msg_delete()
-            tool_nodes["social"] = self.tool_nodes["social"]
-
-        if "news" in selected_analysts:
-            analyst_nodes["news"] = create_news_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["news"] = create_msg_delete()
-            tool_nodes["news"] = self.tool_nodes["news"]
-
-        if "fundamentals" in selected_analysts:
-            analyst_nodes["fundamentals"] = create_fundamentals_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["fundamentals"] = create_msg_delete()
-            tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
-
-        if "policy" in selected_analysts:
-            analyst_nodes["policy"] = create_policy_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["policy"] = create_msg_delete()
-            tool_nodes["policy"] = self.tool_nodes["policy"]
-
-        if "hot_money" in selected_analysts:
-            analyst_nodes["hot_money"] = create_hot_money_tracker(
-                self.quick_thinking_llm
-            )
-            delete_nodes["hot_money"] = create_msg_delete()
-            tool_nodes["hot_money"] = self.tool_nodes["hot_money"]
-
-        if "lockup" in selected_analysts:
-            analyst_nodes["lockup"] = create_lockup_watcher(
-                self.quick_thinking_llm
-            )
-            delete_nodes["lockup"] = create_msg_delete()
-            tool_nodes["lockup"] = self.tool_nodes["lockup"]
+        for analyst_type in selected_analysts:
+            analyst_tool_nodes[analyst_type] = self.tool_nodes[analyst_type]
 
         # Create quality gate node
         quality_gate_node = create_quality_gate(self.quick_thinking_llm)
@@ -116,13 +68,13 @@ class GraphSetup:
         # Create workflow
         workflow = StateGraph(AgentState)
 
-        # Add analyst nodes to the graph
-        for analyst_type, node in analyst_nodes.items():
-            workflow.add_node(f"{analyst_type.capitalize()} Analyst", node)
-            workflow.add_node(
-                f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
-            )
-            workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+        # Add parallel analysts node
+        parallel_node = create_parallel_analysts_node(
+            self.quick_thinking_llm,
+            analyst_tool_nodes,
+            selected_analysts,
+        )
+        workflow.add_node("Parallel Analysts", parallel_node)
 
         # Add quality gate + other nodes
         workflow.add_node("Quality Gate", quality_gate_node)
@@ -136,31 +88,9 @@ class GraphSetup:
         workflow.add_node("Portfolio Manager", portfolio_manager_node)
 
         # Define edges
-        # Start with the first analyst
-        first_analyst = selected_analysts[0]
-        workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
-
-        # Connect analysts in sequence
-        for i, analyst_type in enumerate(selected_analysts):
-            current_analyst = f"{analyst_type.capitalize()} Analyst"
-            current_tools = f"tools_{analyst_type}"
-            current_clear = f"Msg Clear {analyst_type.capitalize()}"
-
-            # Add conditional edges for current analyst
-            workflow.add_conditional_edges(
-                current_analyst,
-                getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                [current_tools, current_clear],
-            )
-            workflow.add_edge(current_tools, current_analyst)
-
-            # Connect to next analyst or to Bull Researcher if this is the last analyst
-            if i < len(selected_analysts) - 1:
-                next_analyst = f"{selected_analysts[i+1].capitalize()} Analyst"
-                workflow.add_edge(current_clear, next_analyst)
-            else:
-                workflow.add_edge(current_clear, "Quality Gate")
-
+        # Start with parallel analysts
+        workflow.add_edge(START, "Parallel Analysts")
+        workflow.add_edge("Parallel Analysts", "Quality Gate")
         workflow.add_edge("Quality Gate", "Bull Researcher")
 
         # Add remaining edges

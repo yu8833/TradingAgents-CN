@@ -16,7 +16,8 @@ from tradingagents.dataflows.config import get_config
 def create_fundamentals_analyst(llm):
     def fundamentals_analyst_node(state):
         current_date = state["trade_date"]
-        instrument_context = build_instrument_context(state["company_of_interest"])
+        company = state["company_of_interest"]
+        instrument_context = build_instrument_context(company)
 
         tools = [
             get_fundamentals,
@@ -42,8 +43,9 @@ def create_fundamentals_analyst(llm):
             "\n- `get_cashflow`：现金流量表详细数据"
             "\n- `get_income_statement`：利润表详细数据"
             "\n- `get_industry_comparison(ticker, curr_date)`：获取全行业横向对比（90个行业涨跌幅/成交额/净流入排名，用于估值对标和行业定位）"
-            "\n\n撰写详尽的基本面研究报告，给出具体数据支撑的分析结论（仅供研究参考，不构成投资建议）。报告末尾附 Markdown 表格汇总关键财务指标和估值水平。"
+            "\n\n撰写详尽的基本面研究报告，给出具体数据支撑的分析结论（仅供研究参考，不构成投资建议）。**报告开头**必须先给出「基本面评分」（0-100 分的整数，越高代表基本面越健康），格式为单独一行：`基本面评分：XX`。报告末尾附 Markdown 表格汇总关键财务指标和估值水平。"
             "\n\n📋 必采清单 — 以下数据点必须出现在报告中，无法获取时标注 [数据缺失: xxx]："
+            "\n0. 基本面评分（0-100 分，越高越健康）"
             "\n1. PE（TTM）、PB、总市值"
             "\n2. 营收同比增长率"
             "\n3. 归母净利润及同比增长率"
@@ -51,6 +53,11 @@ def create_fundamentals_analyst(llm):
             "\n5. 资产负债率"
             "\n6. 经营性现金流与净利润比值"
             "\n7. 机构一致预期 EPS（调用 get_profit_forecast 获取）"
+
+            "\n\n⚠️ 数据准确性要求（CRITICAL）："
+            "\n- 报告中的所有财务数据（PE、PB、营收、利润等）必须来自工具调用返回的原始数据"
+            "\n- 禁止编造或篡改任何财务数值"
+            "\n- 如发现数据缺失，请标注 [数据缺失: xxx]"
             + get_language_instruction()
         )
 
@@ -83,7 +90,7 @@ def create_fundamentals_analyst(llm):
         report = ""
 
         if len(result.tool_calls) == 0:
-            report = result.content
+            report = result.content or ""
 
         return {
             "messages": [result],

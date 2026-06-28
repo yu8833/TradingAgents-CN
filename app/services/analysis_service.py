@@ -87,7 +87,7 @@ class AnalysisService:
             # 直接使用完整配置，不再合并DEFAULT_CONFIG（因为create_analysis_config已经处理了）
             # 这与单股分析服务和web目录的方式一致
             self._trading_graph_cache[config_key] = TradingAgentsGraph(
-                selected_analysts=config.get("selected_analysts", ["market", "fundamentals"]),
+                selected_analysts=config.get("selected_analysts", ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]),
                 debug=config.get("debug", False),
                 config=config
             )
@@ -175,10 +175,24 @@ class AnalysisService:
             # 参数配置
             progress_tracker.update_progress("⚙️ 配置分析参数")
 
+            # 🧹 强制补全全部7个分析师（确保所有维度都有报告）
+            supported_analysts = {"market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"}
+            raw_analysts = task.parameters.selected_analysts or list(supported_analysts)
+            filtered_analysts = []
+            for a in raw_analysts:
+                if a in supported_analysts and a not in filtered_analysts:
+                    filtered_analysts.append(a)
+            all_analysts = ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
+            for analyst in all_analysts:
+                if analyst not in filtered_analysts:
+                    filtered_analysts.append(analyst)
+            logger.info(f"📊 [分析师] 原始: {raw_analysts}")
+            logger.info(f"📊 [分析师] 补全后: {filtered_analysts}")
+
             # 使用标准配置函数创建完整配置
             from app.services.simple_analysis_service import create_analysis_config
             config = create_analysis_config(
-                selected_analysts=task.parameters.selected_analysts or ["market", "fundamentals"],
+                selected_analysts=filtered_analysts,
                 quick_model=quick_model,
                 deep_model=deep_model,
                 llm_provider=llm_provider,
@@ -299,10 +313,24 @@ class AnalysisService:
 
             llm_provider = normalize_provider_key(get_provider_by_model_name(quick_model))
 
+            # 🧹 强制补全全部7个分析师（确保所有维度都有报告）
+            supported_analysts = {"market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"}
+            raw_analysts = task.parameters.selected_analysts or list(supported_analysts)
+            filtered_analysts = []
+            for a in raw_analysts:
+                if a in supported_analysts and a not in filtered_analysts:
+                    filtered_analysts.append(a)
+            all_analysts = ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
+            for analyst in all_analysts:
+                if analyst not in filtered_analysts:
+                    filtered_analysts.append(analyst)
+            logger.info(f"📊 [分析师] 原始: {raw_analysts}")
+            logger.info(f"📊 [分析师] 补全后: {filtered_analysts}")
+
             # 使用标准配置函数创建完整配置
             from app.services.simple_analysis_service import create_analysis_config
             config = create_analysis_config(
-                selected_analysts=task.parameters.selected_analysts or ["market", "fundamentals"],
+                selected_analysts=filtered_analysts,
                 quick_model=quick_model,
                 deep_model=deep_model,
                 llm_provider=llm_provider,
@@ -357,7 +385,7 @@ class AnalysisService:
             # 创建进度跟踪器
             progress_tracker = RedisProgressTracker(
                 task_id=task.task_id,
-                analysts=task.parameters.selected_analysts or ["market", "fundamentals"],
+                analysts=task.parameters.selected_analysts or ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"],
                 llm_provider="dashscope"
             )
 
@@ -665,9 +693,23 @@ class AnalysisService:
 
             llm_provider = normalize_provider_key(await get_provider_by_model_name(quick_model))
 
+            # 🧹 强制补全全部7个分析师（确保所有维度都有报告）
+            supported_analysts = {"market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"}
+            raw_analysts = task.parameters.selected_analysts or list(supported_analysts)
+            filtered_analysts = []
+            for a in raw_analysts:
+                if a in supported_analysts and a not in filtered_analysts:
+                    filtered_analysts.append(a)
+            all_analysts = ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
+            for analyst in all_analysts:
+                if analyst not in filtered_analysts:
+                    filtered_analysts.append(analyst)
+            logger.info(f"📊 [分析师] 原始: {raw_analysts}")
+            logger.info(f"📊 [分析师] 补全后: {filtered_analysts}")
+
             # 使用标准配置函数创建完整配置
             config = create_analysis_config(
-                selected_analysts=task.parameters.selected_analysts or ["market", "fundamentals"],
+                selected_analysts=filtered_analysts,
                 quick_model=quick_model,
                 deep_model=deep_model,
                 llm_provider=llm_provider,

@@ -185,6 +185,55 @@ class StockDataService:
             logger.error(f"获取股票列表失败: {e}")
             return []
     
+    async def get_stock_list_count(
+        self,
+        market: Optional[str] = None,
+        industry: Optional[str] = None,
+        source: Optional[str] = None
+    ) -> int:
+        """
+        🔥 获取股票列表总数（用于分页）
+        Args:
+            market: 市场筛选
+            industry: 行业筛选
+            source: 数据源（可选）
+        Returns:
+            int: 符合条件的股票总数
+        """
+        try:
+            db = get_mongo_db()
+
+            # 🔥 获取数据源优先级配置
+            if not source:
+                from app.core.unified_config import UnifiedConfigManager
+                config = UnifiedConfigManager()
+                data_source_configs = await config.get_data_source_configs_async()
+
+                enabled_sources = [
+                    ds.type.lower() for ds in data_source_configs
+                    if ds.enabled and ds.type.lower() in ['tushare', 'akshare', 'baostock']
+                ]
+
+                if not enabled_sources:
+                    enabled_sources = ['tushare', 'akshare', 'baostock']
+
+                source = enabled_sources[0] if enabled_sources else 'tushare'
+
+            # 构建查询条件
+            query = {"source": source}
+            if market:
+                query["market"] = market
+            if industry:
+                query["industry"] = industry
+
+            # 🔥 使用 count_documents 获取总数
+            count = await db[self.basic_info_collection].count_documents(query)
+            return count
+            
+        except Exception as e:
+            logger.error(f"获取股票列表总数失败: {e}")
+            return 0
+    
     async def update_stock_basic_info(
         self,
         symbol: str,

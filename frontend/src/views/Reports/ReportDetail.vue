@@ -21,7 +21,11 @@
               <el-tag type="success">{{ getStatusText(report.status) }}</el-tag>
               <span class="meta-item">
                 <el-icon><Calendar /></el-icon>
-                {{ formatTime(report.created_at) }}
+                分析时间：{{ formatTime(report.created_at) }}
+              </span>
+              <span v-if="report.execution_time && report.execution_time > 0" class="meta-item">
+                <el-icon><Timer /></el-icon>
+                耗时：{{ formatDuration(report.execution_time) }}
               </span>
               <span class="meta-item">
                 <el-icon><User /></el-icon>
@@ -76,173 +80,303 @@
         </div>
       </el-card>
 
-      <!-- 策略点位 & 价格区间（daily_stock_analysis 风格） -->
-      <el-card class="strategy-card" shadow="never">
-        <template #header>
-          <div class="card-header">
-            <el-icon><Promotion /></el-icon>
-            <span>策略点位</span>
-            <el-tag v-if="pickField(report, ['评级', 'action', '操作建议'])" :type="getDecisionActionTagType(pickField(report, ['评级', 'action', '操作建议']))" size="small" style="margin-left: 12px;">操作建议：{{ pickField(report, ['评级', 'action', '操作建议']) }}</el-tag>
-            <el-tag type="info" size="small" style="margin-left: 12px;">仅供参考</el-tag>
-          </div>
-        </template>
-        <div class="strategy-grid">
-          <div class="price-block buy-block">
-            <div class="price-label">💰 理想买入价</div>
-            <div class="price-value">{{ formatPriceValue(report, ['理想买入', 'ideal_buy', 'target_price']) }}</div>
-            <div class="price-sub">首次建仓参考价</div>
-          </div>
-          <div class="price-block add-block">
-            <div class="price-label">📈 二次买入价</div>
-            <div class="price-value">{{ formatPriceValue(report, ['二次买入', 'second_buy']) }}</div>
-            <div class="price-sub">回调加仓参考</div>
-          </div>
-          <div class="price-block stop-block">
-            <div class="price-label">🛑 止损价格</div>
-            <div class="price-value">{{ formatPriceValue(report, ['止损价格', 'stop_loss', 'stop_loss_price']) }}</div>
-            <div class="price-sub">无条件离场参考</div>
-          </div>
-          <div class="price-block target-block">
-            <div class="price-label">🎯 止盈目标价</div>
-            <div class="price-value">{{ formatPriceValue(report, ['止盈目标', 'target_price', 'price_target']) }}</div>
-            <div class="price-sub">减仓/获利参考</div>
-          </div>
-          <div class="price-block support-block">
-            <div class="price-label">📉 支撑位</div>
-            <div class="price-value">{{ formatPriceValue(report, ['支撑位', 'support_level']) }}</div>
-            <div class="price-sub">下方关键支撑</div>
-          </div>
-          <div class="price-block resistance-block">
-            <div class="price-label">📈 阻力位</div>
-            <div class="price-value">{{ formatPriceValue(report, ['阻力位', 'resistance_level']) }}</div>
-            <div class="price-sub">上方压力参考</div>
+      <!-- 报告模块 - 与单股分析页一致的卡片式布局，点击弹出全屏对话框 -->
+      <div class="pipeline-intro report-pipeline-intro">
+        <!-- 最终决策 -->
+        <div v-if="hasReport('final_trade_decision')" class="final-decision">
+          <div class="decision-label">📈 最终交易决策</div>
+          <div class="decision-options">
+            <div
+              class="decision-chip decision-chip--buy"
+              :class="{
+                'is-active': getFinalAction() === '买入',
+                'is-disabled': getFinalAction() && getFinalAction() !== '买入'
+              }"
+              @click="getFinalAction() === '买入' && openReportDialog('final_trade_decision')"
+            >买入</div>
+            <div
+              class="decision-chip decision-chip--overweight"
+              :class="{
+                'is-active': getFinalAction() === '增持',
+                'is-disabled': getFinalAction() && getFinalAction() !== '增持'
+              }"
+              @click="getFinalAction() === '增持' && openReportDialog('final_trade_decision')"
+            >增持</div>
+            <div
+              class="decision-chip decision-chip--hold"
+              :class="{
+                'is-active': getFinalAction() === '持有',
+                'is-disabled': getFinalAction() && getFinalAction() !== '持有'
+              }"
+              @click="getFinalAction() === '持有' && openReportDialog('final_trade_decision')"
+            >持有</div>
+            <div
+              class="decision-chip decision-chip--underweight"
+              :class="{
+                'is-active': getFinalAction() === '减持',
+                'is-disabled': getFinalAction() && getFinalAction() !== '减持'
+              }"
+              @click="getFinalAction() === '减持' && openReportDialog('final_trade_decision')"
+            >减持</div>
+            <div
+              class="decision-chip decision-chip--sell"
+              :class="{
+                'is-active': getFinalAction() === '卖出',
+                'is-disabled': getFinalAction() && getFinalAction() !== '卖出'
+              }"
+              @click="getFinalAction() === '卖出' && openReportDialog('final_trade_decision')"
+            >卖出</div>
           </div>
         </div>
 
-        <!-- 文本洞察 - 卡片式布局，鼠标悬停显示维度说明 -->
-        <div v-if="hasAnyInsight(report)" class="insights-block">
-          <div class="block-title">
-            <el-icon :size="18"><Reading /></el-icon>
-            <span class="block-title-text">核心洞察</span>
-            <el-tooltip content="AI 基于多维度分析提炼的关键结论，用于快速把握报告要点" placement="top" :show-after="200">
-              <el-icon class="help-icon" :size="14"><QuestionFilled /></el-icon>
-            </el-tooltip>
-          </div>
-          <div class="insight-grid">
-            <div
-              v-for="item in insightItems"
-              :key="item.key"
-              :class="['insight-card', `insight-${item.key}`]"
-            >
-              <el-tooltip :content="item.tooltip" placement="top" :show-after="200" effect="light">
-                <div class="insight-card-header">
-                  <div class="insight-card-icon">{{ item.icon }}</div>
-                  <div class="insight-card-text-wrap">
-                    <div class="insight-card-title">{{ item.title }}</div>
-                    <div class="insight-card-subtitle">{{ item.subtitle }}</div>
-                  </div>
-                </div>
-              </el-tooltip>
-              <div class="insight-card-body" v-html="renderInsightFull(item.fullText || item.text)"></div>
+        <!-- 多维度评分 -->
+        <div v-if="hasAnyDimensionScore" class="scores-confidence-row">
+          <div class="pipeline-section section--scores">
+            <div class="section-header">
+              <h3>📊 多维度评分</h3>
+              <p class="section-subtitle">7位分析师从不同维度综合评估股票，覆盖短线博弈到长线价值，满分10分</p>
             </div>
-          </div>
-        </div>
 
-        <!-- 综合评分 - 卡片式进度条布局，悬停显示维度解释 -->
-        <div v-if="hasAnyScore(report)" class="dimension-block">
-          <div class="block-title">
-            <el-icon :size="18"><DataAnalysis /></el-icon>
-            <span class="block-title-text">多维度评分</span>
-            <el-tooltip content="每个维度得分基于 AI 对该维度信息的综合评估，用于辅助判断整体价值分布" placement="top" :show-after="200">
-              <el-icon class="help-icon" :size="14"><QuestionFilled /></el-icon>
-            </el-tooltip>
-          </div>
-          <div class="dimension-grid">
-            <div
-              v-for="dim in dimensionItems"
-              :key="dim.key"
-              :class="['dimension-card', `dim-${dim.key}`]"
-            >
-              <el-tooltip :content="dim.tooltip" placement="top" :show-after="200" effect="light">
-                <div class="dimension-card-header">
-                  <div class="dimension-icon">{{ dim.icon }}</div>
-                  <div class="dimension-text-wrap">
-                    <div class="dimension-name">{{ dim.name }}</div>
-                    <div class="dimension-subtitle">{{ dim.subtitle }}</div>
-                  </div>
-                </div>
-              </el-tooltip>
-              <template v-if="dim.type === 'progress'">
-                <div class="dimension-progress">
-                  <el-progress
-                    :percentage="dim.value"
-                    :color="dim.color"
-                    :stroke-width="12"
-                    :show-text="false"
-                  />
-                </div>
-                <div class="dimension-value">
-                  <span class="score-number">{{ dim.value }}</span>
-                  <span class="score-unit">/ 100</span>
-                </div>
-                <div class="dimension-label" :style="{ color: dim.color[0] }">
-                  <el-icon :size="14"><TrendCharts /></el-icon>
-                  <span>{{ dim.label }}</span>
-                </div>
-              </template>
-              <template v-else>
-                <div class="dimension-risk">
-                  <el-icon
-                    v-for="n in 5"
-                    :key="n"
-                    :size="20"
-                    :class="['risk-star', { active: n <= dim.stars }]"
-                    :color="n <= dim.stars ? dim.starColor : '#DCDFE6'"
+            <!-- 短线博弈组 -->
+            <div class="dimension-group">
+              <div class="dimension-group-title">⚡ 短线博弈</div>
+              <div class="dimension-grid">
+                <el-tooltip
+                  v-for="item in shortTermScores"
+                  :key="item.field"
+                  placement="top"
+                  effect="dark"
+                >
+                  <template #content>
+                    <div style="max-width: 250px; line-height: 1.6;">
+                      <div style="font-weight: bold; margin-bottom: 6px;">{{ item.name }}评分 · {{ item.analyst }}</div>
+                      <div style="font-size: 12px; opacity: 0.9;">{{ item.basis }}</div>
+                      <div v-if="item.source_type" style="margin-top: 6px; font-size: 11px; opacity: 0.7;">
+                        数据来源：{{ item.source_type === '明确评分' ? '分析师报告明确给出' : '基于报告倾向估算' }}
+                      </div>
+                    </div>
+                  </template>
+                  <div
+                    class="dimension-card"
+                    :class="getDimensionCardClass(item.field)"
+                    @click="openDimensionReport(item)"
                   >
-                    <StarFilled />
-                  </el-icon>
-                </div>
-                <div class="dimension-value">
-                  <span class="score-number" :style="{ color: dim.starColor }">{{ dim.text }}</span>
-                </div>
-                <div class="dimension-label" :style="{ color: dim.starColor }">
-                  <el-icon :size="14"><WarningFilled /></el-icon>
-                  <span>{{ dim.label }}</span>
-                </div>
-              </template>
+                    <div class="dimension-header">
+                      <span class="dimension-icon">{{ getDimensionIcon(item.field) }}</span>
+                      <span class="dimension-name">{{ item.name }}</span>
+                    </div>
+                    <div class="dimension-score">
+                      <span class="score-value">{{ formatScore(item.score) }}</span>
+                      <span class="score-unit">分</span>
+                    </div>
+                    <div class="score-bar">
+                      <div class="score-bar-fill" :style="{ width: getScorePercent(item.score) + '%' }"></div>
+                    </div>
+                    <div class="dimension-analyst">{{ item.analyst }}</div>
+                  </div>
+                </el-tooltip>
+              </div>
+            </div>
+
+            <!-- 长线价值组 -->
+            <div class="dimension-group">
+              <div class="dimension-group-title">💎 长线价值</div>
+              <div class="dimension-grid">
+                <el-tooltip
+                  v-for="item in longTermScores"
+                  :key="item.field"
+                  placement="top"
+                  effect="dark"
+                >
+                  <template #content>
+                    <div style="max-width: 250px; line-height: 1.6;">
+                      <div style="font-weight: bold; margin-bottom: 6px;">{{ item.name }}评分 · {{ item.analyst }}</div>
+                      <div style="font-size: 12px; opacity: 0.9;">{{ item.basis }}</div>
+                      <div v-if="item.source_type" style="margin-top: 6px; font-size: 11px; opacity: 0.7;">
+                        数据来源：{{ item.source_type === '明确评分' ? '分析师报告明确给出' : '基于报告倾向估算' }}
+                      </div>
+                    </div>
+                  </template>
+                  <div
+                    class="dimension-card"
+                    :class="getDimensionCardClass(item.field)"
+                    @click="openDimensionReport(item)"
+                  >
+                    <div class="dimension-header">
+                      <span class="dimension-icon">{{ getDimensionIcon(item.field) }}</span>
+                      <span class="dimension-name">{{ item.name }}</span>
+                    </div>
+                    <div class="dimension-score">
+                      <span class="score-value">{{ formatScore(item.score) }}</span>
+                      <span class="score-unit">分</span>
+                    </div>
+                    <div class="score-bar">
+                      <div class="score-bar-fill" :style="{ width: getScorePercent(item.score) + '%' }"></div>
+                    </div>
+                    <div class="dimension-analyst">{{ item.analyst }}</div>
+                  </div>
+                </el-tooltip>
+              </div>
             </div>
           </div>
         </div>
-      </el-card>
 
-      <!-- 报告模块 - 带统一的 markdown 样式 -->
-      <el-card class="modules-card" shadow="never">
-        <template #header>
-          <div class="card-header">
-            <el-icon><Files /></el-icon>
-            <span>分析师报告</span>
-            <span class="header-tip">以下内容由 AI 分角色撰写，仅供参考</span>
+        <!-- 第二部分：辩论与决策流程 -->
+        <div v-if="hasAnyDebateOrRiskReport" class="pipeline-section section--debate">
+          <div class="section-header">
+            <h3>⚔️ 多空辩论 · 三方风控 · 最终交易决策</h3>
+            <p class="section-subtitle">研究团队通过对抗性辩论形成共识，风控团队从三个视角兜底，最终给出可操作的投资建议</p>
           </div>
-        </template>
-
-        <el-tabs v-model="activeModule" type="border-card" class="report-tabs">
-          <el-tab-pane
-            v-for="moduleName in reportModuleKeys"
-            :key="moduleName"
-            :label="getModuleDisplayName(moduleName)"
-            :name="moduleName"
-          >
-            <div class="module-content">
-              <div v-if="typeof report.reports[moduleName] === 'string'" class="markdown-body">
-                <div v-html="renderMarkdown(report.reports[moduleName] as string)"></div>
-              </div>
-              <div v-else class="json-content">
-                <pre>{{ JSON.stringify(report.reports[moduleName], null, 2) }}</pre>
+          <div class="debate-timeline">
+            <div v-if="hasReport('bull_researcher') || hasReport('bear_researcher') || hasReport('research_team_decision')" class="timeline-phase">
+              <div class="phase-label">📋 研究辩论</div>
+              <div class="phase-flow">
+                <div
+                  v-if="hasReport('bull_researcher')"
+                  class="debate-node node--bull is-clickable"
+                  @click="openReportDialog('bull_researcher')"
+                >
+                  <span class="node-icon">🐂</span>
+                  <span class="node-name">看涨研究员</span>
+                  <span class="node-desc">构建买入逻辑<br/>行业景气 · 业绩拐点 · 资金流入</span>
+                </div>
+                <div v-if="hasReport('bull_researcher') && hasReport('bear_researcher')" class="timeline-arrow">⚡ VS ⚡</div>
+                <div
+                  v-if="hasReport('bear_researcher')"
+                  class="debate-node node--bear is-clickable"
+                  @click="openReportDialog('bear_researcher')"
+                >
+                  <span class="node-icon">🐻</span>
+                  <span class="node-name">看跌研究员</span>
+                  <span class="node-desc">识别做空风险<br/>宏观压力 · 业绩雷点 · 顶背离</span>
+                </div>
+                <div v-if="hasReport('research_team_decision')" class="timeline-arrow">→</div>
+                <div
+                  v-if="hasReport('research_team_decision')"
+                  class="debate-node node--manager is-clickable"
+                  @click="openReportDialog('research_team_decision')"
+                >
+                  <span class="node-icon">👔</span>
+                  <span class="node-name">研究经理</span>
+                  <span class="node-desc">综合共识<br/>投资亮点 / 风险点 / 适用场景</span>
+                </div>
               </div>
             </div>
-          </el-tab-pane>
-        </el-tabs>
-      </el-card>
+
+            <div v-if="hasReport('risky_analyst') || hasReport('neutral_analyst') || hasReport('safe_analyst') || hasReport('risk_control_decision') || hasReport('risk_management_decision')" class="timeline-phase">
+              <div class="phase-label">🛡️ 三方风控</div>
+              <div class="risk-perspectives">
+                <div
+                  class="risk-card risk-card--aggressive"
+                  :class="{ 'is-clickable': hasReport('risky_analyst') }"
+                  @click="hasReport('risky_analyst') && openReportDialog('risky_analyst')"
+                >
+                  <span class="risk-icon">🔥</span>
+                  <span class="risk-name">激进风险</span>
+                  <span class="risk-desc">高仓位 · 高杠杆 · 快进快出</span>
+                </div>
+                <div
+                  class="risk-card risk-card--neutral"
+                  :class="{ 'is-clickable': hasReport('neutral_analyst') }"
+                  @click="hasReport('neutral_analyst') && openReportDialog('neutral_analyst')"
+                >
+                  <span class="risk-icon">⚖️</span>
+                  <span class="risk-name">中性风险</span>
+                  <span class="risk-desc">均衡仓位 · 标准止损 · 趋势跟随</span>
+                </div>
+                <div
+                  class="risk-card risk-card--conservative"
+                  :class="{ 'is-clickable': hasReport('safe_analyst') }"
+                  @click="hasReport('safe_analyst') && openReportDialog('safe_analyst')"
+                >
+                  <span class="risk-icon">🛡️</span>
+                  <span class="risk-name">保守风险</span>
+                  <span class="risk-desc">轻仓 · 宽止损 · 长周期持有</span>
+                </div>
+              </div>
+              <div
+                v-if="hasReport('risk_control_decision')"
+                class="risk-manager risk-constraint is-clickable"
+                @click="openReportDialog('risk_control_decision')"
+              >
+                <span class="node-icon">📋</span>
+                <span class="node-name">风控约束</span>
+                <span class="node-desc">风控经理：最大仓位 · 止损位 · 最大可接受亏损</span>
+              </div>
+              <div
+                v-if="hasReport('risk_management_decision') && !hasReport('risk_control_decision')"
+                class="risk-manager is-clickable"
+                @click="openReportDialog('risk_management_decision')"
+              >
+                <span class="node-icon">🎯</span>
+                <span class="node-name">风险经理</span>
+                <span class="node-desc">综合三方风控视角 → 止损位 / 仓位上限 / 持有周期</span>
+              </div>
+            </div>
+
+            <div v-if="hasReport('trader_investment_plan') || hasReport('final_trade_decision')" class="timeline-phase phase--final-strategy">
+              <div class="phase-label">📈 最终交易决策</div>
+              <div class="phase-flow">
+                <div
+                  v-if="hasReport('trader_investment_plan')"
+                  class="trade-node is-clickable"
+                  @click="openReportDialog('trader_investment_plan')"
+                >
+                  <span class="node-icon">💼</span>
+                  <span class="node-name">交易员</span>
+                  <span class="node-desc">制定具体策略：买入 / 持有 / 卖出 + 目标价位 + 仓位建议</span>
+                </div>
+                <div v-if="!hasReport('trader_investment_plan') && hasReport('final_trade_decision')" class="trade-node is-clickable" @click="openReportDialog('final_trade_decision')">
+                  <span class="node-icon">📈</span>
+                  <span class="node-name">最终交易决策</span>
+                  <span class="node-desc">最终交易决策与执行方案</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 置信度评估（移到页面最下端） -->
+        <div v-if="hasConfidenceDetail" class="pipeline-section section--confidence">
+          <div class="section-header">
+            <h3>🎯 置信度评估</h3>
+            <p class="section-subtitle">综合评估分析结果的可靠程度</p>
+          </div>
+          <div class="confidence-content">
+            <div class="confidence-total">
+              <div class="confidence-total-score">
+                <span class="total-score-value">{{ getConfidenceTotalPercent() }}</span>
+                <span class="total-score-unit">%</span>
+              </div>
+              <div class="confidence-total-label" :style="{ color: getConfidenceColor(getConfidenceTotalPercent()) }">
+                {{ getConfidenceLabel(getConfidenceTotalPercent()) }}
+              </div>
+            </div>
+            <div class="confidence-detail-list">
+              <div
+                v-for="(item, index) in getConfidenceDetailList()"
+                :key="index"
+                class="confidence-detail-item"
+              >
+                <div class="detail-item-header">
+                  <span class="detail-item-name">{{ item.name }}</span>
+                  <span class="detail-item-score">{{ item.score }}/{{ item.max_score }}</span>
+                </div>
+                <div class="detail-item-bar">
+                  <div
+                    class="detail-item-bar-fill"
+                    :style="{
+                      width: getConfidenceItemPercent(item) + '%',
+                      background: getConfidenceGradient(getConfidenceItemPercent(item))
+                    }"
+                  ></div>
+                </div>
+                <div class="detail-item-desc">{{ item.description }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 错误状态 -->
@@ -257,11 +391,41 @@
         </template>
       </el-result>
     </div>
+
+    <!-- 报告详情全屏弹窗 -->
+    <el-dialog
+      v-model="dialogVisible"
+      fullscreen
+      :show-close="true"
+      :close-on-click-modal="false"
+      :before-close="beforeDialogClose"
+      class="report-dialog"
+    >
+      <template #header>
+        <div class="dialog-header">
+          <div class="dialog-title">
+            <span class="dialog-icon">{{ currentDialogReport?.icon }}</span>
+            <span class="dialog-name">{{ currentDialogReport?.title }}</span>
+          </div>
+          <div class="dialog-description">{{ currentDialogReport?.description }}</div>
+        </div>
+      </template>
+      <div class="dialog-content-wrapper">
+        <div
+          v-if="currentDialogReport?.content"
+          class="dialog-report-content"
+          v-html="renderMarkdown(typeof currentDialogReport.content === 'string' ? currentDialogReport.content : JSON.stringify(currentDialogReport.content, null, 2))"
+        ></div>
+        <div v-else class="dialog-no-content">
+          <el-empty description="暂无内容" />
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h, reactive, watch } from 'vue'
+import { ref, computed, h, reactive, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElInputNumber } from 'element-plus'
 import { paperApi } from '@/api/paper'
@@ -270,6 +434,7 @@ import { configApi, type LLMConfig } from '@/api/config'
 import {
   Document,
   Calendar,
+  Timer,
   User,
   Download,
   Back,
@@ -296,6 +461,13 @@ import type { CurrencyAmount } from '@/api/paper'
 
 type ReportModuleContent = string | Record<string, unknown>
 
+type ConfidenceDetailItem = {
+  name: string
+  score: number
+  max_score: number
+  description: string
+}
+
 type ReportDetailData = {
   id: string
   analysis_id?: string
@@ -309,6 +481,8 @@ type ReportDetailData = {
   recommendation?: string
   risk_level?: string
   confidence_score?: number
+  置信度?: number
+  置信度详情?: ConfidenceDetailItem[]
   key_points?: string[]
   summary?: string
   reports: Record<string, ReportModuleContent>
@@ -328,6 +502,389 @@ const report = ref<ReportDetailData | null>(null)
 const activeModule = ref('')
 const llmConfigs = ref<LLMConfig[]>([]) // 存储所有模型配置
 const reportModuleKeys = computed<string[]>(() => report.value ? Object.keys(report.value.reports || {}) : [])
+
+// 弹窗相关
+const dialogVisible = ref(false)
+const currentDialogReport = ref<{ title: string; content: any; icon: string; description: string } | null>(null)
+
+// 报告key到信息的映射
+const reportKeyToInfo: Record<string, { title: string; icon: string; description: string }> = {
+  final_trade_decision: { title: '最终交易决策', icon: '📈', description: '综合所有分析后的交易策略建议' },
+  market_report: { title: '技术分析师', icon: '📈', description: '技术指标、均线/KDJ/MACD分析' },
+  sentiment_report: { title: '市场情绪分析师', icon: '💭', description: '情绪量化、舆情热度、正负面比例' },
+  hot_money_report: { title: '游资追踪师', icon: '💰', description: '主力资金、龙虎榜、北向资金' },
+  lockup_report: { title: '解禁追踪师', icon: '🔒', description: '限售股解禁、大股东减持' },
+  fundamentals_report: { title: '基本面分析师', icon: '💼', description: '财务数据、护城河、内在价值' },
+  news_report: { title: '新闻分析师', icon: '📰', description: '公告研报、事件冲击分析' },
+  policy_report: { title: '政策分析师', icon: '🏛️', description: '产业政策、宏观调控、监管动向' },
+  bull_researcher: { title: '看涨研究员', icon: '🐂', description: '构建买入逻辑，挖掘投资亮点' },
+  bear_researcher: { title: '看跌研究员', icon: '🐻', description: '识别做空风险，警示潜在雷点' },
+  research_team_decision: { title: '研究经理', icon: '👔', description: '多空辩论综合，研究经理裁决' },
+  trader_investment_plan: { title: '交易员', icon: '💼', description: '具体交易执行策略与仓位建议' },
+  risky_analyst: { title: '激进风险', icon: '🔥', description: '高仓位、高杠杆、快进快出视角' },
+  neutral_analyst: { title: '中性风险', icon: '⚖️', description: '均衡仓位、标准止损、趋势跟随' },
+  safe_analyst: { title: '保守风险', icon: '🛡️', description: '轻仓、宽止损、长周期持有' },
+  risk_control_decision: { title: '风控约束', icon: '📋', description: '最大仓位、止损位、最大可接受亏损' },
+  risk_management_decision: { title: '风险经理', icon: '👔', description: '综合三方风控，输出止损位与仓位上限' }
+}
+
+const normalizeAction = (text: string): string => {
+  if (!text || typeof text !== 'string') return ''
+  const lower = text.toLowerCase()
+  
+  if (lower.includes('sell') || lower.includes('卖出') || lower.includes('清仓') || lower.includes('离场')) return '卖出'
+  if (lower.includes('underweight') || lower.includes('减持') || lower.includes('减配') || lower.includes('减仓')) return '减持'
+  if (lower.includes('hold') || lower.includes('持有') || lower.includes('观望') || lower.includes('中性')) return '持有'
+  if (lower.includes('overweight') || lower.includes('增持') || lower.includes('加仓') || lower.includes('增配')) return '增持'
+  if (lower.includes('buy') || lower.includes('买入') || lower.includes('建仓') || lower.includes('配置')) return '买入'
+  
+  return ''
+}
+
+const translateReportContent = (content: string): string => {
+  if (!content || typeof content !== 'string') return content
+  
+  const translations: [RegExp, string][] = [
+    [/\bUnderweight\b/gi, '减持（Underweight）'],
+    [/\bOverweight\b/gi, '增持（Overweight）'],
+    [/\bHold\b/g, '持有（Hold）'],
+    [/\bBuy\b/gi, '买入（Buy）'],
+    [/\bSell\b/gi, '卖出（Sell）'],
+    [/\bRating\b/gi, '评级'],
+    [/\bAction\b/gi, '操作建议'],
+    [/\bStop Loss\b/gi, '止损'],
+    [/\bTake Profit\b/gi, '止盈'],
+    [/\bPosition\b/gi, '仓位'],
+    [/\bPortfolio\b/gi, '投资组合'],
+    [/\bRisk\b/gi, '风险'],
+    [/\bReturn\b/gi, '收益'],
+    [/\bVolatility\b/gi, '波动率'],
+    [/\bMomentum\b/gi, '动量'],
+    [/\bTrend\b/gi, '趋势'],
+    [/\bSupport\b/gi, '支撑位'],
+    [/\bResistance\b/gi, '阻力位'],
+    [/\bVolume\b/gi, '成交量'],
+    [/\bPrice\b/gi, '价格'],
+    [/FINAL TRANSACTION PROPOSAL/gi, '最终交易提案'],
+  ]
+  
+  let result = content
+  for (const [pattern, replacement] of translations) {
+    result = result.replace(pattern, replacement)
+  }
+  
+  return result
+}
+
+const getReportContentByKey = (key: string): any => {
+  if (!report.value) return null
+  return report.value.reports?.[key] || null
+}
+
+let isClosingFromPopState = false
+
+const openReportDialog = (key: string) => {
+  const content = getReportContentByKey(key)
+  const info = reportKeyToInfo[key]
+  if (!info) {
+    ElMessage.warning('暂不支持该报告')
+    return
+  }
+  currentDialogReport.value = {
+    title: info.title,
+    content: translateReportContent(content),
+    icon: info.icon,
+    description: info.description
+  }
+  dialogVisible.value = true
+  document.body.style.overflow = 'hidden'
+  history.pushState({ dialogOpen: true, reportKey: key }, '')
+}
+
+const onPopState = () => {
+  if (dialogVisible.value) {
+    isClosingFromPopState = true
+    dialogVisible.value = false
+    currentDialogReport.value = null
+    document.body.style.overflow = ''
+    setTimeout(() => {
+      isClosingFromPopState = false
+    }, 0)
+  }
+}
+
+const beforeDialogClose = () => {
+  if (isClosingFromPopState) {
+    return true
+  }
+  history.back()
+  return false
+}
+
+const closeReportDialog = () => {
+  if (isClosingFromPopState) {
+    return
+  }
+  history.back()
+}
+
+const hasReport = (key: string): boolean => {
+  return !!getReportContentByKey(key)
+}
+
+const getFinalAction = (): string => {
+  if (!report.value) return ''
+  if (report.value.action) {
+    return normalizeAction(report.value.action)
+  }
+  if (report.value.决策建议) {
+    return normalizeAction(report.value.决策建议)
+  }
+  const decision = report.value.reports?.final_trade_decision
+  if (!decision) return ''
+  if (typeof decision !== 'string') return ''
+
+  const ratingPatterns = [
+    /最终投资评级[：:]\s*(\S+)/,
+    /投资评级[：:]\s*(\S+)/,
+    /评级[：:]\s*(\S+)/,
+    /Rating[：:]\s*(\S+)/,
+    /最终决策[：:]\s*(\S+)/,
+    /决策[：:]\s*(\S+)/,
+    /最终评级[：:]\s*(\S+)/,
+  ]
+  for (const pattern of ratingPatterns) {
+    const match = decision.match(pattern)
+    if (match) {
+      const action = normalizeAction(match[1])
+      if (action) return action
+    }
+  }
+
+  const lines = decision.split('\n')
+  for (const line of lines) {
+    if (line.includes('评级') || line.includes('决策') || line.includes('Rating') || line.includes('Action')) {
+      const action = normalizeAction(line)
+      if (action) return action
+    }
+  }
+
+  const action = normalizeAction(decision)
+  return action || ''
+}
+
+// 7位分析师的报告key映射
+const analystReportMap = {
+  '技术分析师': 'market_report',
+  '市场情绪分析师': 'sentiment_report',  // 修正：与卡片显示名称一致
+  '游资追踪师': 'hot_money_report',
+  '解禁追踪师': 'lockup_report',
+  '基本面分析师': 'fundamentals_report',
+  '新闻分析师': 'news_report',
+  '政策分析师': 'policy_report'
+}
+
+// 多空辩论与风控的报告key映射
+const debateReportMap = {
+  '看涨研究员': 'bull_researcher',
+  '看跌研究员': 'bear_researcher',
+  '研究经理': 'research_team_decision',
+  '交易员': 'trader_investment_plan',
+  '激进风险': 'risky_analyst',
+  '中性风险': 'neutral_analyst',
+  '保守风险': 'safe_analyst',
+  '风控约束': 'risk_control_decision',
+  '风险经理': 'risk_management_decision',
+  '最终交易决策': 'final_trade_decision'
+}
+
+const hasAnyAnalystReport = computed(() => {
+  return Object.values(analystReportMap).some(key => hasReport(key))
+})
+
+const hasAnyDebateOrRiskReport = computed(() => {
+  return Object.values(debateReportMap).some(key => hasReport(key))
+})
+
+const dimensionScoreFields = ['技术面评分', '基本面评分', '情绪面评分', '消息面评分', '资金面评分', '政策面评分', '解禁面评分']
+
+const dimensionIconMap: Record<string, string> = {
+  '技术面评分': '📈',
+  '基本面评分': '💼',
+  '情绪面评分': '💬',
+  '消息面评分': '📰',
+  '资金面评分': '💰',
+  '政策面评分': '🏛️',
+  '解禁面评分': '🔒'
+}
+
+const dimensionClassMap: Record<string, string> = {
+  '技术面评分': 'dimension--technical',
+  '基本面评分': 'dimension--fundamental',
+  '情绪面评分': 'dimension--sentiment',
+  '消息面评分': 'dimension--news',
+  '资金面评分': 'dimension--capital',
+  '政策面评分': 'dimension--policy',
+  '解禁面评分': 'dimension--lockup'
+}
+
+interface DimensionScoreItem {
+  name: string
+  field: string
+  score: number
+  max_score: number
+  analyst: string
+  basis: string
+  source_type: string
+}
+
+const dimensionScoreList = computed((): DimensionScoreItem[] => {
+  if (!report.value) return []
+  const detail = (report.value as any)['维度评分详情']
+  if (Array.isArray(detail) && detail.length > 0) {
+    return detail
+  }
+  const result: DimensionScoreItem[] = []
+  const defaultBasis: Record<string, { analyst: string; basis: string }> = {
+    '技术面评分': { analyst: '技术分析师', basis: '基于技术指标（均线、KDJ、MACD、RSI等）、趋势形态、量价关系等综合评估，满分10分。' },
+    '基本面评分': { analyst: '基本面分析师', basis: '基于财务数据（营收、利润、ROE等）、行业地位、护城河、估值水平等综合评估，满分10分。' },
+    '情绪面评分': { analyst: '市场情绪分析师', basis: '基于市场情绪指标、舆情热度、散户情绪逆向指标等综合评估，满分10分。' },
+    '消息面评分': { analyst: '新闻分析师', basis: '基于公司公告、研报动态、新闻事件冲击、重要消息面影响等综合评估，满分10分。' },
+    '资金面评分': { analyst: '游资追踪师', basis: '基于主力资金流向、龙虎榜数据、北向资金动向、机构持仓变化等综合评估，满分10分。' },
+    '政策面评分': { analyst: '政策分析师', basis: '基于产业政策、宏观调控、监管动向、行业利好/利空政策等综合评估，满分10分。' },
+    '解禁面评分': { analyst: '解禁追踪师', basis: '基于限售股解禁规模、大股东减持计划、解禁压力与市场承接能力等综合评估，满分10分。' }
+  }
+  for (const field of dimensionScoreFields) {
+    const score = getDimensionScore(field)
+    if (score !== null) {
+      const info = defaultBasis[field] || { analyst: '分析师', basis: '' }
+      result.push({
+        name: field.replace('评分', ''),
+        field,
+        score,
+        max_score: 10,
+        analyst: info.analyst,
+        basis: info.basis,
+        source_type: '估算评分'
+      })
+    }
+  }
+  return result
+})
+
+const shortTermFields = ['技术面评分', '情绪面评分', '消息面评分', '资金面评分']
+const longTermFields = ['基本面评分', '政策面评分', '解禁面评分']
+
+const dimensionToReportMap: Record<string, string> = {
+  '技术面评分': 'market_report',
+  '情绪面评分': 'sentiment_report',
+  '消息面评分': 'news_report',
+  '资金面评分': 'hot_money_report',
+  '基本面评分': 'fundamentals_report',
+  '政策面评分': 'policy_report',
+  '解禁面评分': 'lockup_report'
+}
+
+const shortTermScores = computed((): DimensionScoreItem[] => {
+  return dimensionScoreList.value.filter(item => shortTermFields.includes(item.field))
+})
+
+const longTermScores = computed((): DimensionScoreItem[] => {
+  return dimensionScoreList.value.filter(item => longTermFields.includes(item.field))
+})
+
+const openDimensionReport = (item: DimensionScoreItem) => {
+  const reportKey = dimensionToReportMap[item.field]
+  if (reportKey && hasReport(reportKey)) {
+    openReportDialog(reportKey)
+  } else {
+    const info = reportKeyToInfo[reportKey] || { title: item.name + '分析师', icon: '📊', description: item.name + '维度分析' }
+    currentDialogReport.value = {
+      title: info.title,
+      icon: info.icon,
+      description: info.description,
+      content: `# ${item.name}分析报告暂不可用\n\n> **状态**：该维度详细分析报告尚未生成\n\n---\n\n## 当前评分信息\n\n| 项目 | 内容 |\n| --- | --- |\n| **维度** | ${item.name} |\n| **评分** | ${item.score} / ${item.max_score} 分 |\n| **分析师** | ${item.analyst} |\n| **评分来源** | ${item.source_type === '明确评分' ? '分析师明确打分' : '综合估算值'} |\n\n---\n\n## 评分依据\n\n${item.basis || '暂无详细评分依据说明。'}\n\n---\n\n*提示：完整的${item.name}分析报告将在后续版本中逐步完善。当前评分为系统根据多维度数据综合估算得出，仅供参考。*`
+    }
+    dialogVisible.value = true
+    document.body.style.overflow = 'hidden'
+    history.pushState({ dialogOpen: true, reportKey: reportKey || item.field }, '')
+  }
+}
+
+const getDimensionIcon = (field: string): string => {
+  return dimensionIconMap[field] || '📊'
+}
+
+const getDimensionCardClass = (field: string): string => {
+  return dimensionClassMap[field] || ''
+}
+
+const getDimensionScore = (field: string): number | null => {
+  if (!report.value) return null
+  const val = (report.value as any)[field]
+  if (val === null || val === undefined || val === '') return null
+  const num = Number(val)
+  if (isNaN(num)) return null
+  return num
+}
+
+const formatScore = (score: number | null): string => {
+  if (score === null) return '暂无'
+  if (Number.isInteger(score)) return score.toString()
+  return score.toFixed(1)
+}
+
+const getScorePercent = (score: number | null): number => {
+  if (score === null) return 0
+  if (score <= 10) return (score / 10) * 100
+  if (score <= 100) return score
+  return 100
+}
+
+const hasAnyDimensionScore = computed(() => {
+  return dimensionScoreList.value.length > 0
+})
+
+const getConfidenceTotalScore = (): number | null => {
+  if (!report.value) return null
+  const score = (report.value as any)['置信度'] ?? report.value.confidence_score
+  if (score === null || score === undefined || score === '') return null
+  const num = Number(score)
+  if (isNaN(num)) return null
+  return num
+}
+
+const getConfidenceDetailList = (): ConfidenceDetailItem[] => {
+  if (!report.value) return []
+  const detail = (report.value as any)['置信度详情']
+  if (Array.isArray(detail)) return detail
+  return []
+}
+
+const hasConfidenceDetail = computed(() => {
+  const total = getConfidenceTotalScore()
+  const detail = getConfidenceDetailList()
+  return total !== null || detail.length > 0
+})
+
+const getConfidenceItemPercent = (item: ConfidenceDetailItem): number => {
+  if (!item.max_score || item.max_score <= 0) return 0
+  return Math.min(100, Math.max(0, (item.score / item.max_score) * 100))
+}
+
+const formatConfidenceScore = (score: number | null): string => {
+  if (score === null) return '暂无'
+  if (Number.isInteger(score)) return score.toString()
+  return score.toFixed(1)
+}
+
+const getConfidenceTotalPercent = (): number => {
+  const score = getConfidenceTotalScore()
+  if (score === null) return 0
+  if (score <= 1) return Math.round(score * 100)
+  if (score <= 100) return Math.round(score)
+  return 100
+}
 
 // 获取模型配置列表
 const fetchLLMConfigs = async () => {
@@ -754,7 +1311,11 @@ const applyToTrading = async () => {
 
 // 返回列表
 const goBack = () => {
-  router.push('/reports')
+  if (window.history.length > 1) {
+    router.back()
+  } else {
+    router.push('/reports')
+  }
 }
 
 // 工具函数
@@ -771,13 +1332,26 @@ const formatTime = (time: string) => {
   return new Date(time).toLocaleString('zh-CN')
 }
 
+const formatDuration = (seconds: number) => {
+  if (!seconds || seconds <= 0) return '-'
+  if (seconds < 60) return `${Math.round(seconds)}秒`
+  if (seconds < 3600) {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.round(seconds % 60)
+    return secs > 0 ? `${mins}分${secs}秒` : `${mins}分钟`
+  }
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.round((seconds % 3600) / 60)
+  return mins > 0 ? `${hours}小时${mins}分` : `${hours}小时`
+}
+
 // 将分析师英文名称转换为中文
 const formatAnalysts = (analysts: string[]) => {
   const analystNameMap: Record<string, string> = {
-    'market': '市场分析师',
+    'market': '技术分析师',
     'fundamentals': '基本面分析师',
     'news': '新闻分析师',
-    'social': '社交媒体分析师',
+    'social': '市场情绪分析师',
     'policy': '政策分析师',
     'hot_money': '游资追踪师',
     'lockup': '解禁追踪师'
@@ -860,7 +1434,7 @@ const getModuleDisplayName = (moduleName: string) => {
     risk_management_decision: '🎯 风险经理',
 
     // 最终决策 (1个)
-    final_trade_decision: '🎯 最终投资决策',
+    final_trade_decision: '📈 最终交易决策',
 
     // 兼容旧字段
     investment_plan: '📋 投资建议',
@@ -1166,6 +1740,13 @@ const getConfidenceLabel = (score: number) => {
   return '较低'
 }
 
+const getConfidenceGradient = (score: number): string => {
+  if (score >= 80) return 'linear-gradient(90deg, #52c41a, #67C23A)'
+  if (score >= 60) return 'linear-gradient(90deg, #1890ff, #409EFF)'
+  if (score >= 40) return 'linear-gradient(90deg, #fa8c16, #E6A23C)'
+  return 'linear-gradient(90deg, #ff4d4f, #F56C6C)'
+}
+
 // 风险等级相关函数
 const getRiskStars = (riskLevel: string) => {
   const riskMap: Record<string, number> = {
@@ -1403,214 +1984,11 @@ const formatPct = (val: any): string => {
   return Math.round(num).toString()
 }
 
-const hasAnyScore = (report: any): boolean => {
-  const keys = ['置信度', 'confidence', 'confidence_score',
-    '技术面评分', 'technical_score',
-    '基本面评分', 'fundamental_score',
-    '情绪面评分', 'sentiment_score',
-    '政策面评分', 'policy_score',
-    '风险等级', 'risk_level']
-  return keys.some(k => pickField(report, [k]) !== null)
-}
-
-// 洞察文本是否存在
-const hasAnyInsight = (report: any): boolean => {
-  const keys = ['核心洞察', '投资逻辑', '趋势预测', '策略点位', '风险提示', '情绪分析']
-  return keys.some(k => pickField(report, [k]) !== null)
-}
-
-// 6 类洞察卡片的统一数据（新增情绪分析，保持对称）
-const insightItems = computed(() => {
-  if (!report.value) return []
-  const defs = [
-    { key: 'core',       title: '核心洞察', icon: '💡',
-      subtitle: '一句话把握报告要点',
-      candidates: ['核心洞察'],
-      maxChars: 400,
-      tooltip: '模型从所有分析维度中提炼的最具代表性结论，通常是影响评级与操作建议的核心原因。',
-    },
-    { key: 'logic',      title: '投资逻辑', icon: '📊',
-      subtitle: '为什么看好或看空',
-      candidates: ['投资逻辑'],
-      maxChars: 400,
-      tooltip: 'AI 对该标的给出买入/持有/卖出建议的底层依据，综合公司基本面、行业周期、估值与市场情绪等信息。',
-    },
-    { key: 'sentiment',  title: '情绪分析', icon: '🔥',
-      subtitle: '市场情绪与舆论热度',
-      candidates: ['情绪分析', '市场情绪', '舆情分析', '情绪面分析'],
-      maxChars: 400,
-      tooltip: '基于新闻热度、社交媒体讨论、资金流向（北向资金、主力净流入）、板块热度等信息得出的市场情绪判断。',
-    },
-    { key: 'trend',      title: '趋势预测', icon: '📈',
-      subtitle: '短期 / 中期走势判断',
-      candidates: ['趋势预测'],
-      maxChars: 400,
-      tooltip: '基于技术指标与近期行情的方向性判断。仅作参考，不构成投资建议——实际走势受宏观消息、资金流向等多重因素影响。',
-    },
-    { key: 'strategy',   title: '策略点位', icon: '🎯',
-      subtitle: '入场 / 加仓 / 离场参考',
-      candidates: ['策略点位'],
-      maxChars: 400,
-      tooltip: '与上方价格卡片互为补充，提供交易上的具体执行建议，包括理想买入区间、加仓位置、止损止盈参考线。',
-    },
-    { key: 'risk',       title: '风险提示', icon: '⚠️',
-      subtitle: '需要重点关注的风险',
-      candidates: ['风险提示'],
-      maxChars: 400,
-      tooltip: '可能影响投资结果的风险因素，例如行业政策变化、财报不及预期、估值偏高、市场波动放大、流动性风险等。',
-    },
-  ]
-  const result = defs
-    .map(d => {
-      // 获取完整内容：优先从后端的 _full 字段获取，否则从 report 模块中直接取
-      let fullText = null
-      for (const key of d.candidates) {
-        const fullKey = key + '_full'
-        const v = report.value?.[fullKey]
-        if (v !== null && v !== undefined && v !== '' && v !== 'None') {
-          fullText = v
-          break
-        }
-      }
-      // 如果没有 _full 字段，尝试从原始 report 模块中提取完整内容
-      if (!fullText) {
-        const moduleMap = report.value?.reports || {}
-        const fallbackMap: { [key: string]: string[] } = {
-          '核心洞察': ['final_trade_decision', 'research_team_decision', 'trader_investment_plan'],
-          '投资逻辑': ['investment_plan', 'trader_investment_plan', 'research_team_decision', 'final_trade_decision'],
-          '趋势预测': ['market_report', 'trader_investment_plan', 'final_trade_decision'],
-          '策略点位': ['trader_investment_plan', 'investment_plan', 'final_trade_decision'],
-          '情绪分析': ['sentiment_report', 'news_report', 'hot_money_report', 'market_report'],
-          '市场情绪': ['sentiment_report', 'news_report', 'hot_money_report'],
-          '舆情分析': ['sentiment_report', 'news_report'],
-          '情绪面分析': ['sentiment_report', 'news_report'],
-          '风险提示': ['risk_management_decision', 'risky_analyst', 'safe_analyst', 'neutral_analyst', 'final_trade_decision'],
-        }
-        for (const key of d.candidates) {
-          const moduleKeys = fallbackMap[key] || []
-          for (const mk of moduleKeys) {
-            const moduleText = moduleMap[mk]
-            if (typeof moduleText === 'string' && moduleText.trim()) {
-              // 从模块中提取匹配字段的内容（最多400字）
-              const re = new RegExp(
-                '(?:^|\\n)[#*_]*\\s*(?:\\d+[.、]\\s*)?' + key.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') +
-                '[*_]*\\s*[:：]?\\s*(?:\\n|[:：])?\\s*([\\s\\S]{0,' + d.maxChars + '}?)(?=\\n\\s*#+|\\n\\s*\\n|$)',
-              )
-              const m = moduleText.match(re)
-              if (m && m[1] && m[1].trim()) {
-                fullText = m[1].trim()
-                break
-              }
-            }
-          }
-          if (fullText) break
-        }
-      }
-      // 最终兜底：如果还是没有，使用原有的截断内容
-      if (!fullText) {
-        fullText = pickField(report.value, d.candidates, d.maxChars || 400)
-      }
-      return { ...d, fullText }
-    })
-    .filter(d => d.fullText !== null && d.fullText !== undefined && d.fullText !== '')
-  return result
-})
-
-// 多维度评分卡片的统一数据
-const dimensionItems = computed(() => {
-  if (!report.value) return []
-
-  // 统一配色 + 分级标签（越高越积极）
-  const scoreMeta = (v: number) => {
-    if (v >= 80) return { color: ['#22c55e', '#4ade80', '#86efac'], label: '优秀 / 强势' }
-    if (v >= 65) return { color: ['#3b82f6', '#60a5fa', '#93c5fd'], label: '良好' }
-    if (v >= 50) return { color: ['#0ea5e9', '#38bdf8', '#7dd3fc'], label: '中性偏正面' }
-    if (v >= 35) return { color: ['#f59e0b', '#fbbf24', '#fcd34d'], label: '中性' }
-    return { color: ['#ef4444', '#f87171', '#fca5a5'], label: '偏弱 / 需警惕' }
-  }
-
-  const items: any[] = []
-
-  const confVal = pickField(report.value, ['置信度', 'confidence', 'confidence_score'])
-  if (confVal !== null) {
-    const v = Math.round(Number(confVal) <= 1 ? Number(confVal) * 100 : Number(confVal))
-    const meta = scoreMeta(v)
-    items.push({
-      key: 'confidence', name: '置信度', icon: '🎯',
-      subtitle: '模型对本次结论的信心',
-      type: 'progress', value: v, color: meta.color, label: meta.label,
-      tooltip: '模型综合各维度证据的一致性、数据完整度、历史回测表现得出的置信度。越高表示模型对结论的把握越强，但不代表实际收益的确定性。',
-    })
-  }
-
-  const techVal = pickField(report.value, ['技术面评分', 'technical_score'])
-  if (techVal !== null) {
-    const v = Math.round(Number(techVal) <= 1 ? Number(techVal) * 100 : Number(techVal))
-    const meta = scoreMeta(v)
-    items.push({
-      key: 'technical', name: '技术面', icon: '📊',
-      subtitle: 'K 线 / 均线 / MACD / RSI',
-      type: 'progress', value: v, color: meta.color, label: meta.label,
-      tooltip: '综合 K 线形态、MA/EMA 均线排列、MACD 金叉死叉、RSI 强弱、BOLL 轨道位置、成交量变化等指标得出的技术形态评分。',
-    })
-  }
-
-  const fundVal = pickField(report.value, ['基本面评分', 'fundamental_score'])
-  if (fundVal !== null) {
-    const v = Math.round(Number(fundVal) <= 1 ? Number(fundVal) * 100 : Number(fundVal))
-    const meta = scoreMeta(v)
-    items.push({
-      key: 'fundamental', name: '基本面', icon: '💰',
-      subtitle: '营收 / 利润 / 估值 / 行业',
-      type: 'progress', value: v, color: meta.color, label: meta.label,
-      tooltip: '公司营收、利润增长、ROE、毛利率、资产质量、PE/PB 估值水平、行业地位与竞争格局的综合评分，体现企业内在价值的健康度。',
-    })
-  }
-
-  const sentVal = pickField(report.value, ['情绪面评分', 'sentiment_score'])
-  if (sentVal !== null) {
-    const v = Math.round(Number(sentVal) <= 1 ? Number(sentVal) * 100 : Number(sentVal))
-    const meta = scoreMeta(v)
-    items.push({
-      key: 'sentiment', name: '情绪面', icon: '🔥',
-      subtitle: '新闻 / 舆论 / 资金情绪',
-      type: 'progress', value: v, color: meta.color, label: meta.label,
-      tooltip: '基于新闻正面度、社交媒体讨论、资金流向（北向资金、主力净流入）、板块热度等信息得出的市场情绪评分。高分代表情绪整体积极。',
-    })
-  }
-
-  const policyVal = pickField(report.value, ['政策面评分', 'policy_score'])
-  if (policyVal !== null) {
-    const v = Math.round(Number(policyVal) <= 1 ? Number(policyVal) * 100 : Number(policyVal))
-    const meta = scoreMeta(v)
-    items.push({
-      key: 'policy', name: '政策面', icon: '🏛️',
-      subtitle: '监管 / 行业 / 宏观政策',
-      type: 'progress', value: v, color: meta.color, label: meta.label,
-      tooltip: '监管政策、行业扶持或限制、利率与汇率政策、财政政策等对该标的所在行业的直接与间接影响评估。',
-    })
-  }
-
-  const riskVal = pickField(report.value, ['风险等级', 'risk_level'])
-  if (riskVal !== null) {
-    const starMap: Record<string, number> = { '低': 1, '中低': 2, '中等': 3, '中高': 4, '高': 5 }
-    const stars = starMap[String(riskVal)] ?? 3
-    const colorMap: Record<number, string> = {
-      1: '#22c55e', 2: '#84cc16', 3: '#f59e0b', 4: '#f97316', 5: '#ef4444'
-    }
-    const labelMap: Record<number, string> = {
-      1: '可控风险', 2: '风险偏低', 3: '风险一般', 4: '风险偏高', 5: '风险较高'
-    }
-    items.push({
-      key: 'risk', name: '风险等级', icon: '🛡️',
-      subtitle: '波动性 / 流动性 / 不确定性',
-      type: 'stars', stars, text: String(riskVal),
-      starColor: colorMap[stars] ?? '#f59e0b', label: labelMap[stars] ?? '风险一般',
-      tooltip: '综合标的历史波动、个股流动性、行业政策不确定性、财报披露风险与宏观敏感度得出的风险评级。仅供参考，不构成风险控制建议。',
-    })
-  }
-
-  return items
+// 判断当前操作建议是否为卖出类（卖出/减仓），此时策略点位无意义
+const isSellAction = computed(() => {
+  const action = pickField(report.value, ['评级', 'action', '操作建议'])
+  if (!action) return false
+  return action.includes('卖出') || action.includes('减仓')
 })
 
 // 根据评级/操作建议决定标签颜色
@@ -1640,6 +2018,18 @@ watch(
   },
   { immediate: true }
 )
+
+onMounted(() => {
+  window.addEventListener('popstate', onPopState)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('popstate', onPopState)
+  document.body.style.overflow = ''
+  if (dialogVisible.value) {
+    history.back()
+  }
+})
 </script>
 
 <style lang="scss" scoped>
@@ -1650,22 +2040,40 @@ watch(
 
   .report-content {
     .report-header {
-      margin-bottom: 24px;
+      margin-bottom: 28px;
+      border-radius: 16px;
+      border: 1px solid #e2e8f0;
+      background: linear-gradient(135deg, #fafbfc 0%, #f8fafc 100%);
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
 
       .header-content {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
+        gap: 24px;
+
+        @media (max-width: 768px) {
+          flex-direction: column;
+        }
 
         .title-section {
+          flex: 1;
+          min-width: 0;
+
           .report-title {
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 24px;
-            font-weight: 600;
-            color: var(--el-text-color-primary);
-            margin: 0 0 12px 0;
+            gap: 10px;
+            font-size: 26px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0 0 14px 0;
+            letter-spacing: -0.3px;
+
+            .el-icon {
+              font-size: 28px;
+              color: #3b82f6;
+            }
           }
 
           .report-meta {
@@ -1677,16 +2085,28 @@ watch(
             .meta-item {
               display: flex;
               align-items: center;
-              gap: 4px;
-              color: var(--el-text-color-regular);
+              gap: 6px;
+              color: #475569;
               font-size: 14px;
+              font-weight: 500;
+
+              .el-icon {
+                font-size: 16px;
+                color: #64748b;
+              }
             }
           }
         }
 
         .action-section {
           display: flex;
-          gap: 8px;
+          gap: 12px;
+          flex-shrink: 0;
+
+          @media (max-width: 768px) {
+            width: 100%;
+            justify-content: flex-start;
+          }
         }
       }
     }
@@ -2117,149 +2537,6 @@ watch(
         }
       }
 
-      /* ========== 多维度评分卡片 */
-      .dimension-block {
-        margin: 24px 0;
-        padding: 22px 22px 8px;
-        background: linear-gradient(135deg, #f8fafc 0%, #fef3c7 100%);
-        border-radius: 14px;
-        border: 1px solid var(--el-border-color-lighter);
-
-        .dimension-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 16px;
-          padding-bottom: 14px;
-
-          @media (max-width: 768px) {
-            grid-template-columns: repeat(2, 1fr);
-          }
-        }
-
-        .dimension-card {
-          background: #fff;
-          border-radius: 12px;
-          padding: 18px 18px 14px;
-          border: 1px solid var(--el-border-color-lighter);
-          box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
-          transition: box-shadow 0.3s ease, transform 0.3s ease, border-color 0.3s ease;
-          cursor: default;
-          position: relative;
-          overflow: hidden;
-
-          &::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 3px;
-            background: currentColor;
-            opacity: 0.9;
-          }
-
-          &:hover {
-            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.10);
-            transform: translateY(-2px);
-            border-color: rgba(99, 102, 241, 0.25);
-          }
-
-          .dimension-card-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 14px;
-
-            .dimension-icon {
-              font-size: 22px;
-              width: 38px;
-              height: 38px;
-              flex: 0 0 38px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              border-radius: 10px;
-              background: #f8fafc;
-            }
-
-            .dimension-text-wrap {
-              flex: 1;
-              min-width: 0;
-            }
-
-            .dimension-name {
-              font-size: 15px;
-              font-weight: 700;
-              color: #111827;
-              letter-spacing: 0.3px;
-            }
-
-            .dimension-subtitle {
-              font-size: 12px;
-              color: #6b7280;
-              margin-top: 3px;
-            }
-          }
-
-          .dimension-progress {
-            margin: 10px 0 6px;
-          }
-
-          .dimension-risk {
-            display: flex;
-            gap: 5px;
-            margin: 10px 0 6px;
-
-            .risk-star {
-              font-size: 20px;
-              transition: transform 0.2s ease, color 0.2s ease;
-
-              &.active {
-                animation: dimStarPulse 0.6s ease-in-out;
-              }
-            }
-          }
-
-          .dimension-value {
-            margin-top: 6px;
-
-            .score-number {
-              font-size: 28px;
-              font-weight: 700;
-              color: #111827;
-              letter-spacing: 0.3px;
-            }
-
-            .score-unit {
-              font-size: 13px;
-              color: #6b7280;
-              margin-left: 4px;
-            }
-          }
-
-          .dimension-label {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            margin-top: 6px;
-            font-size: 13px;
-            font-weight: 600;
-          }
-
-          &.dim-confidence { color: #f59e0b; .dimension-icon { background: #fff7ed; } }
-          &.dim-technical  { color: #3b82f6; .dimension-icon { background: #eff6ff; } }
-          &.dim-fundamental{ color: #10b981; .dimension-icon { background: #ecfdf5; } }
-          &.dim-sentiment  { color: #ec4899; .dimension-icon { background: #fdf2f8; } }
-          &.dim-policy     { color: #8b5cf6; .dimension-icon { background: #f5f3ff; } }
-          &.dim-risk       { color: #ef4444; .dimension-icon { background: #fef2f2; } }
-        }
-      }
-
-      @keyframes dimStarPulse {
-        0%, 100% { transform: scale(1); }
-        50%      { transform: scale(1.15); }
-      }
-
       /* ========== 区块内卡片图标与颜色统一 */
       .insight-card .insight-card-icon,
       .dimension-card .dimension-icon {
@@ -2443,7 +2720,7 @@ watch(
       }
     }
 
-    // 星星脉冲动画
+    /* 星星脉冲动画 */
     @keyframes starPulse {
       0%, 100% {
         transform: scale(1);
@@ -2451,6 +2728,12 @@ watch(
       50% {
         transform: scale(1.2);
       }
+    }
+
+    /* 进度条闪烁动画 */
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
     }
 
     .module-content {
@@ -2605,6 +2888,1320 @@ watch(
 
   .error-container {
     padding: 48px 24px;
+  }
+}
+
+/* 与单股分析页一致的pipeline-intro样式 */
+.report-pipeline-intro {
+  margin-top: 28px;
+  margin-bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+
+  .scores-confidence-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 28px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+
+    @media (max-width: 1200px) {
+      grid-template-columns: 1fr;
+      gap: 28px;
+    }
+
+    .pipeline-section {
+      margin-bottom: 0;
+    }
+  }
+
+  .section--scores {
+    .section-header {
+      h3 {
+        font-size: 20px;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 0 0 8px 0;
+      }
+      .section-subtitle {
+        font-size: 14px;
+        color: #64748b;
+        margin: 0;
+      }
+    }
+
+    .dimension-group {
+      margin-bottom: 28px;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+
+      .dimension-group-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #374151;
+        margin-bottom: 16px;
+        padding-left: 8px;
+        border-left: 4px solid #6366f1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+    }
+
+    .dimension-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+
+      @media (max-width: 1280px) {
+        grid-template-columns: repeat(3, 1fr);
+      }
+      @media (max-width: 768px) {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      @media (max-width: 480px) {
+        grid-template-columns: 1fr;
+      }
+
+      .dimension-card {
+        padding: 22px;
+        border-radius: 16px;
+        border: 1px solid var(--el-border-color);
+        background: var(--el-fill-color-light);
+        transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+
+        &::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          right: 0;
+          width: 80px;
+          height: 80px;
+          border-radius: 0 16px 0 80px;
+          opacity: 0.08;
+          transition: all 0.35s ease;
+        }
+
+        &:hover {
+          transform: translateY(-6px) scale(1.02);
+          box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
+
+          &::before {
+            opacity: 0.15;
+            width: 120px;
+            height: 120px;
+          }
+        }
+
+        .dimension-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 16px;
+
+          .dimension-icon {
+            font-size: 28px;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+          }
+          .dimension-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--el-text-color-primary);
+          }
+        }
+
+        .dimension-score {
+          margin-bottom: 16px;
+          display: flex;
+          align-items: baseline;
+          gap: 4px;
+
+          .score-value {
+            font-size: 36px;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -0.5px;
+          }
+          .score-unit {
+            font-size: 14px;
+            color: var(--el-text-color-secondary);
+            font-weight: 500;
+          }
+        }
+
+        .score-bar {
+          height: 10px;
+          border-radius: 5px;
+          background: rgba(15, 23, 42, 0.06);
+          overflow: hidden;
+          position: relative;
+
+          .score-bar-fill {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            overflow: hidden;
+
+            &::after {
+              content: '';
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+              animation: shimmer 2s infinite;
+            }
+          }
+        }
+
+        &.dimension--technical {
+          background: linear-gradient(145deg, #fffbeb 0%, #fef3c7 50%, #ffffff 100%);
+          border-color: #fde68a;
+          .score-value { color: #92400e; }
+          .score-bar-fill { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+          .dimension-icon { background: linear-gradient(145deg, #fef3c7, #fde68a); }
+          &::before { background: #f59e0b; }
+        }
+        &.dimension--fundamental {
+          background: linear-gradient(145deg, #eef2ff 0%, #e0e7ff 50%, #ffffff 100%);
+          border-color: #c7d2fe;
+          .score-value { color: #3730a3; }
+          .score-bar-fill { background: linear-gradient(90deg, #4f46e5, #818cf8); }
+          .dimension-icon { background: linear-gradient(145deg, #e0e7ff, #c7d2fe); }
+          &::before { background: #4f46e5; }
+        }
+        &.dimension--sentiment {
+          background: linear-gradient(145deg, #fdf2f8 0%, #fce7f3 50%, #ffffff 100%);
+          border-color: #fbcfe8;
+          .score-value { color: #9d174d; }
+          .score-bar-fill { background: linear-gradient(90deg, #ec4899, #f472b6); }
+          .dimension-icon { background: linear-gradient(145deg, #fce7f3, #fbcfe8); }
+          &::before { background: #ec4899; }
+        }
+        &.dimension--news {
+          background: linear-gradient(145deg, #fefce8 0%, #fef9c3 50%, #ffffff 100%);
+          border-color: #fef08a;
+          .score-value { color: #854d0e; }
+          .score-bar-fill { background: linear-gradient(90deg, #eab308, #facc15); }
+          .dimension-icon { background: linear-gradient(145deg, #fef9c3, #fef08a); }
+          &::before { background: #eab308; }
+        }
+        &.dimension--capital {
+          background: linear-gradient(145deg, #f0fdf4 0%, #dcfce7 50%, #ffffff 100%);
+          border-color: #bbf7d0;
+          .score-value { color: #166534; }
+          .score-bar-fill { background: linear-gradient(90deg, #22c55e, #4ade80); }
+          .dimension-icon { background: linear-gradient(145deg, #dcfce7, #bbf7d0); }
+          &::before { background: #22c55e; }
+        }
+        &.dimension--policy {
+          background: linear-gradient(145deg, #f0fdfa 0%, #ccfbf1 50%, #ffffff 100%);
+          border-color: #99f6e4;
+          .score-value { color: #115e59; }
+          .score-bar-fill { background: linear-gradient(90deg, #14b8a6, #2dd4bf); }
+          .dimension-icon { background: linear-gradient(145deg, #ccfbf1, #99f6e4); }
+          &::before { background: #14b8a6; }
+        }
+        &.dimension--lockup {
+          background: linear-gradient(145deg, #faf5ff 0%, #f3e8ff 50%, #ffffff 100%);
+          border-color: #e9d5ff;
+          .score-value { color: #6b21a8; }
+          .score-bar-fill { background: linear-gradient(90deg, #a855f7, #c084fc); }
+          .dimension-icon { background: linear-gradient(145deg, #f3e8ff, #e9d5ff); }
+          &::before { background: #a855f7; }
+        }
+
+        .dimension-analyst {
+          margin-top: 14px;
+          font-size: 12px;
+          color: #64748b;
+          text-align: center;
+          padding-top: 12px;
+          border-top: 1px dashed #e2e8f0;
+          font-weight: 500;
+        }
+      }
+    }
+  }
+
+  .section--confidence {
+    background: var(--el-bg-color);
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+
+    .section-header {
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #f1f5f9;
+
+      h3 {
+        font-size: 20px;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 0 0 10px 0;
+        letter-spacing: 0.3px;
+      }
+      .section-subtitle {
+        font-size: 14px;
+        color: #64748b;
+        margin: 0;
+        line-height: 1.6;
+      }
+    }
+
+    .confidence-content {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .confidence-total {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 24px;
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(6, 182, 212, 0.06) 100%);
+      border-radius: 16px;
+      border: 1px solid rgba(14, 165, 233, 0.2);
+
+      .confidence-total-score {
+        display: flex;
+        align-items: baseline;
+        line-height: 1;
+
+        .total-score-value {
+          font-size: 64px;
+          font-weight: 800;
+          background: linear-gradient(135deg, #0ea5e9, #06b6d4, #0891b2);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          letter-spacing: -2px;
+        }
+
+        .total-score-unit {
+          font-size: 28px;
+          font-weight: 700;
+          color: #0891b2;
+          margin-left: 4px;
+        }
+      }
+
+      .confidence-total-label {
+        font-size: 18px;
+        font-weight: 700;
+        color: #0ea5e9;
+      }
+    }
+
+    .confidence-detail-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+
+      .confidence-detail-item {
+        padding: 16px 20px;
+        background: var(--el-bg-color);
+        border-radius: 12px;
+        border: 1px solid var(--el-border-color-lighter);
+        transition: all 0.3s ease;
+
+        &:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 24px rgba(14, 165, 233, 0.12);
+          border-color: #7dd3fc;
+        }
+
+        .detail-item-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 12px;
+
+          .detail-item-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--el-text-color-primary);
+          }
+
+          .detail-item-score {
+            font-size: 14px;
+            font-weight: 700;
+            color: #0891b2;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
+          }
+        }
+
+        .detail-item-bar {
+          height: 8px;
+          border-radius: 4px;
+          background: rgba(14, 165, 233, 0.1);
+          overflow: hidden;
+          margin-bottom: 10px;
+
+          .detail-item-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+          }
+        }
+
+        .detail-item-desc {
+          font-size: 13px;
+          color: var(--el-text-color-secondary);
+          line-height: 1.6;
+        }
+      }
+    }
+  }
+
+  .pipeline-section {
+    background: var(--el-bg-color);
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+
+    .section-header {
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #f1f5f9;
+
+      h3 {
+        margin: 0 0 10px 0;
+        font-size: 20px;
+        font-weight: 700;
+        color: #0f172a;
+        letter-spacing: 0.3px;
+      }
+
+      .section-subtitle {
+        margin: 0;
+        font-size: 14px;
+        color: #64748b;
+        line-height: 1.6;
+      }
+    }
+
+    .analyst-teams {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+
+      .team-group {
+        .team-label {
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--el-text-color-secondary);
+          margin-bottom: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .team-cards {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+      }
+
+      .analyst-chip {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        border-radius: 10px;
+        background: var(--el-fill-color-light);
+        border: 1px solid var(--el-border-color);
+        transition: all 0.2s ease;
+
+        &:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        &.is-clickable {
+          cursor: pointer;
+
+          &:hover {
+            border-color: var(--el-color-primary-light-5);
+            box-shadow: 0 4px 16px rgba(64, 158, 255, 0.15);
+          }
+        }
+
+        .chip-icon {
+          font-size: 18px;
+        }
+
+        .chip-name {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--el-text-color-primary);
+        }
+
+        .chip-desc {
+          font-size: 12px;
+          color: var(--el-text-color-secondary);
+        }
+
+        &--market {
+          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+          border-color: #fbbf24;
+          .chip-icon { font-size: 20px; }
+          .chip-name { color: #92400e; }
+          .chip-desc { color: #b45309; }
+        }
+        &--social {
+          background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+          border-color: #60a5fa;
+          .chip-name { color: #1e40af; }
+          .chip-desc { color: #2563eb; }
+        }
+        &--fund {
+          background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+          border-color: #34d399;
+          .chip-name { color: #065f46; }
+          .chip-desc { color: #059669; }
+        }
+        &--unlock {
+          background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%);
+          border-color: #f472b6;
+          .chip-name { color: #9d174d; }
+          .chip-desc { color: #be185d; }
+        }
+        &--fundamental {
+          background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+          border-color: #818cf8;
+          .chip-name { color: #3730a3; }
+          .chip-desc { color: #4f46e5; }
+        }
+        &--news {
+          background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+          border-color: #a78bfa;
+          .chip-name { color: #6b21a8; }
+          .chip-desc { color: #9333ea; }
+        }
+        &--policy {
+          background: linear-gradient(135deg, #ccfbf1 0%, #99f6e4 100%);
+          border-color: #2dd4bf;
+          .chip-name { color: #115e59; }
+          .chip-desc { color: #0d9488; }
+        }
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .analyst-chip {
+        &--market {
+          background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+          border-color: #d97706;
+          .chip-name { color: #fef3c7; }
+          .chip-desc { color: #fde68a; }
+        }
+        &--social {
+          background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+          border-color: #3b82f6;
+          .chip-name { color: #dbeafe; }
+          .chip-desc { color: #bfdbfe; }
+        }
+        &--fund {
+          background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
+          border-color: #10b981;
+          .chip-name { color: #d1fae5; }
+          .chip-desc { color: #a7f3d0; }
+        }
+        &--unlock {
+          background: linear-gradient(135deg, #831843 0%, #9d174d 100%);
+          border-color: #ec4899;
+          .chip-name { color: #fce7f3; }
+          .chip-desc { color: #fbcfe8; }
+        }
+        &--fundamental {
+          background: linear-gradient(135deg, #312e81 0%, #3730a3 100%);
+          border-color: #6366f1;
+          .chip-name { color: #e0e7ff; }
+          .chip-desc { color: #c7d2fe; }
+        }
+        &--news {
+          background: linear-gradient(135deg, #581c87 0%, #6b21a8 100%);
+          border-color: #a855f7;
+          .chip-name { color: #f3e8ff; }
+          .chip-desc { color: #e9d5ff; }
+        }
+        &--policy {
+          background: linear-gradient(135deg, #134e4a 0%, #115e59 100%);
+          border-color: #14b8a6;
+          .chip-name { color: #ccfbf1; }
+          .chip-desc { color: #99f6e4; }
+        }
+      }
+    }
+
+    .section--debate {
+      background: var(--el-bg-color);
+    }
+
+    .debate-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+
+      .timeline-phase {
+        background: var(--el-bg-color);
+        border-radius: 14px;
+        padding: 20px 24px;
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s ease;
+
+        &:hover {
+          border-color: #cbd5e1;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+        }
+
+        .phase-label {
+          font-size: 13px;
+          font-weight: 700;
+          color: #475569;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          margin-bottom: 16px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+
+          &::before {
+            content: '';
+            width: 4px;
+            height: 16px;
+            border-radius: 2px;
+          }
+        }
+
+        .phase-flow {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        &.phase--trade {
+          background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 50%, #ffffff 100%);
+          border-color: #fde68a;
+
+          .phase-label {
+            color: #92400e;
+            &::before { background: linear-gradient(180deg, #f59e0b, #fbbf24); }
+          }
+        }
+      }
+
+      .debate-node {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 16px 20px;
+        border-radius: 14px;
+        min-width: 120px;
+        text-align: center;
+        transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        position: relative;
+        overflow: hidden;
+
+        &::before {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 4px;
+          border-radius: 0 0 14px 14px;
+        }
+
+        &.is-clickable {
+          cursor: pointer;
+
+          &:hover {
+            transform: translateY(-4px) scale(1.03);
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.15);
+          }
+        }
+
+        .node-icon {
+          font-size: 32px;
+          margin-bottom: 8px;
+        }
+
+        .node-name {
+          font-size: 14px;
+          font-weight: 700;
+          color: var(--el-text-color-primary);
+          margin-bottom: 6px;
+        }
+
+        .node-desc {
+          font-size: 12px;
+          color: var(--el-text-color-secondary);
+          line-height: 1.5;
+        }
+
+        &.node--bull {
+          background: linear-gradient(145deg, #ecfdf5 0%, #d1fae5 50%, #ffffff 100%);
+          border: 1px solid #6ee7b7;
+          .node-name { color: #065f46; }
+          .node-desc { color: #059669; }
+          &::before { background: linear-gradient(90deg, #10b981, #34d399); }
+        }
+        &.node--bear {
+          background: linear-gradient(145deg, #fef2f2 0%, #fee2e2 50%, #ffffff 100%);
+          border: 1px solid #fca5a5;
+          .node-name { color: #991b1b; }
+          .node-desc { color: #dc2626; }
+          &::before { background: linear-gradient(90deg, #ef4444, #f87171); }
+        }
+        &.node--debate {
+          background: linear-gradient(145deg, #f5f3ff 0%, #ede9fe 50%, #ffffff 100%);
+          border: 1px solid #c4b5fd;
+          .node-name { color: #5b21b6; }
+          .node-desc { color: #7c3aed; }
+          &::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+        }
+        &.node--manager {
+          background: linear-gradient(145deg, #eff6ff 0%, #dbeafe 50%, #ffffff 100%);
+          border: 1px solid #93c5fd;
+          .node-name { color: #1e40af; }
+          .node-desc { color: #2563eb; }
+          &::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+        }
+      }
+
+      .timeline-arrow {
+        font-size: 18px;
+        color: #94a3b8;
+        font-weight: 700;
+        padding: 0 8px;
+
+        &--vs {
+          color: #ef4444;
+          font-weight: 800;
+        }
+      }
+
+      .trade-node {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 16px 20px;
+        transition: all 0.3s ease;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+        border: 1px solid #fed7aa;
+
+        &.is-clickable {
+          cursor: pointer;
+
+          &:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(249, 115, 22, 0.2);
+          }
+        }
+
+        .node-icon { font-size: 28px; }
+        .node-name {
+          font-size: 15px;
+          font-weight: 700;
+          color: #9a3412;
+        }
+        .node-desc {
+          font-size: 13px;
+          color: #c2410c;
+        }
+      }
+
+      .risk-perspectives {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 16px;
+
+        @media (max-width: 640px) {
+          grid-template-columns: 1fr;
+        }
+
+        .risk-card {
+          padding: 18px 16px;
+          border-radius: 14px;
+          text-align: center;
+          transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+          position: relative;
+          overflow: hidden;
+
+          &.is-clickable {
+            cursor: pointer;
+
+            &:hover {
+              transform: translateY(-4px) scale(1.02);
+              box-shadow: 0 12px 28px rgba(15, 23, 42, 0.15);
+            }
+          }
+
+          .risk-icon {
+            font-size: 28px;
+            display: block;
+            margin-bottom: 10px;
+          }
+
+          .risk-name {
+            font-size: 15px;
+            font-weight: 700;
+            display: block;
+            margin-bottom: 6px;
+          }
+
+          .risk-desc {
+            font-size: 12px;
+            opacity: 0.85;
+            line-height: 1.5;
+          }
+
+          &.risk-card--aggressive {
+            background: linear-gradient(145deg, #fef2f2 0%, #fee2e2 100%);
+            border: 1px solid #fecaca;
+            color: #991b1b;
+          }
+          &.risk-card--neutral {
+            background: linear-gradient(145deg, #fffbeb 0%, #fef3c7 100%);
+            border: 1px solid #fde68a;
+            color: #92400e;
+          }
+          &.risk-card--conservative {
+            background: linear-gradient(145deg, #eef2ff 0%, #e0e7ff 100%);
+            border: 1px solid #c7d2fe;
+            color: #3730a3;
+          }
+        }
+      }
+
+      .risk-manager {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 16px 20px;
+        background: linear-gradient(145deg, #fdf2f8 0%, #fce7f3 100%);
+        border-radius: 14px;
+        border: 1px solid #fbcfe8;
+        transition: all 0.3s ease;
+
+        &.is-clickable {
+          cursor: pointer;
+
+          &:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(236, 72, 153, 0.2);
+          }
+        }
+
+        .node-icon { font-size: 24px; }
+        .node-name {
+          font-size: 14px;
+          font-weight: 700;
+          color: #9d174d;
+        }
+        .node-desc {
+          font-size: 13px;
+          color: #be185d;
+        }
+      }
+
+      .final-decision-card {
+        margin-top: 16px;
+        background: linear-gradient(145deg, #fff7ed 0%, #ffedd5 50%, #ffffff 100%);
+        border: 2px solid #fb923c;
+        border-radius: 16px;
+        padding: 24px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+
+        &:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 12px 32px rgba(249, 115, 22, 0.25);
+        }
+
+        .node-icon {
+          font-size: 36px;
+          display: block;
+          margin-bottom: 10px;
+        }
+        .node-name {
+          font-size: 20px;
+          font-weight: 800;
+          color: #9a3412;
+          display: block;
+          margin-bottom: 6px;
+        }
+      }
+
+      .phase--final-strategy {
+        background: linear-gradient(145deg, #fff7ed 0%, #fffbf5 50%, #ffffff 100%);
+        border-color: #fdba74;
+
+        .phase-label {
+          color: #c2410c;
+          &::before { background: linear-gradient(180deg, #f97316, #fb923c); }
+        }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .section--scores .dimension-grid .dimension-card {
+          &.dimension--technical {
+            background: linear-gradient(135deg, #78350f 0%, #1c1917 100%);
+            border-color: #d97706;
+            .dimension-name { color: #fef3c7; }
+            .score-value { color: #fde68a; }
+            .score-unit { color: #fcd34d; }
+          }
+          &.dimension--fundamental {
+            background: linear-gradient(135deg, #312e81 0%, #1c1917 100%);
+            border-color: #6366f1;
+            .dimension-name { color: #e0e7ff; }
+            .score-value { color: #c7d2fe; }
+            .score-unit { color: #a5b4fc; }
+          }
+          &.dimension--sentiment {
+            background: linear-gradient(135deg, #831843 0%, #1c1917 100%);
+            border-color: #ec4899;
+            .dimension-name { color: #fce7f3; }
+            .score-value { color: #fbcfe8; }
+            .score-unit { color: #f9a8d4; }
+          }
+          &.dimension--policy {
+            background: linear-gradient(135deg, #134e4a 0%, #1c1917 100%);
+            border-color: #14b8a6;
+            .dimension-name { color: #ccfbf1; }
+            .score-value { color: #99f6e4; }
+            .score-unit { color: #5eead4; }
+          }
+        }
+
+        .section--confidence {
+          background: linear-gradient(135deg, #0c4a6e 0%, #1c1917 100%);
+          border-color: #0369a1;
+
+          .confidence-total {
+            background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(6, 182, 212, 0.08) 100%);
+
+            .confidence-total-score {
+              .total-score-value {
+                background: linear-gradient(135deg, #38bdf8, #22d3ee);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+              }
+              .total-score-unit {
+                color: #22d3ee;
+              }
+            }
+          }
+
+          .confidence-detail-list .confidence-detail-item {
+            background: rgba(15, 23, 42, 0.6);
+            border-color: rgba(56, 189, 248, 0.2);
+          }
+        }
+
+        .debate-node {
+          &.node--bull {
+            background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
+            border-color: #10b981;
+            .node-name { color: #d1fae5; }
+            .node-desc { color: #a7f3d0; }
+          }
+          &.node--bear {
+            background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+            border-color: #ef4444;
+            .node-name { color: #fee2e2; }
+            .node-desc { color: #fecaca; }
+          }
+          &.node--debate {
+            background: linear-gradient(135deg, #4c1d95 0%, #5b21b6 100%);
+            border-color: #8b5cf6;
+            .node-name { color: #ede9fe; }
+            .node-desc { color: #ddd6fe; }
+          }
+          &.node--manager {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+            border-color: #3b82f6;
+            .node-name { color: #dbeafe; }
+            .node-desc { color: #bfdbfe; }
+          }
+        }
+
+        .timeline-arrow {
+          color: #64748b;
+          &--vs { color: #f87171; }
+        }
+
+        .trade-node {
+          .node-name { color: #fef3c7; }
+          .node-desc { color: #fde68a; }
+        }
+
+        .risk-perspectives .risk-card {
+          &.risk-card--aggressive {
+            background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+            color: #fee2e2;
+          }
+          &.risk-card--neutral {
+            background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+            color: #fef3c7;
+          }
+          &.risk-card--conservative {
+            background: linear-gradient(135deg, #312e81 0%, #3730a3 100%);
+            color: #e0e7ff;
+          }
+        }
+
+        .risk-manager {
+          background: linear-gradient(135deg, #831843 0%, #9d174d 100%);
+          border-color: #ec4899;
+          .node-name { color: #fce7f3; }
+          .node-desc { color: #fbcfe8; }
+        }
+
+        .risk-constraint {
+          background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+          border-color: #60a5fa;
+          .node-name { color: #dbeafe; }
+          .node-desc { color: #93c5fd; }
+        }
+
+        .final-decision-card {
+          margin-top: 16px;
+          background: linear-gradient(135deg, #7c2d12 0%, #c2410c 100%);
+          border: 2px solid #f97316;
+          border-radius: 12px;
+          padding: 16px;
+          text-align: center;
+          cursor: pointer;
+          transition: all 0.2s ease;
+
+          &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+          }
+
+          .node-icon {
+            font-size: 28px;
+            display: block;
+            margin-bottom: 8px;
+          }
+          .node-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff7ed;
+            display: block;
+            margin-bottom: 4px;
+          }
+          .node-desc {
+            font-size: 12px;
+            color: #fed7aa;
+            line-height: 1.4;
+          }
+        }
+
+        .phase--final-strategy {
+          background: linear-gradient(135deg, #431407 0%, #1c1917 100%);
+          border-color: #9a3412;
+
+          .phase-label {
+            color: #fdba74;
+          }
+        }
+      }
+    }
+  }
+}
+
+/* 最终决策样式 - 金融专业配色 */
+.report-pipeline-intro .final-decision {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 28px 32px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+  text-align: center;
+  margin-top: 0;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899, #f97316, #22c55e);
+  }
+
+  .decision-label {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 20px;
+    letter-spacing: 0.5px;
+  }
+
+  .decision-options {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .decision-chip {
+    padding: 12px 28px;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    border: 2px solid transparent;
+    position: relative;
+    overflow: hidden;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      transition: left 0.5s ease;
+    }
+
+    &:hover::before {
+      left: 100%;
+    }
+
+    &.decision-chip--buy {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+      border-color: #34d399;
+    }
+    &.decision-chip--overweight {
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      color: white;
+      box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);
+      border-color: #86efac;
+    }
+    &.decision-chip--hold {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: white;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+      border-color: #fbbf24;
+    }
+    &.decision-chip--underweight {
+      background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+      color: white;
+      box-shadow: 0 4px 14px rgba(249, 115, 22, 0.35);
+      border-color: #fdba74;
+    }
+    &.decision-chip--sell {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+      border-color: #fca5a5;
+    }
+
+    &.is-active {
+      transform: scale(1.08);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      animation: decisionPulse 0.6s ease-out;
+    }
+
+    &.is-disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      filter: grayscale(40%);
+      transform: scale(0.98);
+    }
+
+    &:hover:not(.is-disabled):not(.is-active) {
+      transform: translateY(-3px) scale(1.02);
+    }
+  }
+
+  .decision-desc {
+    margin: 0;
+    font-size: 13px;
+    color: #64748b;
+  }
+}
+
+@keyframes decisionPulse {
+  0% { transform: scale(1.08); }
+  50% { transform: scale(1.12); }
+  100% { transform: scale(1.08); }
+}
+
+/* 全屏弹窗样式 */
+.report-dialog {
+  :deep(.el-dialog__header) {
+    padding: 0;
+    margin: 0;
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 0;
+    height: calc(100vh - 60px);
+    overflow: hidden;
+  }
+}
+
+.dialog-header {
+  padding: 20px 32px;
+  border-bottom: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+
+  .dialog-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+
+    .dialog-icon {
+      font-size: 28px;
+    }
+
+    .dialog-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--el-text-color-primary);
+    }
+  }
+
+  .dialog-description {
+    font-size: 14px;
+    color: var(--el-text-color-secondary);
+    padding-left: 40px;
+  }
+}
+
+.dialog-content-wrapper {
+  height: 100%;
+  overflow-y: auto;
+  padding: 32px;
+  background: var(--el-bg-color-page);
+
+  .dialog-report-content {
+    max-width: 900px;
+    margin: 0 auto;
+    background: var(--el-bg-color);
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    line-height: 1.8;
+    font-size: 14px;
+    color: var(--el-text-color-primary);
+
+    :deep(h1), :deep(h2), :deep(h3), :deep(h4), :deep(h5), :deep(h6) {
+      margin-top: 24px;
+      margin-bottom: 12px;
+      color: var(--el-text-color-primary);
+    }
+
+    :deep(h1) { font-size: 24px; }
+    :deep(h2) { font-size: 20px; }
+    :deep(h3) { font-size: 18px; }
+
+    :deep(p) {
+      margin-bottom: 12px;
+    }
+
+    :deep(ul), :deep(ol) {
+      padding-left: 24px;
+      margin-bottom: 12px;
+    }
+
+    :deep(li) {
+      margin-bottom: 6px;
+    }
+
+    :deep(table) {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+    }
+
+    :deep(th), :deep(td) {
+      border: 1px solid var(--el-border-color);
+      padding: 8px 12px;
+      text-align: left;
+    }
+
+    :deep(th) {
+      background: var(--el-fill-color-light);
+      font-weight: 600;
+    }
+
+    :deep(blockquote) {
+      border-left: 4px solid var(--el-color-primary);
+      margin: 16px 0;
+      color: var(--el-text-color-regular);
+      background: var(--el-fill-color-light);
+      padding: 12px 16px;
+      border-radius: 0 8px 8px 0;
+    }
+
+    :deep(code) {
+      background: var(--el-fill-color);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 13px;
+    }
+
+    :deep(pre) {
+      background: var(--el-fill-color);
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+
+      :deep(code) {
+        background: none;
+        padding: 0;
+      }
+    }
+  }
+
+  .dialog-no-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
   }
 }
 </style>

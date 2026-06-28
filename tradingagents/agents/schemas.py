@@ -168,6 +168,93 @@ def render_trader_proposal(proposal: TraderProposal) -> str:
 # ---------------------------------------------------------------------------
 
 
+class RiskControlDecision(BaseModel):
+    """Structured risk control assessment produced by the Risk Manager phase.
+
+    The Risk Manager's job is to set risk constraints, not to make the final
+    trading decision. This schema captures position sizing limits, stop-loss
+    levels, and worst-case scenarios that the Portfolio Manager must respect.
+    """
+
+    max_position_size: float = Field(
+        description=(
+            "Maximum recommended position size as percentage of portfolio "
+            "(e.g., 5.0 means 5% max). This is a hard limit the Portfolio Manager "
+            "must respect."
+        ),
+    )
+    recommended_position_size: float = Field(
+        description=(
+            "Recommended position size as percentage of portfolio, considering "
+            "the risk/reward profile (e.g., 3.0 means 3% recommended). "
+            "This is softer guidance, not a hard limit."
+        ),
+    )
+    stop_loss_level: float = Field(
+        description=(
+            "Recommended stop-loss as percentage decline from entry price "
+            "(e.g., 5.0 means -5% stop-loss). This protects against catastrophic losses."
+        ),
+    )
+    max_acceptable_loss: float = Field(
+        description=(
+            "Maximum acceptable loss as percentage of portfolio "
+            "(e.g., 0.5 means max 0.5% of total portfolio). "
+            "The position size must respect this constraint."
+        ),
+    )
+    worst_case_scenario: str = Field(
+        description=(
+            "Description of the worst-case scenario that could unfold, "
+            "including estimated loss magnitude (e.g., '连续2日跌停板，损失约4%')."
+        ),
+    )
+    risk_rating: PortfolioRating = Field(
+        description=(
+            "Risk assessment rating. Exactly one of Buy / Overweight / Hold / "
+            "Underweight / Sell, chosen based on the RISK PROFILE (not upside potential). "
+            "Buy = low risk, Sell = high risk."
+        ),
+    )
+    risk_mitigation: str = Field(
+        description=(
+            "Specific risk mitigation strategies (e.g., '分批建仓，避免一次性all-in'). "
+            "Two to four sentences."
+        ),
+    )
+
+
+def render_risk_control_decision(decision: RiskControlDecision) -> str:
+    """Render a RiskControlDecision to markdown for storage."""
+    risk_rating_cn = {
+        "Buy": "低风险（买入级）",
+        "Overweight": "较低风险（增持级）",
+        "Hold": "中等风险（持有级）",
+        "Underweight": "较高风险（减持级）",
+        "Sell": "高风险（卖出级）",
+    }.get(decision.risk_rating.value, decision.risk_rating.value)
+
+    return "\n".join([
+        f"**风险等级：{risk_rating_cn}**",
+        "",
+        f"**Risk Rating**: {decision.risk_rating.value}",
+        "",
+        f"**风险等级说明**：综合评估该股票的风险状况为{risk_rating_cn}，基于以下风险控制参数得出。",
+        "",
+        f"**Max Position Size**: {decision.max_position_size}%",
+        "",
+        f"**Recommended Position Size**: {decision.recommended_position_size}%",
+        "",
+        f"**Stop Loss Level**: -{decision.stop_loss_level}%",
+        "",
+        f"**Max Acceptable Loss**: {decision.max_acceptable_loss}%",
+        "",
+        f"**Worst Case Scenario**: {decision.worst_case_scenario}",
+        "",
+        f"**Risk Mitigation**: {decision.risk_mitigation}",
+    ])
+
+
 class PortfolioDecision(BaseModel):
     """Structured output produced by the Portfolio Manager.
 
@@ -214,8 +301,22 @@ def render_pm_decision(decision: PortfolioDecision) -> str:
     ``**Executive Summary**``, ``**Investment Thesis**``) that downstream
     parsers and the report writers already handle.
     """
+    rating_cn = {
+        "Buy": "买入",
+        "Overweight": "增持",
+        "Hold": "持有",
+        "Underweight": "减持",
+        "Sell": "卖出",
+    }.get(decision.rating.value, decision.rating.value)
+
     parts = [
+        f"**最终定性评级：{rating_cn}**",
+        "",
+        f"**最终交易决策：{rating_cn}**",
+        "",
         f"**Rating**: {decision.rating.value}",
+        "",
+        f"**操作说明**：{decision.executive_summary}",
         "",
         f"**Executive Summary**: {decision.executive_summary}",
         "",

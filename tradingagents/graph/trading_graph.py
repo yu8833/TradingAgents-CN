@@ -158,66 +158,58 @@ class TradingAgentsGraph:
 
     def _create_tool_nodes(self) -> Dict[str, ToolNode]:
         """Create tool nodes for different data sources using abstract methods."""
+        from tradingagents.dataflows.tool_wrapper import wrap_tools
+
+        market_tools = wrap_tools([
+            get_stock_data,
+            get_indicators,
+        ])
+        social_tools = wrap_tools([
+            get_news,
+        ])
+        news_tools = wrap_tools([
+            get_news,
+            get_global_news,
+            get_insider_transactions,
+        ])
+        fundamentals_tools = wrap_tools([
+            get_fundamentals,
+            get_balance_sheet,
+            get_cashflow,
+            get_income_statement,
+            get_profit_forecast,
+            get_industry_comparison,
+        ])
+        policy_tools = wrap_tools([
+            get_news,
+            get_global_news,
+        ])
+        hot_money_tools = wrap_tools([
+            get_stock_data,
+            get_news,
+            get_insider_transactions,
+            get_hot_stocks,
+            get_northbound_flow,
+            get_concept_blocks,
+            get_fund_flow,
+            get_dragon_tiger_board,
+            get_industry_comparison,
+        ])
+        lockup_tools = wrap_tools([
+            get_insider_transactions,
+            get_news,
+            get_fundamentals,
+            get_lockup_expiry,
+        ])
+
         return {
-            "market": ToolNode(
-                [
-                    # Core stock data tools
-                    get_stock_data,
-                    # Technical indicators
-                    get_indicators,
-                ]
-            ),
-            "social": ToolNode(
-                [
-                    # News tools for social media analysis
-                    get_news,
-                ]
-            ),
-            "news": ToolNode(
-                [
-                    # News and insider information
-                    get_news,
-                    get_global_news,
-                    get_insider_transactions,
-                ]
-            ),
-            "fundamentals": ToolNode(
-                [
-                    get_fundamentals,
-                    get_balance_sheet,
-                    get_cashflow,
-                    get_income_statement,
-                    get_profit_forecast,
-                    get_industry_comparison,
-                ]
-            ),
-            "policy": ToolNode(
-                [
-                    get_news,
-                    get_global_news,
-                ]
-            ),
-            "hot_money": ToolNode(
-                [
-                    get_stock_data,
-                    get_news,
-                    get_insider_transactions,
-                    get_hot_stocks,
-                    get_northbound_flow,
-                    get_concept_blocks,
-                    get_fund_flow,
-                    get_dragon_tiger_board,
-                    get_industry_comparison,
-                ]
-            ),
-            "lockup": ToolNode(
-                [
-                    get_insider_transactions,
-                    get_news,
-                    get_fundamentals,
-                    get_lockup_expiry,
-                ]
-            ),
+            "market": ToolNode(market_tools),
+            "social": ToolNode(social_tools),
+            "news": ToolNode(news_tools),
+            "fundamentals": ToolNode(fundamentals_tools),
+            "policy": ToolNode(policy_tools),
+            "hot_money": ToolNode(hot_money_tools),
+            "lockup": ToolNode(lockup_tools),
         }
 
     def _fetch_returns(

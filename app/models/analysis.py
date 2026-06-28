@@ -34,7 +34,7 @@ class AnalysisParameters(BaseModel):
     """分析参数模型"""
     market_type: str = "A股"
     analysis_date: Optional[datetime] = None
-    selected_analysts: List[str] = Field(default_factory=lambda: ["market", "fundamentals", "news", "social"])
+    selected_analysts: List[str] = Field(default_factory=lambda: ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"])
     custom_prompt: Optional[str] = None
     include_sentiment: bool = True
     include_risk: bool = True

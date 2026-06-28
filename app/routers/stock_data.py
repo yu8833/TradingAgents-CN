@@ -116,20 +116,29 @@ async def get_stock_list(
     """
     try:
         service = get_stock_data_service()
-        stock_list = await service.get_stock_list(
+        
+        # 🔥 并行获取股票列表和总数（提高性能）
+        import asyncio
+        stock_list_task = service.get_stock_list(
             market=market,
             industry=industry,
             page=page,
             page_size=page_size
         )
+        count_task = service.get_stock_list_count(
+            market=market,
+            industry=industry
+        )
         
-        # 计算总数 (简化实现，实际应该单独查询)
-        total = len(stock_list)
+        stock_list, total = await asyncio.gather(
+            stock_list_task,
+            count_task
+        )
         
         return StockListResponse(
             success=True,
             data=stock_list,
-            total=total,
+            total=total,  # 🔥 使用数据库查询的总数
             page=page,
             page_size=page_size,
             message="获取成功"

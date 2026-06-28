@@ -51,7 +51,10 @@ _SCORE_FIELDS = [
     (["技术面评分"], "技术面评分"),
     (["基本面评分"], "基本面评分"),
     (["情绪面评分"], "情绪面评分"),
+    (["消息面评分"], "消息面评分"),
+    (["资金面评分"], "资金面评分"),
     (["政策面评分"], "政策面评分"),
+    (["解禁面评分"], "解禁面评分"),
 ]
 
 
@@ -60,7 +63,7 @@ def _iter_text(reports: Dict[str, Any]):
     order = [
         "final_trade_decision", "trader_investment_plan",
         "investment_plan", "research_team_decision",
-        "risk_management_decision",
+        "risk_control_decision", "risk_management_decision",
     ]
     for key in order:
         v = reports.get(key)
@@ -392,7 +395,7 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     priority_modules = [
         "final_trade_decision", "trader_investment_plan",
         "investment_plan", "research_team_decision",
-        "risk_management_decision",
+        "risk_control_decision", "risk_management_decision",
     ]
 
     def _priority_texts():
@@ -405,34 +408,40 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     def _normalize_rating(val: str) -> str:
         v = str(val).strip()
         # 先清理可能的前后缀（如"评级：买入"、"建议: 强烈买入"）
-        for kw in ["评级", "操作建议", "投资建议", "建议"]:
+        for kw in ["评级", "操作建议", "投资建议", "建议", "行动评级"]:
             if v.startswith(kw):
                 v = v[len(kw):].lstrip("：:、•·- ")
                 v = v.strip()
                 break
         # 去除标点前后缀
         v = v.strip("，。；：:、•·()（） ")
-        # 常见英文/缩写翻译
+        # 常见英文/缩写翻译（映射到5档评级：买入/增持/持有/减持/卖出）
         en_map = {
             "BUY": "买入", "SELL": "卖出", "HOLD": "持有",
-            "STRONG_BUY": "强烈买入", "STRONG_SELL": "强烈卖出",
-            "STRONG BUY": "强烈买入", "STRONG SELL": "强烈卖出",
-            "OVERWEIGHT": "买入", "UNDERWEIGHT": "减仓",
+            "STRONG_BUY": "买入", "STRONG_SELL": "卖出",
+            "STRONG BUY": "买入", "STRONG SELL": "卖出",
+            "OVERWEIGHT": "增持", "UNDERWEIGHT": "减持",
             "NEUTRAL": "持有", "WAIT": "持有", "观望": "持有",
+            "ADD": "增持", "REDUCE": "减持",
+            "ACCUMULATE": "增持", "SELL SHORT": "卖出",
         }
         v_upper = v.upper()
         if v_upper in en_map:
             return en_map[v_upper]
         # 中文关键词识别（从长到短匹配，避免误识别）
         cn_aliases = [
-            ("强烈买入", "强烈买入"),
-            ("强烈卖出", "强烈卖出"),
+            ("强烈买入", "买入"),
+            ("强烈卖出", "卖出"),
+            ("清仓", "卖出"),
             ("买入", "买入"),
+            ("增持", "增持"),
+            ("加仓", "增持"),
             ("卖出", "卖出"),
-            ("减仓", "减仓"),
-            ("加仓", "买入"),
+            ("减持", "减持"),
+            ("减仓", "减持"),
             ("持有", "持有"),
             ("观望", "持有"),
+            ("中性", "持有"),
         ]
         for alias, final in cn_aliases:
             if alias in v:
@@ -442,7 +451,7 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     # 从优先级最高的模块开始提取，找到第一个非空的评级
     text_rating = None
     for module_text in _priority_texts():
-        val = _match_rating(module_text, ["操作建议", "评级", "投资建议", "建议"])
+        val = _match_rating(module_text, ["操作建议", "评级", "投资建议", "建议", "行动评级"])
         if val:
             text_rating = _normalize_rating(val)
             break
@@ -482,6 +491,12 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
         result["评级"] = text_rating
         result["操作建议"] = text_rating
         result["action"] = text_rating
+
+    # 1a) 使用多维度重新计算置信度（优先级高于从 decision 提取的）
+    confidence_result = _calculate_confidence(reports)
+    if confidence_result and confidence_result.get("score", 0) > 0:
+        result["置信度"] = confidence_result["score"]
+        result["置信度详情"] = confidence_result.get("details", [])
 
     # 1b) 从 decision 字典提取价格类字段（与评级无关，独立提取）
     if isinstance(decision_obj, dict) and decision_obj:
@@ -554,7 +569,10 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
         (["技术面评分"], "技术面评分"),
         (["基本面评分"], "基本面评分"),
         (["情绪面评分"], "情绪面评分"),
+        (["消息面评分"], "消息面评分"),
+        (["资金面评分"], "资金面评分"),
         (["政策面评分"], "政策面评分"),
+        (["解禁面评分"], "解禁面评分"),
     ]
 
     # 2a) 文本章节：先找精确章节名，再回退到对应模块内容（做内容清洗后截取）
@@ -576,7 +594,7 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
                    "final_trade_decision", "market_report"],
         "情绪分析": ["sentiment_report", "news_report", "hot_money_report",
                    "market_report", "final_trade_decision"],
-        "风险提示": ["risk_management_decision", "final_trade_decision",
+        "风险提示": ["risk_control_decision", "risk_management_decision", "final_trade_decision",
                    "risky_analyst", "safe_analyst", "neutral_analyst"],
     }
 
@@ -913,7 +931,7 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
         combined_text = "\n".join(
             v for v in reports.values() if isinstance(v, str)
         )
-        val = _match_rating(combined_text, ["操作建议", "评级", "投资建议", "建议"])
+        val = _match_rating(combined_text, ["操作建议", "评级", "投资建议", "建议", "行动评级"])
         if val:
             final_rating = _normalize_rating(val)
             result["评级"] = final_rating
@@ -952,7 +970,524 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
                     result["空仓者建议"] = extracted
                     break
 
+    # 6) 多维度评分估算（技术面/基本面/情绪面/政策面/消息面/资金面/解禁面）
+    #    如果已有明确评分则保留，否则基于报告倾向估算
+    def _estimate_score_from_text(text: str) -> Optional[float]:
+        """基于文本的整体倾向估算评分（0-10分）"""
+        if not text:
+            return None
+        bullish_words = [
+            "看涨", "看好", "买入", "上涨", "上升", "突破", "利好", "强势", "多头", "机会",
+            "bullish", "buy", "up", "rise", "gain", "breakout", "positive", "strong", "opportunity",
+            "optimistic", "growth", "upgrade", "outperform", "overweight", "hold_buy"
+        ]
+        bearish_words = [
+            "看跌", "看空", "卖出", "下跌", "下降", "破位", "利空", "弱势", "空头", "风险",
+            "bearish", "sell", "down", "fall", "drop", "breakdown", "negative", "weak", "risk",
+            "pessimistic", "decline", "downgrade", "underperform", "underweight", "hold_sell"
+        ]
+        text_lower = text.lower()
+        bull_count = sum(1 for w in bullish_words if w.lower() in text_lower)
+        bear_count = sum(1 for w in bearish_words if w.lower() in text_lower)
+        if bull_count == 0 and bear_count == 0:
+            return None
+        diff = bull_count - bear_count
+        if diff > 3:
+            return 8.0
+        elif diff > 0:
+            return 7.0
+        elif diff < -3:
+            return 3.0
+        elif diff < 0:
+            return 4.0
+        else:
+            return 5.0
+
+    def _parse_score_value(val: Any) -> Optional[float]:
+        """将评分值标准化为 0-10 分"""
+        if val is None or val == "":
+            return None
+        try:
+            num = float(val)
+            if 0 <= num <= 1:
+                return round(num * 10, 1)
+            elif 0 <= num <= 10:
+                return round(num, 1)
+            elif 0 <= num <= 100:
+                return round(num / 10, 1)
+            else:
+                return None
+        except (TypeError, ValueError):
+            val_str = str(val).lower()
+            if val_str in ["高", "较高", "强", "强势", "积极"]:
+                return 8.0
+            elif val_str in ["中", "中等", "中性", "一般"]:
+                return 5.0
+            elif val_str in ["低", "较低", "弱", "弱势", "消极"]:
+                return 3.0
+            return None
+
+    dimension_config = [
+        {
+            "field": "技术面评分",
+            "sources": ["market_report", "trader_investment_plan", "final_trade_decision", "investment_plan"],
+            "analyst": "技术分析师",
+            "basis": "基于技术指标（均线、KDJ、MACD、RSI等）、趋势形态、量价关系等综合评估，满分10分。分数越高表示技术形态越有利。"
+        },
+        {
+            "field": "基本面评分",
+            "sources": ["fundamentals_report", "bull_researcher", "bear_researcher", "research_team_decision", "final_trade_decision"],
+            "analyst": "基本面分析师",
+            "basis": "基于财务数据（营收、利润、ROE等）、行业地位、护城河、估值水平等综合评估，满分10分。分数越高表示基本面越健康。"
+        },
+        {
+            "field": "情绪面评分",
+            "sources": ["sentiment_report", "news_report", "hot_money_report", "bull_researcher", "final_trade_decision"],
+            "analyst": "市场情绪分析师",
+            "basis": "基于市场情绪指标、舆情热度、散户情绪逆向指标等综合评估，满分10分。分数越高表示市场情绪越积极。"
+        },
+        {
+            "field": "消息面评分",
+            "sources": ["news_report", "sentiment_report", "policy_report", "bull_researcher", "final_trade_decision"],
+            "analyst": "新闻分析师",
+            "basis": "基于公司公告、研报动态、新闻事件冲击、重要消息面影响等综合评估，满分10分。分数越高表示消息面越利好。"
+        },
+        {
+            "field": "资金面评分",
+            "sources": ["hot_money_report", "sentiment_report", "news_report", "trader_investment_plan", "final_trade_decision"],
+            "analyst": "游资追踪师",
+            "basis": "基于主力资金流向、龙虎榜数据、北向资金动向、机构持仓变化等综合评估，满分10分。分数越高表示资金面越充裕。"
+        },
+        {
+            "field": "政策面评分",
+            "sources": ["policy_report", "news_report", "bull_researcher", "research_team_decision", "final_trade_decision"],
+            "analyst": "政策分析师",
+            "basis": "基于产业政策、宏观调控、监管动向、行业利好/利空政策等综合评估，满分10分。分数越高表示政策环境越有利。"
+        },
+        {
+            "field": "解禁面评分",
+            "sources": ["lockup_report", "fundamentals_report", "news_report", "risk_control_decision", "final_trade_decision"],
+            "analyst": "解禁追踪师",
+            "basis": "基于限售股解禁规模、大股东减持计划、解禁压力与市场承接能力等综合评估，满分10分。分数越高表示解禁压力越小。"
+        },
+    ]
+
+    dimension_details = []
+    for dim in dimension_config:
+        field_name = dim["field"]
+        source_modules = dim["sources"]
+        existing_val = result.get(field_name)
+        parsed = _parse_score_value(existing_val)
+        score = parsed
+        source_type = "明确评分"
+        if score is None:
+            estimated = None
+            for mod_key in source_modules:
+                mod_text = reports.get(mod_key, "")
+                if not (isinstance(mod_text, str) and mod_text.strip()):
+                    continue
+                # 跳过分析失败的错误报告
+                if mod_text.strip().startswith("[分析失败") or mod_text.strip().startswith("[ERROR") or mod_text.strip().startswith("[error"):
+                    continue
+                est = _estimate_score_from_text(mod_text)
+                if est is not None:
+                    estimated = est
+                    break
+            # 如果所有来源都无法估算，使用整体评级作为兜底（5-7分区间，根据评级调整）
+            if estimated is None:
+                rating = result.get("评级", result.get("操作建议", ""))
+                if rating == "买入":
+                    estimated = 7.5
+                    source_type = "整体评级推断"
+                elif rating == "增持":
+                    estimated = 7.0
+                    source_type = "整体评级推断"
+                elif rating == "持有":
+                    estimated = 5.5
+                    source_type = "整体评级推断"
+                elif rating == "减持":
+                    estimated = 4.0
+                    source_type = "整体评级推断"
+                elif rating == "卖出":
+                    estimated = 3.0
+                    source_type = "整体评级推断"
+                else:
+                    estimated = 5.0
+                    source_type = "默认中性"
+            if estimated is not None:
+                score = estimated
+                if source_type == "明确评分":
+                    source_type = "估算评分"
+        if score is not None:
+            result[field_name] = score
+            dimension_details.append({
+                "name": field_name.replace("评分", ""),
+                "field": field_name,
+                "score": score,
+                "max_score": 10,
+                "analyst": dim["analyst"],
+                "basis": dim["basis"],
+                "source_type": source_type
+            })
+
+    result["维度评分详情"] = dimension_details
+
     return result
+
+
+def _calculate_confidence(reports: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    基于多维度重新计算置信度（0-100分）
+    
+    维度：
+    1. 数据完整性（30%）：分析师报告数量（最多7个）
+    2. 多空一致性（25%）：看涨/看跌研究员的分歧程度
+    3. 三方风控一致性（20%）：激进/中性/保守风控的一致性
+    4. 数据来源丰富度（15%）：数据来源对照表记录数
+    5. 最终决策明确性（10%）：最终决策是否清晰明确
+    
+    返回：
+    {
+        "score": 75.5,  # 总分
+        "details": [     # 各维度详情
+            {"name": "数据完整性", "score": 30, "max_score": 30, "description": "7个分析师报告全部生成"},
+            ...
+        ]
+    }
+    """
+    if not isinstance(reports, dict) or not reports:
+        return {"score": 0.0, "details": []}
+
+    total_score = 0.0
+    details = []
+
+    # ===== 1. 数据完整性（30%）=====
+    module_layers = [
+        ("基础分析层", [
+            "market_report", "fundamentals_report", "sentiment_report",
+            "news_report", "policy_report", "hot_money_report", "lockup_report"
+        ]),
+        ("研究辩论层", ["bull_researcher", "bear_researcher", "research_team_decision"]),
+        ("风控评估层", ["risky_analyst", "neutral_analyst", "safe_analyst", "risk_control_decision"]),
+        ("交易决策层", ["trader_investment_plan", "final_trade_decision"]),
+    ]
+    total_modules = sum(len(mods) for _, mods in module_layers)
+    completed_modules = 0
+    layer_details = []
+    for layer_name, mods in module_layers:
+        layer_count = sum(
+            1 for k in mods
+            if k in reports and isinstance(reports[k], str) and reports[k].strip()
+        )
+        completed_modules += layer_count
+        layer_details.append(f"{layer_name}{layer_count}/{len(mods)}")
+    
+    completion_rate = completed_modules / total_modules if total_modules > 0 else 0
+    if completion_rate >= 0.9:
+        score = 30
+        desc = f"报告生成完整（{completed_modules}/{total_modules}），{'，'.join(layer_details)}，数据覆盖全面"
+    elif completion_rate >= 0.75:
+        score = 25
+        desc = f"报告较完整（{completed_modules}/{total_modules}），{'，'.join(layer_details)}，数据较充分"
+    elif completion_rate >= 0.6:
+        score = 20
+        desc = f"报告基本完整（{completed_modules}/{total_modules}），{'，'.join(layer_details)}，数据基本够用"
+    elif completion_rate >= 0.4:
+        score = 15
+        desc = f"报告部分缺失（{completed_modules}/{total_modules}），{'，'.join(layer_details)}，数据覆盖有限"
+    else:
+        score = 10
+        desc = f"报告缺失较多（{completed_modules}/{total_modules}），{'，'.join(layer_details)}，数据完整性较低"
+    total_score += score
+    details.append({
+        "name": "数据完整性",
+        "score": score,
+        "max_score": 30,
+        "description": desc
+    })
+
+    # ===== 2. 分析师一致性（25%）=====
+    # 基于7位基础分析师的评级方向一致性来评估，而不是多空研究员（多空本来就该有分歧）
+    analyst_modules = [
+        "market_report", "fundamentals_report", "sentiment_report",
+        "news_report", "policy_report", "hot_money_report", "lockup_report"
+    ]
+
+    def _rating_direction_from_text(text: str) -> Optional[int]:
+        if not text:
+            return None
+        rating = _match_rating(text, ["操作建议", "评级", "投资建议", "建议", "行动评级", "执行评级", "最终结论", "核心观点", "结论"])
+        if rating:
+            if "强烈买入" in rating or "买入" in rating or "加仓" in rating or "增持" in rating or "看多" in rating or "看涨" in rating:
+                return 1
+            if "强烈卖出" in rating or "卖出" in rating or "减仓" in rating or "减持" in rating or "看空" in rating or "看跌" in rating or "清仓" in rating:
+                return -1
+            if "持有" in rating or "观望" in rating or "中性" in rating:
+                return 0
+        bull_keywords = ["建议买入", "推荐买入", "给予买入", "买入评级", "增持评级", "看多", "看涨", "建议增持", "看好"]
+        bear_keywords = ["建议卖出", "推荐卖出", "给予卖出", "卖出评级", "减持评级", "看空", "看跌", "建议减持", "清仓", "谨慎"]
+        neutral_keywords = ["建议持有", "持有评级", "观望", "中性评级", "建议观望", "中性"]
+        if any(kw in text for kw in bull_keywords):
+            return 1
+        if any(kw in text for kw in bear_keywords):
+            return -1
+        if any(kw in text for kw in neutral_keywords):
+            return 0
+        return None
+
+    analyst_directions = []
+    for mod in analyst_modules:
+        text = reports.get(mod, "")
+        if isinstance(text, str) and text.strip():
+            direction = _rating_direction_from_text(text)
+            if direction is not None:
+                analyst_directions.append(direction)
+
+    if len(analyst_directions) == 0:
+        score = 8
+        desc = "无法获取分析师评级方向，无法评估一致性"
+    else:
+        bull_count = sum(1 for d in analyst_directions if d == 1)
+        bear_count = sum(1 for d in analyst_directions if d == -1)
+        neutral_count = sum(1 for d in analyst_directions if d == 0)
+        total = len(analyst_directions)
+        max_count = max(bull_count, bear_count, neutral_count)
+        agreement_rate = max_count / total
+
+        if agreement_rate >= 0.8:
+            score = 25
+            desc = f"{total}位分析师观点高度一致（{bull_count}多/{neutral_count}中/{bear_count}空），可信度高"
+        elif agreement_rate >= 0.6:
+            score = 20
+            desc = f"{total}位分析师观点较一致（{bull_count}多/{neutral_count}中/{bear_count}空），可信度较好"
+        elif agreement_rate >= 0.4:
+            score = 14
+            desc = f"{total}位分析师存在一定分歧（{bull_count}多/{neutral_count}中/{bear_count}空），需综合判断"
+        else:
+            score = 8
+            desc = f"{total}位分析师分歧较大（{bull_count}多/{neutral_count}中/{bear_count}空），需谨慎参考"
+    total_score += score
+    details.append({
+        "name": "分析师一致性",
+        "score": score,
+        "max_score": 25,
+        "description": desc
+    })
+
+    # ===== 3. 三方风控一致性（20%）=====
+    risky_text = reports.get("risky_analyst", "")
+    neutral_text = reports.get("neutral_analyst", "")
+    safe_text = reports.get("safe_analyst", "")
+
+    has_risky = bool(isinstance(risky_text, str) and risky_text.strip())
+    has_neutral = bool(isinstance(neutral_text, str) and neutral_text.strip())
+    has_safe = bool(isinstance(safe_text, str) and safe_text.strip())
+
+    risk_count = sum([has_risky, has_neutral, has_safe])
+
+    def _extract_risk_level(text: str) -> Optional[str]:
+        if not text:
+            return None
+        val = _match_score(text, ["风险等级", "风险评级", "风险评估", "风险级别"])
+        if val:
+            val_str = str(val).lower()
+            if "高" in val_str or "high" in val_str:
+                return "high"
+            if "低" in val_str or "low" in val_str:
+                return "low"
+            if "中" in val_str or "medium" in val_str or "中等" in val_str:
+                return "medium"
+        high_keywords = ["高风险", "风险高", "风险较大", "风险很高", "高风险等级", "风险等级高"]
+        low_keywords = ["低风险", "风险低", "风险较小", "风险很低", "低风险等级", "风险等级低"]
+        medium_keywords = ["中风险", "中等风险", "风险适中", "风险一般", "中性风险", "风险中等"]
+        if any(kw in text for kw in high_keywords):
+            return "high"
+        if any(kw in text for kw in low_keywords):
+            return "low"
+        if any(kw in text for kw in medium_keywords):
+            return "medium"
+        return None
+
+    if risk_count == 0:
+        score = 0
+        desc = "无风控报告"
+    elif risk_count == 1:
+        score = 5
+        desc = "仅1个风控视角，参考价值有限"
+    else:
+        risky_level = _extract_risk_level(risky_text) if has_risky else None
+        neutral_level = _extract_risk_level(neutral_text) if has_neutral else None
+        safe_level = _extract_risk_level(safe_text) if has_safe else None
+
+        levels = [l for l in [risky_level, neutral_level, safe_level] if l is not None]
+
+        if len(levels) <= 1:
+            score = 5 if risk_count == 1 else 15
+            desc = f"{risk_count}个风控报告，但风险等级不明确"
+        else:
+            risk_score_map = {"low": 0, "medium": 1, "high": 2}
+            level_names = {"low": "低风险", "medium": "中风险", "high": "高风险"}
+            numeric_levels = [risk_score_map.get(l, 1) for l in levels]
+            max_diff = max(numeric_levels) - min(numeric_levels)
+            level_strs = [level_names.get(l, l) for l in levels]
+
+            if risk_count == 3:
+                if max_diff <= 1:
+                    score = 20
+                    desc = f"三方风控观点一致（{'/'.join(level_strs)}），风险评估可靠"
+                else:
+                    score = 12
+                    desc = f"三方风控存在合理分歧（{'/'.join(level_strs)}），体现了不同风险偏好视角的差异，属正常现象"
+            else:
+                if max_diff <= 1:
+                    score = 15
+                    desc = f"双方风控观点一致（{'/'.join(level_strs)}），风险评估较可靠"
+                else:
+                    score = 10
+                    desc = f"双方风控存在分歧（{'/'.join(level_strs)}），需谨慎参考"
+    total_score += score
+    details.append({
+        "name": "风控一致性",
+        "score": score,
+        "max_score": 20,
+        "description": desc
+    })
+
+    # ===== 4. 数据来源丰富度（15%）=====
+    total_sources = 0
+    source_modules = 0
+    for k, v in reports.items():
+        if isinstance(v, str) and "数据来源对照表" in v:
+            module_sources = 0
+            lines = v.split("\n")
+            in_table = False
+            found_table_separator = False
+            for line in lines:
+                stripped = line.strip()
+                if not found_table_separator:
+                    if stripped.startswith("|") and "---" in stripped:
+                        found_table_separator = True
+                        in_table = True
+                    continue
+                if in_table:
+                    if stripped.startswith("|") or stripped.startswith("｜"):
+                        if re.search(r'\d', stripped):
+                            module_sources += 1
+                    elif stripped and not stripped.startswith("-") and not stripped.startswith("="):
+                        if len(stripped) > 5:
+                            in_table = False
+                            break
+            if module_sources > 0:
+                total_sources += module_sources
+                source_modules += 1
+
+    if total_sources > 30 and source_modules >= 5:
+        score = 15
+        desc = f"数据来源丰富（{total_sources}条，{source_modules}个模块），支撑充分"
+    elif total_sources >= 20 and source_modules >= 3:
+        score = 12
+        desc = f"数据来源较丰富（{total_sources}条，{source_modules}个模块），支撑较好"
+    elif total_sources >= 10:
+        score = 8
+        desc = f"数据来源一般（{total_sources}条，{source_modules}个模块），支撑有限"
+    else:
+        score = 5
+        desc = f"数据来源较少（{total_sources}条，{source_modules}个模块），支撑不足"
+    total_score += score
+    details.append({
+        "name": "数据来源丰富度",
+        "score": score,
+        "max_score": 15,
+        "description": desc
+    })
+
+    # ===== 5. 决策明确性（10%）=====
+    final_modules = ["final_trade_decision", "trader_investment_plan", "research_team_decision", "investment_plan"]
+    final_text = ""
+    for key in final_modules:
+        t = reports.get(key, "")
+        if isinstance(t, str) and t.strip():
+            final_text = t
+            break
+
+    if final_text:
+        clarity_score = 0
+        clarity_items = []
+
+        rating_aliases = ["操作建议", "评级", "投资建议", "建议", "行动评级", "执行评级", "最终决策", "决策", "最终投资评级", "投资评级"]
+        rating_val = _match_rating(final_text, rating_aliases)
+        if rating_val:
+            clarity_score += 3
+            clarity_items.append("明确评级")
+        else:
+            if any(kw in final_text for kw in ["买入", "卖出", "持有", "增持", "减持", "清仓", "建仓"]):
+                clarity_score += 2
+                clarity_items.append("有决策方向")
+
+        tp_aliases = ["止盈目标", "目标价格", "目标价", "目标价位", "止盈价位", "止盈价"]
+        tp_val = _match_price(final_text, tp_aliases)
+        if tp_val:
+            clarity_score += 2
+            clarity_items.append("目标价")
+
+        sl_aliases = ["止损价格", "止损位", "止损线", "止损价位", "硬止损", "止损价"]
+        sl_val = _match_price(final_text, sl_aliases)
+        if sl_val:
+            clarity_score += 2
+            clarity_items.append("止损位")
+
+        buy_aliases = ["理想买入", "买入价位", "建仓价", "买入价", "建仓价位", "二次买入"]
+        buy_val = _match_price(final_text, buy_aliases)
+        if buy_val:
+            clarity_score += 1
+            clarity_items.append("买入点")
+
+        position_keywords = ["仓位", "建议仓位", "仓位比例", "仓位上限", "仓位建议"]
+        has_position = False
+        for kw in position_keywords:
+            if kw in final_text and re.search(r'\d', final_text[max(0, final_text.find(kw)-20):final_text.find(kw)+50]):
+                has_position = True
+                break
+        if has_position:
+            clarity_score += 1
+            clarity_items.append("仓位建议")
+        elif "仓位" in final_text:
+            clarity_score += 0.5
+            clarity_items.append("仓位参考")
+
+        clarity_score = min(clarity_score, 10)
+        
+        if clarity_score >= 8:
+            score = 10
+            desc = f"决策非常明确（{'+'.join(clarity_items)}），可操作性强"
+        elif clarity_score >= 6:
+            score = 8
+            desc = f"决策较明确（{'+'.join(clarity_items)}），可操作性较好"
+        elif clarity_score >= 4:
+            score = 6
+            desc = f"决策基本明确（{'+'.join(clarity_items)}），可操作性一般"
+        elif clarity_score >= 2:
+            score = 4
+            desc = f"决策不够完整（{'+'.join(clarity_items)}），可操作性有限"
+        else:
+            score = 2
+            desc = "决策信息不足，参考价值有限"
+    else:
+        score = 1
+        desc = "缺少最终决策报告"
+    total_score += score
+    details.append({
+        "name": "决策明确性",
+        "score": score,
+        "max_score": 10,
+        "description": desc
+    })
+
+    final_score = round(min(max(total_score, 0.0), 100.0), 1)
+    return {
+        "score": final_score,
+        "details": details
+    }
 
 
 def _match_rating(text: str, aliases: List[str]) -> Optional[str]:
@@ -963,7 +1498,26 @@ def _match_rating(text: str, aliases: List[str]) -> Optional[str]:
     if not text:
         return None
 
-    # 0) 最可靠的格式：**数字. 操作建议** 后面跟换行后的内容
+    # 0) 最高优先级：匹配"最终定性评级"、"最终评级"等明确的最终结论格式
+    highest_priority_patterns = [
+        r"(?:^|\n)\s*\*\*\s*最终定性评级\s*[:：]\s*(\S+)\s*\*\*",
+        r"(?:^|\n)\s*\*\*\s*最终评级\s*[:：]\s*(\S+)\s*\*\*",
+        r"(?:^|\n)\s*\*\*\s*最终投资评级\s*[:：]\s*(\S+)\s*\*\*",
+        r"(?:^|\n)\s*最终定性评级\s*[:：]\s*(\S+)",
+        r"(?:^|\n)\s*最终评级\s*[:：]\s*(\S+)",
+    ]
+    for pattern in highest_priority_patterns:
+        try:
+            m = re.search(pattern, text)
+            if m:
+                val = m.group(1).strip()
+                val = re.sub(r'[\*_#\s]+', '', val).strip()
+                if val and 0 < len(val) <= 20:
+                    return val
+        except re.error:
+            continue
+
+    # 0.5) 最可靠的格式：**数字. 操作建议** 后面跟换行后的内容
     #    例：**7. 操作建议**\n买入  或  **操作建议**\n强烈卖出
     for alias in aliases:
         patterns = [
@@ -1010,13 +1564,20 @@ def _match_rating(text: str, aliases: List[str]) -> Optional[str]:
                 continue
 
     # 2) 搜索研究经理/最终决策中的结论
+    # 注意：关键词顺序很重要，长的优先，且"卖出/减持"优先于"买入/增持"避免误匹配
+    en_keywords = r"强烈卖出|强烈买入|卖出|减持|买入|增持|持有|观望|减仓|加仓|Strong Sell|Strong Buy|Underweight|Overweight|Sell|Buy|Hold|Neutral"
     manager_patterns = [
-        r"研究经理.*结论[\s\S]{0,200}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
-        r"最终决策[\s\S]{0,200}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
-        r"最终投资决策[\s\S]{0,200}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
-        r"综合判断[\s\S]{0,100}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
-        r"综合评估[\s\S]{0,100}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
-        r"投资建议[\s\S]{0,100}?(强烈买入|强烈卖出|买入|卖出|持有|观望|减仓|加仓)",
+        r"最终定性评级[\s\S]{0,100}?(" + en_keywords + r")",
+        r"定性评级[\s\S]{0,100}?(" + en_keywords + r")",
+        r"研究经理.*结论[\s\S]{0,200}?(" + en_keywords + r")",
+        r"最终决策[\s\S]{0,200}?(" + en_keywords + r")",
+        r"最终投资决策[\s\S]{0,200}?(" + en_keywords + r")",
+        r"总体裁决[\s\S]{0,200}?(" + en_keywords + r")",
+        r"最终决定[\s\S]{0,200}?(" + en_keywords + r")",
+        r"综合判断[\s\S]{0,100}?(" + en_keywords + r")",
+        r"综合评估[\s\S]{0,100}?(" + en_keywords + r")",
+        r"投资建议[\s\S]{0,100}?(" + en_keywords + r")",
+        r"维持[\s\S]{0,10}?(" + en_keywords + r")",
     ]
 
     for pattern in manager_patterns:
@@ -1033,24 +1594,27 @@ def _match_rating(text: str, aliases: List[str]) -> Optional[str]:
         r"(?:^|\n)\s*\*?总结\s*\*?[:：]\s*([^\n]{0,80})",
     ]
 
+    all_rating_keywords = ["强烈买入", "强烈卖出", "买入", "卖出", "持有", "观望", "减仓", "加仓",
+                           "Strong Buy", "Strong Sell", "Overweight", "Underweight", "Buy", "Sell", "Hold", "Neutral"]
+
     for pattern in conclusion_patterns:
         try:
             m = re.search(pattern, text)
             if m:
                 val = m.group(1).strip()
                 if val:
-                    for keyword in ["强烈买入", "强烈卖出", "买入", "卖出", "持有", "观望", "减仓", "加仓"]:
-                        if keyword in val:
+                    for keyword in all_rating_keywords:
+                        if keyword.lower() in val.lower():
                             return keyword
         except re.error:
             continue
 
-    # 4) 兜底：从文本中搜索中文评级词（优先匹配完整词）
-    keywords = ["强烈买入", "强烈卖出", "买入", "卖出", "持有", "观望", "减仓", "加仓"]
+    # 4) 兜底：从文本中搜索评级词（优先匹配完整词）
+    keywords = all_rating_keywords
     for keyword in keywords:
         pattern = r'(?:^|\s|[，。；！？\n])' + re.escape(keyword) + r'(?:$|\s|[，。；！？\n])'
         try:
-            if re.search(pattern, text):
+            if re.search(pattern, text, re.IGNORECASE):
                 return keyword
         except re.error:
             continue
@@ -1214,9 +1778,9 @@ async def get_reports_list(
         async for doc in cursor:
             # 转换为前端需要的格式
             stock_code = doc.get("stock_symbol", "")
-            # 🔥 优先使用MongoDB中保存的股票名称，如果没有则查询
+            # 🔥 优先使用MongoDB中保存的股票名称，如果没有或等于股票代码则重新查询
             stock_name = doc.get("stock_name")
-            if not stock_name:
+            if not stock_name or stock_name == stock_code:
                 stock_name = get_stock_name(stock_code)
 
             # 🔥 获取市场类型，如果没有则根据股票代码推断
@@ -1254,32 +1818,50 @@ async def get_reports_list(
             if not isinstance(decision, dict):
                 decision = {}
 
-            # 决策建议
-            action = decision.get("action", "")
-            if action and isinstance(action, str):
-                action = action.upper()
-                action_map = {"BUY": "买入", "SELL": "卖出", "HOLD": "持有", "STRONG_BUY": "强烈买入", "STRONG_SELL": "强烈卖出"}
-                action = action_map.get(action, action)
+            # 从 reports 文本中提取（与详情页保持一致，优先级最高）
+            reports_data = doc.get("reports", {})
+            extracted = {}
+            if isinstance(reports_data, dict) and reports_data:
+                combined_for_extract = dict(reports_data)
+                if isinstance(decision, dict) and decision:
+                    combined_for_extract["decision"] = decision
+                extracted = extract_structured_fields(combined_for_extract)
 
-            # 置信度
-            confidence = decision.get("confidence", 0)
-            try:
-                if isinstance(confidence, (int, float)) and 0 < confidence <= 1:
-                    confidence = round(confidence * 100, 1)
-                elif isinstance(confidence, (int, float)) and confidence > 1:
-                    confidence = round(float(confidence), 1)
-                else:
-                    confidence = 0
-            except (TypeError, ValueError):
-                confidence = 0
+            # 决策建议（优先从 reports 文本提取，其次从 decision 字典提取）
+            action = extracted.get("action", "")
+            if not action:
+                action_raw = decision.get("action", "")
+                if action_raw and isinstance(action_raw, str):
+                    action_upper = action_raw.upper()
+                    action_map = {"BUY": "买入", "SELL": "卖出", "HOLD": "持有", "STRONG_BUY": "强烈买入", "STRONG_SELL": "强烈卖出"}
+                    action = action_map.get(action_upper, action_raw)
 
-            # 目标价 / 止损价
-            target_price = decision.get("target_price", "")
-            stop_loss = decision.get("stop_loss", "")
-            if target_price is None:
-                target_price = ""
-            if stop_loss is None:
-                stop_loss = ""
+            # 置信度（优先从 reports 文本计算/提取，其次从 decision 字典提取）
+            confidence = 0.0
+            if extracted.get("置信度"):
+                try:
+                    confidence = float(extracted["置信度"])
+                except (TypeError, ValueError):
+                    confidence = 0.0
+            if confidence == 0:
+                conf_raw = decision.get("confidence") or decision.get("confidence_score") or decision.get("score")
+                if conf_raw is not None and conf_raw != "":
+                    try:
+                        if isinstance(conf_raw, (int, float)) and 0 < conf_raw <= 1:
+                            confidence = round(conf_raw * 100, 1)
+                        elif isinstance(conf_raw, (int, float)) and conf_raw > 1:
+                            confidence = round(float(conf_raw), 1)
+                    except (TypeError, ValueError):
+                        confidence = 0.0
+
+            # 多维度评分（从 reports 中提取）
+            tech_score = extracted.get("技术面评分") if extracted else None
+            fund_score = extracted.get("基本面评分") if extracted else None
+            sentiment_score = extracted.get("情绪面评分") if extracted else None
+            news_score = extracted.get("消息面评分") if extracted else None
+            hot_money_score = extracted.get("资金面评分") if extracted else None
+            policy_score = extracted.get("政策面评分") if extracted else None
+            lockup_score = extracted.get("解禁面评分") if extracted else None
 
             report = {
                 "id": str(doc["_id"]),
@@ -1291,8 +1873,14 @@ async def get_reports_list(
                 # 🔥 决策信息
                 "action": action,
                 "confidence": confidence,
-                "target_price": target_price,
-                "stop_loss": stop_loss,
+                # 多维度评分
+                "技术面评分": tech_score,
+                "基本面评分": fund_score,
+                "情绪面评分": sentiment_score,
+                "消息面评分": news_score,
+                "资金面评分": hot_money_score,
+                "政策面评分": policy_score,
+                "解禁面评分": lockup_score,
                 # 基础信息
                 "created_at": created_at_tz.isoformat() if created_at_tz else str(created_at),
                 "analysis_date": doc.get("analysis_date", ""),
@@ -1361,7 +1949,8 @@ async def get_report_detail(
 
             stock_symbol = r.get("stock_symbol", r.get("stock_code", tasks_doc.get("stock_code", "")))
             stock_name = r.get("stock_name")
-            if not stock_name:
+            # 🔥 如果 stock_name 缺失或等于股票代码（错误数据），重新获取
+            if not stock_name or stock_name == stock_symbol:
                 stock_name = get_stock_name(stock_symbol)
 
             report = {
@@ -1397,11 +1986,22 @@ async def get_report_detail(
             for _k, _v in _extracted.items():
                 if _v is not None and (not report.get(_k)):
                     report[_k] = _v
+
+            # 🔥 计算置信度详情（多维度评分依据）
+            try:
+                _confidence_result = _calculate_confidence(_combined_for_extract)
+                if _confidence_result and _confidence_result.get("score"):
+                    report["confidence_score"] = _confidence_result["score"]
+                    report["置信度详情"] = _confidence_result["details"]
+                    logger.info(f"🎯 [报告详情] 计算置信度得分: {_confidence_result['score']}")
+            except Exception as _conf_err:
+                logger.warning(f"⚠️ [报告详情] 计算置信度失败: {_conf_err}")
         else:
             # 转换为详细格式（analysis_reports 命中）
             stock_symbol = doc.get("stock_symbol", "")
             stock_name = doc.get("stock_name")
-            if not stock_name:
+            # 🔥 如果 stock_name 缺失或等于股票代码（错误数据），重新获取
+            if not stock_name or stock_name == stock_symbol:
                 stock_name = get_stock_name(stock_symbol)
 
             # 获取时间（数据库中是 UTC 时间，需要转换为 UTC+8）
@@ -1444,6 +2044,16 @@ async def get_report_detail(
             for _k, _v in _extracted.items():
                 if _v is not None and (not report.get(_k)):
                     report[_k] = _v
+
+            # 🔥 计算置信度详情（多维度评分依据）
+            try:
+                _confidence_result = _calculate_confidence(_combined_for_extract)
+                if _confidence_result and _confidence_result.get("score"):
+                    report["confidence_score"] = _confidence_result["score"]
+                    report["置信度详情"] = _confidence_result["details"]
+                    logger.info(f"🎯 [报告详情] 计算置信度得分: {_confidence_result['score']}")
+            except Exception as _conf_err:
+                logger.warning(f"⚠️ [报告详情] 计算置信度失败: {_conf_err}")
 
         return {
             "success": True,

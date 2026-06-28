@@ -15,7 +15,8 @@ def create_lockup_watcher(llm):
 
     def lockup_watcher_node(state):
         current_date = state["trade_date"]
-        instrument_context = build_instrument_context(state["company_of_interest"])
+        company = state["company_of_interest"]
+        instrument_context = build_instrument_context(company)
 
         tools = [
             get_insider_transactions,
@@ -43,13 +44,19 @@ def create_lockup_watcher(llm):
             "\n- `get_fundamentals`：获取公司股本结构信息"
             "\n- `get_news(query, start_date, end_date)`：搜索解禁/减持相关新闻和公告"
             "\n- `get_lockup_expiry(ticker, curr_date)`：获取限售解禁日历（历史解禁记录+未来90天待解禁计划，含解禁数量/占比/影响评估）"
-            "\n\n撰写详细的解禁/减持风险评估报告,给出减持压力总体评级(重大压力/中等压力/轻微压力/无明显压力),并估算潜在减持规模和时间窗口。报告末尾附 Markdown 表格列出关键解禁/减持事件、规模和影响评估。"
+            "\n\n撰写详细的解禁/减持风险评估报告,给出减持压力总体评级(重大压力/中等压力/轻微压力/无明显压力),并估算潜在减持规模和时间窗口。**报告开头**必须先给出「解禁面评分」（0-100 分的整数，越高代表解禁压力越小），格式为单独一行：`解禁面评分：XX`。报告末尾附 Markdown 表格列出关键解禁/减持事件、规模和影响评估。"
             "\n\n📋 必采清单 — 以下数据点必须出现在报告中，无法获取时标注 [数据缺失: xxx]："
+            "\n0. 解禁面评分（0-100 分，越高压力越小）"
             "\n1. 近 6 个月内部人/大股东交易记录（增持/减持/无变动）"
             "\n2. 前十大股东持股变化趋势"
             "\n3. 解禁/减持相关新闻及公告"
             "\n4. 减持压力评级（重大压力/中等压力/轻微压力/无明显压力）"
             "\n5. 未来 3 个月潜在减持风险评估"
+
+            "\n\n⚠️ 数据准确性要求（CRITICAL）："
+            "\n- 报告中的所有减持/解禁数据必须来自工具调用返回的原始数据"
+            "\n- 禁止编造或篡改任何减持数额和时间"
+            "\n- 如发现数据缺失，请标注 [数据缺失: xxx]"
             + get_language_instruction()
         )
 
@@ -81,7 +88,7 @@ def create_lockup_watcher(llm):
         report = ""
 
         if len(result.tool_calls) == 0:
-            report = result.content
+            report = result.content or ""
 
         return {
             "messages": [result],
