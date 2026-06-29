@@ -13,21 +13,6 @@
           </p>
         </div>
       </div>
-
-      <!-- 风险提示 -->
-      <div class="risk-disclaimer">
-        <el-alert
-          type="warning"
-          :closable="false"
-          show-icon
-        >
-          <template #title>
-            <span style="font-size: 14px;">
-              <strong>⚠️ 重要提示：</strong>本工具为股票分析辅助工具，所有分析结果仅供参考，不构成投资建议。投资有风险，决策需谨慎。
-            </span>
-          </template>
-        </el-alert>
-      </div>
     </div>
 
     <!-- 股票列表输入区域 -->
@@ -134,41 +119,6 @@
                 </el-form-item>
               </div>
 
-              <!-- 分析参数 -->
-              <div class="form-section">
-                <h4 class="section-title">⚙️ 分析参数</h4>
-                <el-form-item label="分析深度">
-                  <el-select v-model="batchForm.depth" placeholder="选择深度" size="large" style="width: 100%">
-                    <el-option label="⚡ 1级 - 快速分析 (2-4分钟/只)" value="1" />
-                    <el-option label="📈 2级 - 基础分析 (4-6分钟/只)" value="2" />
-                    <el-option label="🎯 3级 - 标准分析 (6-10分钟/只，推荐)" value="3" />
-                    <el-option label="🔍 4级 - 深度分析 (10-15分钟/只)" value="4" />
-                    <el-option label="🏆 5级 - 全面分析 (15-25分钟/只)" value="5" />
-                  </el-select>
-                </el-form-item>
-              </div>
-
-              <!-- 分析师选择 -->
-              <div class="form-section">
-                <h4 class="section-title">👥 分析师团队</h4>
-                <div class="analysts-selection">
-                  <el-checkbox-group v-model="batchForm.analysts" class="analysts-group">
-                    <div
-                      v-for="analyst in ANALYSTS"
-                      :key="analyst.id"
-                      class="analyst-option"
-                    >
-                      <el-checkbox :label="analyst.name" class="analyst-checkbox">
-                        <div class="analyst-info">
-                          <span class="analyst-name">{{ analyst.name }}</span>
-                          <span class="analyst-desc">{{ analyst.description }}</span>
-                        </div>
-                      </el-checkbox>
-                    </div>
-                  </el-checkbox-group>
-                </div>
-              </div>
-
               <!-- 操作按钮 -->
               <div class="form-section">
                 <div class="action-buttons" style="display: flex; justify-content: center; align-items: center; width: 100%; text-align: center;">
@@ -205,7 +155,6 @@
                 v-model:quick-analysis-model="modelSettings.quickAnalysisModel"
                 v-model:deep-analysis-model="modelSettings.deepAnalysisModel"
                 :available-models="availableModels"
-                :analysis-depth="batchForm.depth"
               />
 
               <!-- 分析选项 -->
@@ -229,13 +178,13 @@
                   </div>
 
                   <div class="option-item">
-                    <el-select v-model="batchForm.language" size="small" style="width: 100%">
-                      <el-option label="中文" value="zh-CN" />
-                      <el-option label="English" value="en-US" />
-                    </el-select>
                     <div class="option-content">
                       <div class="option-name">语言偏好</div>
                     </div>
+                    <el-select v-model="batchForm.language" size="small" style="width: 140px">
+                      <el-option label="中文" value="zh-CN" />
+                      <el-option label="English" value="en-US" />
+                    </el-select>
                   </div>
                 </div>
               </div>
@@ -293,7 +242,6 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Files, TrendCharts, Check, Close } from '@element-plus/icons-vue'
-import { ANALYSTS, DEFAULT_ANALYSTS, convertAnalystNamesToIds } from '@/constants/analysts'
 import { configApi } from '@/api/config'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -323,8 +271,6 @@ const availableModels = ref<any[]>([])
 const batchForm = reactive({
   title: '',
   description: '',
-  depth: '3',  // 默认3级标准分析，将在 onMounted 中从用户偏好加载
-  analysts: [...DEFAULT_ANALYSTS],  // 将在 onMounted 中从用户偏好加载
   includeSentiment: true,
   includeRisk: true,
   language: 'zh-CN'
@@ -415,20 +361,7 @@ onMounted(async () => {
   const userPrefs = authStore.user?.preferences
 
   if (userPrefs) {
-    // 加载默认分析深度
-    if (userPrefs.default_depth) {
-      batchForm.depth = userPrefs.default_depth
-    }
-
-    // 加载默认分析师
-    if (userPrefs.default_analysts && userPrefs.default_analysts.length > 0) {
-      batchForm.analysts = [...userPrefs.default_analysts]
-    }
-
-    console.log('✅ 批量分析已加载用户偏好设置:', {
-      depth: batchForm.depth,
-      analysts: batchForm.analysts
-    })
+    console.log('✅ 批量分析已加载用户偏好设置')
   }
 
   // 读取路由查询参数以便从筛选页预填充（路由参数优先级最高）
@@ -517,8 +450,6 @@ const submitBatchAnalysis = async () => {
           const markets = new Set(symbols.value.map(s => getMarketByStockCode(s)))
           return markets.size === 1 ? Array.from(markets)[0] : undefined
         })(),
-        research_depth: batchForm.depth,
-        selected_analysts: convertAnalystNamesToIds(batchForm.analysts),
         include_sentiment: batchForm.includeSentiment,
         include_risk: batchForm.includeRisk,
         language: batchForm.language,

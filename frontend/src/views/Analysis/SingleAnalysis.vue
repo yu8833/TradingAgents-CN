@@ -387,6 +387,47 @@
         </el-col>
       </el-row>
     </div>
+
+    <!-- 功能介绍 -->
+    <div class="intro-section">
+      <el-card class="intro-card" shadow="hover">
+        <template #header>
+          <div class="card-header">
+            <h3>✨ 功能介绍</h3>
+          </div>
+        </template>
+        <div class="intro-content">
+          <div class="intro-item">
+            <div class="intro-icon">📊</div>
+            <div class="intro-text">
+              <h4>多维度评分</h4>
+              <p>从技术面、基本面、情绪面、消息面、资金面、政策面等多个维度对股票进行综合评估，每项评分0-100分</p>
+            </div>
+          </div>
+          <div class="intro-item">
+            <div class="intro-icon">👥</div>
+            <div class="intro-text">
+              <h4>7位AI分析师团队</h4>
+              <p>技术分析师、市场情绪分析师、新闻分析师、基本面分析师、政策分析师、游资追踪师、解禁追踪师并行研究</p>
+            </div>
+          </div>
+          <div class="intro-item">
+            <div class="intro-icon">⚔️</div>
+            <div class="intro-text">
+              <h4>多空辩论 · 三方风控 · 最终交易决策</h4>
+              <p>看涨/看跌研究员进行辩论，研究经理综合裁决；激进/中性/保守三个风控视角；最终给出可操作的投资建议</p>
+            </div>
+          </div>
+          <div class="intro-item">
+            <div class="intro-icon">📈</div>
+            <div class="intro-text">
+              <h4>置信度评估</h4>
+              <p>基于报告数据丰富度、评级一致性、分析师覆盖度等因素，综合计算分析结果的置信度评分</p>
+            </div>
+          </div>
+        </div>
+      </el-card>
+    </div>
   </div>
 </template>
 
@@ -1895,6 +1936,73 @@ onMounted(async () => {
         font-size: 16px;
         color: var(--el-text-color-secondary);
         margin: 0;
+      }
+    }
+  }
+
+  // 功能介绍区域
+  .intro-section {
+    margin-top: 40px;
+    margin-bottom: 24px;
+
+    .intro-card {
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    .intro-content {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      padding: 8px 0;
+
+      @media (max-width: 1024px) {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .intro-item {
+      display: flex;
+      gap: 16px;
+      padding: 16px;
+      background: var(--el-fill-color-light);
+      border-radius: 12px;
+      transition: all 0.3s ease;
+
+      &:hover {
+        background: var(--el-fill-color);
+        transform: translateY(-2px);
+      }
+
+      .intro-icon {
+        font-size: 32px;
+        flex-shrink: 0;
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--el-bg-color);
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      }
+
+      .intro-text {
+        flex: 1;
+
+        h4 {
+          margin: 0 0 6px 0;
+          font-size: 16px;
+          font-weight: 700;
+          color: var(--el-text-color-primary);
+        }
+
+        p {
+          margin: 0;
+          font-size: 14px;
+          color: var(--el-text-color-secondary);
+          line-height: 1.6;
+        }
       }
     }
   }

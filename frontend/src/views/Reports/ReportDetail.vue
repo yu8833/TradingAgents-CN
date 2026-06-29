@@ -230,35 +230,44 @@
           <div class="debate-timeline">
             <div v-if="hasReport('bull_researcher') || hasReport('bear_researcher') || hasReport('research_team_decision')" class="timeline-phase">
               <div class="phase-label">📋 研究辩论</div>
-              <div class="phase-flow">
-                <div
-                  v-if="hasReport('bull_researcher')"
-                  class="debate-node node--bull is-clickable"
-                  @click="openReportDialog('bull_researcher')"
-                >
-                  <span class="node-icon">🐂</span>
-                  <span class="node-name">看涨研究员</span>
-                  <span class="node-desc">构建买入逻辑<br/>行业景气 · 业绩拐点 · 资金流入</span>
+              <div class="phase-flow debate-flow">
+                <!-- 第一行：看涨和看跌研究员并排辩论 -->
+                <div class="debate-row">
+                  <div
+                    v-if="hasReport('bull_researcher')"
+                    class="debate-node node--bull is-clickable"
+                    @click="openReportDialog('bull_researcher')"
+                  >
+                    <span class="node-icon">🐂</span>
+                    <span class="node-name">看涨研究员</span>
+                    <span class="node-desc">构建买入逻辑<br/>行业景气 · 业绩拐点 · 资金流入</span>
+                  </div>
+                  <div v-if="hasReport('bull_researcher') && hasReport('bear_researcher')" class="timeline-arrow">⚡ VS ⚡</div>
+                  <div
+                    v-if="hasReport('bear_researcher')"
+                    class="debate-node node--bear is-clickable"
+                    @click="openReportDialog('bear_researcher')"
+                  >
+                    <span class="node-icon">🐻</span>
+                    <span class="node-name">看跌研究员</span>
+                    <span class="node-desc">识别做空风险<br/>宏观压力 · 业绩雷点 · 顶背离</span>
+                  </div>
                 </div>
-                <div v-if="hasReport('bull_researcher') && hasReport('bear_researcher')" class="timeline-arrow">⚡ VS ⚡</div>
-                <div
-                  v-if="hasReport('bear_researcher')"
-                  class="debate-node node--bear is-clickable"
-                  @click="openReportDialog('bear_researcher')"
-                >
-                  <span class="node-icon">🐻</span>
-                  <span class="node-name">看跌研究员</span>
-                  <span class="node-desc">识别做空风险<br/>宏观压力 · 业绩雷点 · 顶背离</span>
+                <!-- 综合↓箭头 -->
+                <div v-if="(hasReport('bull_researcher') || hasReport('bear_researcher')) && hasReport('research_team_decision')" class="debate-arrow-down">
+                  <span class="arrow-text">综合辩论</span>
+                  <span class="arrow-icon">↓</span>
                 </div>
-                <div v-if="hasReport('research_team_decision')" class="timeline-arrow">→</div>
-                <div
-                  v-if="hasReport('research_team_decision')"
-                  class="debate-node node--manager is-clickable"
-                  @click="openReportDialog('research_team_decision')"
-                >
-                  <span class="node-icon">👔</span>
-                  <span class="node-name">研究经理</span>
-                  <span class="node-desc">综合共识<br/>投资亮点 / 风险点 / 适用场景</span>
+                <!-- 第二行：研究经理综合 -->
+                <div v-if="hasReport('research_team_decision')" class="debate-row debate-row--manager">
+                  <div
+                    class="debate-node node--manager is-clickable"
+                    @click="openReportDialog('research_team_decision')"
+                  >
+                    <span class="node-icon">👔</span>
+                    <span class="node-name">研究经理</span>
+                    <span class="node-desc">综合共识<br/>投资亮点 / 风险点 / 适用场景</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2034,6 +2043,10 @@ onBeforeUnmount(() => {
 
 <style lang="scss" scoped>
 .report-detail {
+  min-height: 100vh;
+  background: var(--el-bg-color-page);
+  padding: 24px;
+
   .loading-container {
     padding: 24px;
   }
@@ -2052,7 +2065,7 @@ onBeforeUnmount(() => {
         align-items: flex-start;
         gap: 24px;
 
-        @media (max-width: 768px) {
+        @media (max-width: 640px) {
           flex-direction: column;
         }
 
@@ -2103,7 +2116,7 @@ onBeforeUnmount(() => {
           gap: 12px;
           flex-shrink: 0;
 
-          @media (max-width: 768px) {
+          @media (max-width: 640px) {
             width: 100%;
             justify-content: flex-start;
           }
@@ -3231,6 +3244,49 @@ onBeforeUnmount(() => {
           align-items: center;
           gap: 12px;
           flex-wrap: wrap;
+
+          // 研究辩论特殊布局：垂直排列
+          &.debate-flow {
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+          }
+        }
+
+        // 研究辩论行布局：看涨/看跌并排
+        .debate-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          justify-content: center;
+
+          &.debate-row--manager {
+            // 研究经理单独一行，居中显示
+          }
+        }
+
+        // 辩论向下箭头：表示综合
+        .debate-arrow-down {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          padding: 8px 0;
+
+          .arrow-text {
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748b;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            padding: 4px 12px;
+            border-radius: 6px;
+          }
+
+          .arrow-icon {
+            font-size: 24px;
+            color: #3b82f6;
+            font-weight: 700;
+          }
         }
 
         &.phase--trade {
