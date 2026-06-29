@@ -593,6 +593,130 @@ def _load_ohlcv_astock(symbol: str, curr_date: str) -> pd.DataFrame:
 # ===========================================================================
 
 
+# ---- Real-time helper functions ----
+
+
+def _get_sina_realtime_quote(code: str) -> Optional[Dict[str, Any]]:
+    """从新浪财经获取单只股票的实时行情数据。
+
+    Returns dict with keys: price, open, high, low, prev_close, volume, amount,
+    date, time, name, code, etc.
+    """
+    try:
+        prefix = "sh" if code.startswith("6") else "sz"
+        url = f"https://hq.sinajs.cn/list={prefix}{code}"
+        headers = {
+            "Referer": "https://finance.sina.com.cn",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+        }
+        r = _requests.get(url, headers=headers, timeout=5)
+        r.encoding = "gbk"
+        text = r.text.strip()
+
+        # Parse: var hq_str_sz301356="天振股份,26.67,26.68,27.05,27.20,26.55,..."
+        if '="' not in text:
+            return None
+        content = text.split('="')[1].rstrip('";')
+        if not content:
+            return None
+        fields = content.split(",")
+        if len(fields) < 32:
+            return None
+
+        result = {
+            "name": fields[0],
+            "open": float(fields[1]) if fields[1] else 0.0,
+            "prev_close": float(fields[2]) if fields[2] else 0.0,
+            "price": float(fields[3]) if fields[3] else 0.0,
+            "high": float(fields[4]) if fields[4] else 0.0,
+            "low": float(fields[5]) if fields[5] else 0.0,
+            "volume": float(fields[8]) if fields[8] else 0.0,
+            "amount": float(fields[9]) if fields[9] else 0.0,
+            "date": fields[30] if len(fields) > 30 else "",
+            "time": fields[31] if len(fields) > 31 else "",
+            "code": code,
+        }
+
+        # 只有价格有效才返回
+        if result["price"] <= 0 or result["prev_close"] <= 0:
+            return None
+
+        return result
+    except Exception as e:
+        logger.debug(f"获取新浪实时行情失败 {code}: {e}")
+        return None
+
+
+def _augment_with_realtime(df: pd.DataFrame, rt: Dict[str, Any]) -> pd.DataFrame:
+    """用实时行情数据补充 K 线数据（盘中使用最新价格代替收盘价）。
+
+    - 如果最新K线日期就是今天，更新最后一行
+    - 如果最新K线日期早于今天，追加一行当日数据
+    """
+    if df is None or df.empty or "Close" not in df.columns:
+        return df
+    if not rt or not rt.get("price"):
+        return df
+
+    price = float(rt["price"])
+    if price <= 0:
+        return df
+
+    from datetime import datetime, date as date_type
+
+    # 获取最新K线日期
+    last_val = df["Date"].max()
+    if hasattr(last_val, "date"):
+        last_date = last_val.date()
+    elif isinstance(last_val, date_type):
+        last_date = last_val
+    else:
+        last_date = pd.Timestamp(last_val).date()
+
+    yesterday_close = float(df.iloc[-1]["Close"]) if len(df) > 0 else price
+    open_p = rt.get("open") or rt.get("prev_close") or yesterday_close
+    high_p = rt.get("high") or price
+    low_p = rt.get("low") or price
+    vol = rt.get("volume") or 0
+    amt = rt.get("amount") or 0
+
+    today = datetime.now().date()
+
+    df = df.copy()
+    if last_date >= today:
+        # 更新最后一行
+        idx = df.index[-1]
+        df.loc[idx, "Close"] = price
+        if open_p is not None:
+            df.loc[idx, "Open"] = open_p
+        if high_p is not None:
+            df.loc[idx, "High"] = high_p
+        if low_p is not None:
+            df.loc[idx, "Low"] = low_p
+        if vol:
+            df.loc[idx, "Volume"] = vol
+    else:
+        # 追加一行当日实时K线
+        new_row = {
+            "Date": pd.Timestamp(today),
+            "Open": open_p,
+            "High": high_p,
+            "Low": low_p,
+            "Close": price,
+            "Volume": vol,
+        }
+        if "Amount" in df.columns:
+            new_row["Amount"] = amt
+        new_df = pd.DataFrame([new_row])
+        df = pd.concat([df, new_df], ignore_index=True)
+
+    return df
+
+
 # ---- 1. get_stock_data ----
 
 
@@ -656,6 +780,12 @@ def get_stock_data(
             f"No data found for A-stock '{code}' "
             f"between {start_date} and {end_date}"
         )
+
+    # 🔥 用实时行情补充当日数据（盘中分析时使用最新价格，而非仅上一交易日收盘价）
+    rt_data = _get_sina_realtime_quote(code)
+    if rt_data and rt_data.get("price") and rt_data["price"] > 0:
+        df = _augment_with_realtime(df, rt_data)
+        data_source = f"{data_source} + realtime (intraday)"
 
     for col in ["Open", "High", "Low", "Close"]:
         if col in df.columns:

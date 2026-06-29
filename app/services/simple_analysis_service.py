@@ -1406,63 +1406,51 @@ class SimpleAnalysisService:
             import time
 
             def simulate_progress():
-                """模拟TradingAgents内部进度"""
+                """模拟TradingAgents内部进度，同步更新进度百分比"""
                 try:
                     if not progress_tracker:
                         return
 
-                    # 分析师阶段 - 根据选择的分析师数量动态调整
-                    analysts = request.parameters.selected_analysts if request.parameters else ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
+                    # 定义进度步骤 (进度%, 消息, 睡眠时间秒)
+                    progress_steps = [
+                        # 分析师阶段 (10% → 45%) - 7个分析师
+                        (15, "📊 技术分析师正在分析", 12),
+                        (20, "💬 市场情绪分析师正在分析", 10),
+                        (25, "📰 新闻分析师正在分析", 10),
+                        (30, "💼 基本面分析师正在分析", 12),
+                        (35, "📜 政策分析师正在分析", 10),
+                        (40, "🔥 游资追踪师正在分析", 10),
+                        (45, "🔓 解禁追踪师正在分析", 8),
+                        # 研究辩论阶段 (45% → 70%)
+                        (51, "🐂 看涨研究员构建论据", 8),
+                        (57, "🐻 看跌研究员识别风险", 6),
+                        (63, "🎯 研究辩论进行中", 10),
+                        (70, "👔 研究经理形成共识", 6),
+                        # 交易员阶段 (70% → 78%)
+                        (78, "💼 交易员制定策略", 8),
+                        # 风险评估阶段 (78% → 93%)
+                        (82, "🔥 激进风险评估", 5),
+                        (86, "🛡️ 保守风险评估", 5),
+                        (89, "⚖️ 中性风险评估", 5),
+                        (93, "🎯 投资组合经理最终决策", 6),
+                        # 最终阶段 (93% → 95%)
+                        (95, "📡 生成最终决策报告", 4),
+                    ]
 
-                    # 模拟分析师执行
-                    for i, analyst in enumerate(analysts):
-                        time.sleep(15)  # 每个分析师大约15秒
-                        if analyst == "market":
-                            progress_tracker.update_progress("📊 市场分析师正在分析")
-                        elif analyst == "fundamentals":
-                            progress_tracker.update_progress("💼 基本面分析师正在分析")
-                        elif analyst == "news":
-                            progress_tracker.update_progress("📰 新闻分析师正在分析")
-                        elif analyst == "social":
-                            progress_tracker.update_progress("💬 社交媒体分析师正在分析")
-
-                    # 研究团队阶段
-                    time.sleep(10)
-                    progress_tracker.update_progress("🐂 看涨研究员构建论据")
-
-                    time.sleep(8)
-                    progress_tracker.update_progress("🐻 看跌研究员识别风险")
-
-                    # 辩论阶段 - 使用默认配置的辩论轮次
-                    debate_rounds = 1
-
-                    for round_num in range(debate_rounds):
-                        time.sleep(12)
-                        progress_tracker.update_progress(f"🎯 研究辩论 第{round_num+1}轮")
-
-                    time.sleep(8)
-                    progress_tracker.update_progress("👔 研究经理形成共识")
-
-                    # 交易员阶段
-                    time.sleep(10)
-                    progress_tracker.update_progress("💼 交易员制定策略")
-
-                    # 风险管理阶段
-                    time.sleep(8)
-                    progress_tracker.update_progress("🔥 激进风险评估")
-
-                    time.sleep(6)
-                    progress_tracker.update_progress("🛡️ 保守风险评估")
-
-                    time.sleep(6)
-                    progress_tracker.update_progress("⚖️ 中性风险评估")
-
-                    time.sleep(8)
-                    progress_tracker.update_progress("🎯 投资组合经理（风险评估+最终决策）")
-
-                    # 最终阶段
-                    time.sleep(5)
-                    progress_tracker.update_progress("📡 生成最终决策报告")
+                    for progress_pct, message, sleep_secs in progress_steps:
+                        time.sleep(sleep_secs)
+                        # 检查任务是否已完成，如果已完成则停止模拟
+                        current_pct = progress_tracker.progress_data.get('progress_percentage', 0)
+                        if current_pct >= 95:
+                            break
+                        # 只在模拟进度大于当前进度时才更新
+                        if progress_pct > current_pct:
+                            progress_tracker.update_progress({
+                                'progress_percentage': progress_pct,
+                                'last_message': message
+                            })
+                        else:
+                            progress_tracker.update_progress(message)
 
                 except Exception as e:
                     logger.warning(f"⚠️ 进度模拟失败: {e}")

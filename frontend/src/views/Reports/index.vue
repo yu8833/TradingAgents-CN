@@ -95,31 +95,9 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="置信度" width="110">
-          <template #default="{ row }">
-            <el-progress
-              v-if="row.confidence && row.confidence > 0"
-              :percentage="row.confidence"
-              :stroke-width="10"
-              :color="getConfidenceColor(row.confidence)"
-              style="max-width: 90px;"
-            />
-            <span v-else style="color: var(--el-text-color-placeholder); font-size: 13px;">-</span>
-          </template>
-        </el-table-column>
-
         <el-table-column prop="created_at" label="创建时间" width="180">
           <template #default="{ row }">
             {{ formatTime(row.created_at) }}
-          </template>
-        </el-table-column>
-
-        <el-table-column label="耗时" width="120">
-          <template #default="{ row }">
-            <span v-if="row.execution_time && row.execution_time > 0">
-              {{ formatDuration(row.execution_time) }}
-            </span>
-            <span v-else style="color: var(--el-text-color-placeholder); font-size: 13px;">-</span>
           </template>
         </el-table-column>
 
@@ -199,7 +177,6 @@ type ReportListItem = {
   stock_code: string
   stock_name: string
   action?: string
-  confidence?: number
   created_at: string
   analysis_date?: string
 }
@@ -463,14 +440,6 @@ const getActionType = (action: string): string => {
     '持有': 'warning'
   }
   return typeMap[action] || 'info'
-}
-
-// 🔥 置信度颜色
-const getConfidenceColor = (confidence: number): string => {
-  if (confidence >= 80) return '#67c23a'
-  if (confidence >= 60) return '#409eff'
-  if (confidence >= 40) return '#e6a23c'
-  return '#909399'
 }
 
 // 生命周期

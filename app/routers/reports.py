@@ -367,6 +367,46 @@ def _extract_holder_empty_advice(text: str, field_name: str) -> Optional[str]:
     return content
 
 
+def _normalize_rating(val: str) -> str:
+    v = str(val).strip()
+    for kw in ["评级", "操作建议", "投资建议", "建议", "行动评级"]:
+        if v.startswith(kw):
+            v = v[len(kw):].lstrip("：:、•·- ")
+            v = v.strip()
+            break
+    v = v.strip("，。；：:、•·()（） ")
+    en_map = {
+        "BUY": "买入", "SELL": "卖出", "HOLD": "持有",
+        "STRONG_BUY": "买入", "STRONG_SELL": "卖出",
+        "STRONG BUY": "买入", "STRONG SELL": "卖出",
+        "OVERWEIGHT": "增持", "UNDERWEIGHT": "减持",
+        "NEUTRAL": "持有", "WAIT": "持有", "观望": "持有",
+        "ADD": "增持", "REDUCE": "减持",
+        "ACCUMULATE": "增持", "SELL SHORT": "卖出",
+    }
+    v_upper = v.upper()
+    if v_upper in en_map:
+        return en_map[v_upper]
+    cn_aliases = [
+        ("强烈买入", "买入"),
+        ("强烈卖出", "卖出"),
+        ("清仓", "卖出"),
+        ("买入", "买入"),
+        ("增持", "增持"),
+        ("加仓", "增持"),
+        ("卖出", "卖出"),
+        ("减持", "减持"),
+        ("减仓", "减持"),
+        ("持有", "持有"),
+        ("观望", "持有"),
+        ("中性", "持有"),
+    ]
+    for alias, final in cn_aliases:
+        if alias in v:
+            return final
+    return v
+
+
 def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     """
     遍历 reports 中的所有子报告（以及可能存在的 decision 字典），
@@ -403,50 +443,6 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
             v = reports.get(key)
             if isinstance(v, str):
                 yield v
-
-    # 统一的评级规范化函数（确保最终输出是 5 档中文评级之一）
-    def _normalize_rating(val: str) -> str:
-        v = str(val).strip()
-        # 先清理可能的前后缀（如"评级：买入"、"建议: 强烈买入"）
-        for kw in ["评级", "操作建议", "投资建议", "建议", "行动评级"]:
-            if v.startswith(kw):
-                v = v[len(kw):].lstrip("：:、•·- ")
-                v = v.strip()
-                break
-        # 去除标点前后缀
-        v = v.strip("，。；：:、•·()（） ")
-        # 常见英文/缩写翻译（映射到5档评级：买入/增持/持有/减持/卖出）
-        en_map = {
-            "BUY": "买入", "SELL": "卖出", "HOLD": "持有",
-            "STRONG_BUY": "买入", "STRONG_SELL": "卖出",
-            "STRONG BUY": "买入", "STRONG SELL": "卖出",
-            "OVERWEIGHT": "增持", "UNDERWEIGHT": "减持",
-            "NEUTRAL": "持有", "WAIT": "持有", "观望": "持有",
-            "ADD": "增持", "REDUCE": "减持",
-            "ACCUMULATE": "增持", "SELL SHORT": "卖出",
-        }
-        v_upper = v.upper()
-        if v_upper in en_map:
-            return en_map[v_upper]
-        # 中文关键词识别（从长到短匹配，避免误识别）
-        cn_aliases = [
-            ("强烈买入", "买入"),
-            ("强烈卖出", "卖出"),
-            ("清仓", "卖出"),
-            ("买入", "买入"),
-            ("增持", "增持"),
-            ("加仓", "增持"),
-            ("卖出", "卖出"),
-            ("减持", "减持"),
-            ("减仓", "减持"),
-            ("持有", "持有"),
-            ("观望", "持有"),
-            ("中性", "持有"),
-        ]
-        for alias, final in cn_aliases:
-            if alias in v:
-                return final
-        return v
 
     # 从优先级最高的模块开始提取，找到第一个非空的评级
     text_rating = None
@@ -1354,48 +1350,51 @@ def _calculate_confidence(reports: Dict[str, Any]) -> Dict[str, Any]:
     })
 
     # ===== 4. 数据来源丰富度（15%）=====
-    total_sources = 0
-    source_modules = 0
-    for k, v in reports.items():
-        if isinstance(v, str) and "数据来源对照表" in v:
-            module_sources = 0
-            lines = v.split("\n")
-            in_table = False
-            found_table_separator = False
-            for line in lines:
-                stripped = line.strip()
-                if not found_table_separator:
-                    if stripped.startswith("|") and "---" in stripped:
-                        found_table_separator = True
-                        in_table = True
-                    continue
-                if in_table:
-                    if stripped.startswith("|") or stripped.startswith("｜"):
-                        if re.search(r'\d', stripped):
-                            module_sources += 1
-                    elif stripped and not stripped.startswith("-") and not stripped.startswith("="):
-                        if len(stripped) > 5:
-                            in_table = False
-                            break
-            if module_sources > 0:
-                total_sources += module_sources
-                source_modules += 1
-
-    if total_sources > 30 and source_modules >= 5:
+    analyst_modules = [
+        "market_report", "fundamentals_report", "sentiment_report",
+        "news_report", "policy_report", "hot_money_report", "lockup_report"
+    ]
+    
+    total_data_points = 0
+    valid_modules = 0
+    total_chars = 0
+    
+    for mod in analyst_modules:
+        text = reports.get(mod, "")
+        if isinstance(text, str) and text.strip() and len(text.strip()) > 100:
+            valid_modules += 1
+            total_chars += len(text)
+            
+            data_point_count = 0
+            data_point_count += len(re.findall(r'\d+\.?\d*%', text))
+            data_point_count += len(re.findall(r'[\u4e00-\u9fa5]*价[格位]?[：:]\s*\d+\.?\d*', text))
+            data_point_count += len(re.findall(r'\d+\.?\d*\s*元', text))
+            data_point_count += len(re.findall(r'市盈率|市净率|ROE|毛利率|净利率|营收|净利润|增长率|换手率|成交量|成交额|涨跌幅', text))
+            data_point_count += len(re.findall(r'[一二三四五六七八九十\d]+[日周月季年]', text))
+            data_point_count += len(re.findall(r'数据来源|来自|根据|据|统计显示', text))
+            
+            total_data_points += max(data_point_count, 5)
+    
+    avg_chars_per_module = int(total_chars / valid_modules) if valid_modules > 0 else 0
+    
+    if total_data_points >= 100 and valid_modules >= 6 and avg_chars_per_module >= 2000:
         score = 15
-        desc = f"数据来源丰富（{total_sources}条，{source_modules}个模块），支撑充分"
-    elif total_sources >= 20 and source_modules >= 3:
+        desc = f"数据丰富（约{total_data_points}个指标，{valid_modules}个分析模块），信息密度高，支撑充分"
+    elif total_data_points >= 60 and valid_modules >= 5 and avg_chars_per_module >= 1500:
         score = 12
-        desc = f"数据来源较丰富（{total_sources}条，{source_modules}个模块），支撑较好"
-    elif total_sources >= 10:
-        score = 8
-        desc = f"数据来源一般（{total_sources}条，{source_modules}个模块），支撑有限"
+        desc = f"数据较丰富（约{total_data_points}个指标，{valid_modules}个分析模块），支撑较好"
+    elif total_data_points >= 30 and valid_modules >= 4:
+        score = 9
+        desc = f"数据一般（约{total_data_points}个指标，{valid_modules}个分析模块），支撑有限"
+    elif total_data_points >= 10 and valid_modules >= 2:
+        score = 6
+        desc = f"数据较少（约{total_data_points}个指标，{valid_modules}个分析模块），支撑不足"
     else:
-        score = 5
-        desc = f"数据来源较少（{total_sources}条，{source_modules}个模块），支撑不足"
+        score = 3
+        desc = f"数据匮乏（约{total_data_points}个指标，{valid_modules}个分析模块），需谨慎参考"
     total_score += score
     details.append({
-        "name": "数据来源丰富度",
+        "name": "数据丰富度",
         "score": score,
         "max_score": 15,
         "description": desc
@@ -1774,119 +1773,115 @@ async def get_reports_list(
         skip = (page - 1) * page_size
         cursor = db.analysis_reports.find(query).sort("created_at", -1).skip(skip).limit(page_size)
 
-        reports = []
+        # 先收集所有文档，不做耗时的数据库查询
+        raw_docs = []
+        stock_codes_to_lookup = set()
         async for doc in cursor:
-            # 转换为前端需要的格式
-            stock_code = doc.get("stock_symbol", "")
-            # 🔥 优先使用MongoDB中保存的股票名称，如果没有或等于股票代码则重新查询
-            stock_name = doc.get("stock_name")
-            if not stock_name or stock_name == stock_code:
-                stock_name = get_stock_name(stock_code)
+            raw_docs.append(doc)
 
-            # 🔥 获取市场类型，如果没有则根据股票代码推断
-            market_type = doc.get("market_type")
-            if not market_type:
-                try:
-                    from tradingagents.utils.stock_utils import StockUtils
-                    market_info = StockUtils.get_market_info(stock_code)
-                except ImportError:
-                    import logging as _fallback_logging
-                    _fallback_logging.getLogger(__name__).warning(
-                        "tradingagents.utils.stock_utils.StockUtils 不可用，使用 fallback 推断市场类型"
-                    )
-                    code_str = str(stock_code).strip()
-                    if code_str.isdigit() or code_str.endswith(".SH") or code_str.endswith(".SZ"):
-                        market_info = {"market": "china_a"}
-                    elif "." in code_str and not code_str.startswith(tuple("0123456789")):
-                        market_info = {"market": "us"}
-                    else:
-                        market_info = {"market": "unknown"}
-                market_type_map = {
-                    "china_a": "A股",
-                    "hong_kong": "港股",
-                    "us": "美股",
-                    "unknown": "A股"
-                }
-                market_type = market_type_map.get(market_info.get("market", "unknown"), "A股")
+            # 收集需要查询的股票代码
+            stock_code_item = doc.get("stock_symbol", "")
+            stock_name_item = doc.get("stock_name", "")
+            if not stock_name_item or stock_name_item == stock_code_item:
+                stock_codes_to_lookup.add(stock_code_item)
 
-            # 获取创建时间（数据库中是 UTC 时间，需要转换为 UTC+8）
-            created_at = doc.get("created_at", datetime.utcnow())
-            created_at_tz = to_config_tz(created_at)  # 转换为 UTC+8 并添加时区信息
-
-            # 🔥 从 decision 或 state 中提取决策信息
-            decision = doc.get("decision", {}) or doc.get("state", {}) or {}
-            if not isinstance(decision, dict):
-                decision = {}
-
-            # 从 reports 文本中提取（与详情页保持一致，优先级最高）
+            # 收集 reports 中可能有的股票代码
             reports_data = doc.get("reports", {})
-            extracted = {}
-            if isinstance(reports_data, dict) and reports_data:
-                combined_for_extract = dict(reports_data)
-                if isinstance(decision, dict) and decision:
-                    combined_for_extract["decision"] = decision
-                extracted = extract_structured_fields(combined_for_extract)
+            if isinstance(reports_data, dict):
+                for k, v in reports_data.items():
+                    if isinstance(v, str) and len(v) > 50:
+                        codes_in_text = re.findall(r'\b\d{6}\b', v)
+                        for code in codes_in_text:
+                            if 6 <= len(code) <= 10:
+                                stock_codes_to_lookup.add(code)
 
-            # 决策建议（优先从 reports 文本提取，其次从 decision 字典提取）
-            action = extracted.get("action", "")
+        # 🔥 批量查询股票名称（性能优化：将 N 次查询合并为 1 次）
+        code_to_name = {}
+        if stock_codes_to_lookup:
+            code6_list = [str(code).zfill(6) for code in stock_codes_to_lookup]
+            cursor = db.stock_basic_info.find(
+                {"$or": [{"symbol": {"$in": code6_list}}, {"code": {"$in": code6_list}}]},
+                {"symbol": 1, "code": 1, "name": 1}
+            )
+            async for info in cursor:
+                code = info.get("symbol") or info.get("code", "")
+                name = info.get("name", "")
+                if code and name:
+                    code_to_name[code.zfill(6)] = name
+                    code_to_name[code] = name
+
+        # 处理每个报告
+        reports = []
+        for doc in raw_docs:
+            stock_code_item = doc.get("stock_symbol", "")
+            stock_name_item = doc.get("stock_name", "")
+            code6 = str(stock_code_item).zfill(6)
+
+            # 股票名称：优先用批量查询结果，其次用 MongoDB 缓存
+            stock_name = code_to_name.get(code6) or code_to_name.get(stock_code_item, "")
+            if not stock_name or stock_name == stock_code_item:
+                stock_name = get_stock_name(stock_code_item)
+
+            # 市场类型
+            code_str = str(stock_code_item).strip()
+            if code_str.isdigit() or code_str.endswith(".SH") or code_str.endswith(".SZ"):
+                market_type = "A股"
+            elif "." in code_str and not code_str.startswith(tuple("0123456789")):
+                market_type = "美股"
+            else:
+                market_type = "A股"
+
+            # 创建时间
+            created_at = doc.get("created_at", datetime.utcnow())
+            created_at_tz = to_config_tz(created_at)
+
+            # 决策建议：优先从 final_trade_decision 提取，保持与详情页一致
+            action = ""
+            reports_dict = doc.get("reports", {})
+
+            # 方法1：从 final_trade_decision 提取（与详情页一致）
+            final_decision_text = reports_dict.get("final_trade_decision", "") if isinstance(reports_dict, dict) else ""
+            if final_decision_text:
+                rating_val = _match_rating(final_decision_text, ["操作建议", "评级", "投资建议", "建议", "行动评级", "执行评级", "最终结论", "核心观点", "结论"])
+                if rating_val:
+                    action = _normalize_rating(rating_val)
+
+            # 方法2：回退到 decision.action
             if not action:
-                action_raw = decision.get("action", "")
-                if action_raw and isinstance(action_raw, str):
-                    action_upper = action_raw.upper()
-                    action_map = {"BUY": "买入", "SELL": "卖出", "HOLD": "持有", "STRONG_BUY": "强烈买入", "STRONG_SELL": "强烈卖出"}
-                    action = action_map.get(action_upper, action_raw)
+                decision = doc.get("decision", {}) or doc.get("state", {}) or {}
+                if isinstance(decision, dict):
+                    action_raw = decision.get("action", "")
+                    if action_raw and isinstance(action_raw, str):
+                        action_upper = action_raw.upper()
+                        action_map = {"BUY": "买入", "SELL": "卖出", "HOLD": "持有", "STRONG_BUY": "强烈买入", "STRONG_SELL": "强烈卖出"}
+                        action = action_map.get(action_upper, _normalize_rating(action_raw))
 
-            # 置信度（优先从 reports 文本计算/提取，其次从 decision 字典提取）
-            confidence = 0.0
-            if extracted.get("置信度"):
-                try:
-                    confidence = float(extracted["置信度"])
-                except (TypeError, ValueError):
-                    confidence = 0.0
-            if confidence == 0:
-                conf_raw = decision.get("confidence") or decision.get("confidence_score") or decision.get("score")
-                if conf_raw is not None and conf_raw != "":
-                    try:
-                        if isinstance(conf_raw, (int, float)) and 0 < conf_raw <= 1:
-                            confidence = round(conf_raw * 100, 1)
-                        elif isinstance(conf_raw, (int, float)) and conf_raw > 1:
-                            confidence = round(float(conf_raw), 1)
-                    except (TypeError, ValueError):
-                        confidence = 0.0
-
-            # 多维度评分（从 reports 中提取）
-            tech_score = extracted.get("技术面评分") if extracted else None
-            fund_score = extracted.get("基本面评分") if extracted else None
-            sentiment_score = extracted.get("情绪面评分") if extracted else None
-            news_score = extracted.get("消息面评分") if extracted else None
-            hot_money_score = extracted.get("资金面评分") if extracted else None
-            policy_score = extracted.get("政策面评分") if extracted else None
-            lockup_score = extracted.get("解禁面评分") if extracted else None
+            # 置信度：直接从数据库字段获取，转换为百分比（0-100）
+            confidence_score = doc.get("confidence_score", 0.0)
+            try:
+                conf_val = float(confidence_score) if confidence_score else 0.0
+                if 0 < conf_val <= 1:
+                    confidence_percent = round(conf_val * 100, 1)
+                elif 0 < conf_val <= 100:
+                    confidence_percent = round(conf_val, 1)
+                else:
+                    confidence_percent = 0.0
+            except (TypeError, ValueError):
+                confidence_percent = 0.0
 
             report = {
                 "id": str(doc["_id"]),
                 "analysis_id": doc.get("analysis_id", ""),
-                "title": f"{stock_name}({stock_code}) 分析报告",
-                "stock_code": stock_code,
+                "title": f"{stock_name}({stock_code_item}) 分析报告",
+                "stock_code": stock_code_item,
                 "stock_name": stock_name,
-                "market_type": market_type,  # 🔥 添加市场类型字段
-                # 🔥 决策信息
+                "market_type": market_type,
                 "action": action,
-                "confidence": confidence,
-                # 多维度评分
-                "技术面评分": tech_score,
-                "基本面评分": fund_score,
-                "情绪面评分": sentiment_score,
-                "消息面评分": news_score,
-                "资金面评分": hot_money_score,
-                "政策面评分": policy_score,
-                "解禁面评分": lockup_score,
-                # 基础信息
+                "confidence": confidence_percent,
+                "confidence_score": confidence_percent,
                 "created_at": created_at_tz.isoformat() if created_at_tz else str(created_at),
                 "analysis_date": doc.get("analysis_date", ""),
-                "analysts": doc.get("analysts", []),
                 "summary": doc.get("summary", ""),
-                "file_size": len(str(doc.get("reports", {}))),  # 估算大小
                 "source": doc.get("source", "unknown"),
                 "task_id": doc.get("task_id", "")
             }

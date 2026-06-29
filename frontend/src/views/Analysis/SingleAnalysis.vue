@@ -130,12 +130,12 @@
                     <el-button
                       type="success"
                       size="large"
-                      @click="showResults = !showResults"
+                      @click="goToReportDetail"
                       class="submit-btn"
                       style="width: 180px; height: 56px; font-size: 16px; font-weight: 700; border-radius: 16px;"
                     >
                       <el-icon><Document /></el-icon>
-                      {{ showResults ? '隐藏结果' : '查看结果' }}
+                      查看完整报告
                     </el-button>
 
                     <el-button
@@ -386,300 +386,6 @@
           </el-card>
         </el-col>
       </el-row>
-
-      <!-- 分析结果显示 -->
-      <div v-if="showResults && analysisResults" class="results-section">
-        <el-row :gutter="24">
-          <el-col :span="24">
-            <el-card class="results-card" shadow="hover">
-              <template #header>
-                <div class="results-header">
-                  <h3>📊 分析结果</h3>
-                  <div class="result-meta">
-                    <el-tag type="success">{{ analysisResults.symbol || analysisResults.stock_symbol || analysisForm.symbol || analysisForm.stockCode }}</el-tag>
-                    <el-tag>{{ analysisResults.analysis_date }}</el-tag>
-                    <el-tag v-if="analysisResults.model_info && analysisResults.model_info !== 'Unknown'" type="info">
-                      <el-icon><Cpu /></el-icon>
-                      {{ analysisResults.model_info }}
-                    </el-tag>
-                  </div>
-                </div>
-              </template>
-
-              <div class="results-content">
-                <!-- 风险提示 -->
-                <div class="risk-disclaimer">
-                  <el-alert
-                    type="warning"
-                    :closable="false"
-                    show-icon
-                  >
-                    <template #title>
-                      <div class="disclaimer-content">
-                        <el-icon class="disclaimer-icon"><WarningFilled /></el-icon>
-                        <div class="disclaimer-text">
-                          <p style="margin: 0 0 8px 0;"><strong>⚠️ 重要风险提示与免责声明</strong></p>
-                          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
-                            <li><strong>工具性质：</strong>本系统为股票分析辅助工具，使用AI技术对公开市场数据进行分析，不具备证券投资咨询资质。</li>
-                            <li><strong>非投资建议：</strong>所有分析结果、评分、建议仅为技术分析参考，不构成任何买卖建议或投资决策依据。</li>
-                            <li><strong>数据局限性：</strong>分析基于历史数据和公开信息，可能存在延迟、不完整或不准确的情况，无法预测未来市场走势。</li>
-                            <li><strong>投资风险：</strong>股票投资存在市场风险、流动性风险、政策风险等多种风险，可能导致本金损失。</li>
-                            <li><strong>独立决策：</strong>投资者应基于自身风险承受能力、投资目标和财务状况独立做出投资决策。</li>
-                            <li><strong>专业咨询：</strong>重大投资决策建议咨询具有合法资质的专业投资顾问或金融机构。</li>
-                            <li><strong>责任声明：</strong>使用本工具产生的任何投资决策及其后果由投资者自行承担，本系统不承担任何责任。</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </template>
-                  </el-alert>
-                </div>
-
-                <!-- 最终决策 -->
-                <div v-if="analysisResults.decision" class="decision-section">
-                  <h4>🎯 分析参考</h4>
-                  <div class="decision-card">
-                    <div class="decision-main">
-                      <div class="decision-action">
-                        <span class="label">分析倾向:</span>
-                        <el-tag
-                          :type="getActionTagType(analysisResults.decision.action)"
-                          size="large"
-                        >
-                          {{ analysisResults.decision.action }}
-                        </el-tag>
-                        <el-tag type="info" size="small" style="margin-left: 8px;">仅供参考</el-tag>
-                      </div>
-
-                      <div class="decision-metrics">
-                        <div class="metric-item">
-                          <span class="label">参考价格:</span>
-                          <span class="value">{{ analysisResults.decision.target_price }}</span>
-                        </div>
-                        <div class="metric-item">
-                          <span class="label">模型置信度:</span>
-                          <span class="value">{{ (analysisResults.decision.confidence * 100).toFixed(1) }}%</span>
-                          <el-tooltip content="基于AI模型计算的置信度，不代表实际投资成功率" placement="top">
-                            <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
-                          </el-tooltip>
-                        </div>
-                        <div class="metric-item">
-                          <span class="label">风险评分:</span>
-                          <span class="value">{{ (analysisResults.decision.risk_score * 100).toFixed(1) }}%</span>
-                          <el-tooltip content="基于历史数据的风险评估，实际风险可能更高" placement="top">
-                            <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
-                          </el-tooltip>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="decision-reasoning">
-                      <h5>分析依据:</h5>
-                      <p>{{ analysisResults.decision.reasoning }}</p>
-                      <el-alert type="info" :closable="false" style="margin-top: 12px;">
-                        <template #default>
-                          <span style="font-size: 13px;">💡 以上分析基于AI模型对历史数据的处理，不构成投资建议，请结合自身情况独立决策。</span>
-                        </template>
-                      </el-alert>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 操作按钮 -->
-                <div class="result-actions">
-                  <el-button type="success" @click="goSimOrder">
-                    <el-icon><CreditCard /></el-icon>
-                    一键模拟下单
-                  </el-button>
-                  <el-dropdown trigger="click" @command="downloadReport">
-                    <el-button type="primary">
-                      <el-icon><Download /></el-icon>
-                      下载报告
-                      <el-icon class="el-icon--right"><arrow-down /></el-icon>
-                    </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="markdown">
-                          <el-icon><document /></el-icon> Markdown
-                        </el-dropdown-item>
-                        <el-dropdown-item command="docx">
-                          <el-icon><document /></el-icon> Word 文档
-                        </el-dropdown-item>
-                        <el-dropdown-item command="pdf">
-                          <el-icon><document /></el-icon> PDF
-                        </el-dropdown-item>
-                        <el-dropdown-item command="json" divided>
-                          <el-icon><document /></el-icon> JSON (原始数据)
-                        </el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                </div>
-
-                <!-- 风险提示 -->
-                <el-alert
-                  type="warning"
-                  :closable="false"
-                  show-icon
-                  class="risk-disclaimer"
-                >
-                  <template #title>
-                    <span style="font-weight: bold;">报告依据真实交易数据使用AI分析生成，仅供参考，不构成任何投资建议。市场有风险，投资需谨慎。</span>
-                  </template>
-                </el-alert>
-              </div>
-            </el-card>
-          </el-col>
-        </el-row>
-      </div>
-    </div>
-
-    <!-- 分析流程介绍 -->
-    <div class="pipeline-intro">
-      <!-- 第一部分：7位分析师团队 -->
-      <div class="pipeline-section">
-        <div class="section-header">
-          <h3>👥 7位分析师团队 · 并行研究</h3>
-          <p class="section-subtitle">7位AI分析师同时从不同维度研究股票，覆盖短线博弈到长线价值</p>
-        </div>
-        <div class="analyst-teams">
-          <!-- 短线博弈维度 -->
-          <div class="team-group">
-            <div class="team-label">⚡ 短线博弈</div>
-            <div class="team-cards">
-              <div class="analyst-chip analyst-chip--market">
-                <span class="chip-icon">📊</span>
-                <span class="chip-name">技术分析师</span>
-                <span class="chip-desc">技术指标 · 均线/KDJ/MACD</span>
-              </div>
-              <div class="analyst-chip analyst-chip--social">
-                <span class="chip-icon">💬</span>
-                <span class="chip-name">市场情绪分析师</span>
-                <span class="chip-desc">情绪拐点 · 散户逆向指标</span>
-              </div>
-              <div class="analyst-chip analyst-chip--fund">
-                <span class="chip-icon">💰</span>
-                <span class="chip-name">游资追踪师</span>
-                <span class="chip-desc">主力资金 · 龙虎榜 · 北向</span>
-              </div>
-              <div class="analyst-chip analyst-chip--unlock">
-                <span class="chip-icon">🔒</span>
-                <span class="chip-name">解禁追踪师</span>
-                <span class="chip-desc">限售股解禁 · 大股东减持</span>
-              </div>
-            </div>
-          </div>
-          <!-- 长线价值维度 -->
-          <div class="team-group">
-            <div class="team-label">💎 长线价值</div>
-            <div class="team-cards">
-              <div class="analyst-chip analyst-chip--fundamental">
-                <span class="chip-icon">💼</span>
-                <span class="chip-name">基本面分析师</span>
-                <span class="chip-desc">财务数据 · 护城河 · 内在价值</span>
-              </div>
-              <div class="analyst-chip analyst-chip--news">
-                <span class="chip-icon">📰</span>
-                <span class="chip-name">新闻分析师</span>
-                <span class="chip-desc">公告研报 · 事件冲击分析</span>
-              </div>
-              <div class="analyst-chip analyst-chip--policy">
-                <span class="chip-icon">🏛️</span>
-                <span class="chip-name">政策分析师</span>
-                <span class="chip-desc">产业政策 · 宏观调控 · 监管动向</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 第二部分：辩论与决策流程 -->
-      <div class="pipeline-section section--debate">
-        <div class="section-header">
-          <h3>⚔️ 多空辩论 · 三方风控 · 最终决策</h3>
-          <p class="section-subtitle">研究团队通过对抗性辩论形成共识，风控团队从三个视角兜底，最终给出可操作的投资建议</p>
-        </div>
-
-        <!-- 辩论流程时间线 -->
-        <div class="debate-timeline">
-          <!-- 阶段1: 研究辩论 -->
-          <div class="timeline-phase">
-            <div class="phase-label">📋 研究辩论</div>
-            <div class="phase-flow">
-              <div class="debate-node node--bull">
-                <span class="node-icon">🐂</span>
-                <span class="node-name">看涨研究员</span>
-                <span class="node-desc">构建买入逻辑<br/>行业景气 · 业绩拐点 · 资金流入</span>
-              </div>
-              <div class="timeline-arrow">⚡ VS ⚡</div>
-              <div class="debate-node node--bear">
-                <span class="node-icon">🐻</span>
-                <span class="node-name">看跌研究员</span>
-                <span class="node-desc">识别做空风险<br/>宏观压力 · 业绩雷点 · 顶背离</span>
-              </div>
-              <div class="timeline-arrow">→</div>
-              <div class="debate-node node--debate">
-                <span class="node-icon">🎯</span>
-                <span class="node-name">多轮深度辩论</span>
-                <span class="node-desc">逐条反驳对方论据<br/>让逻辑更扎实</span>
-              </div>
-              <div class="timeline-arrow">→</div>
-              <div class="debate-node node--manager">
-                <span class="node-icon">👔</span>
-                <span class="node-name">研究经理</span>
-                <span class="node-desc">综合共识<br/>投资亮点 / 风险点 / 适用场景</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 阶段2: 交易策略 -->
-          <div class="timeline-phase phase--trade">
-            <div class="phase-label">📈 交易策略</div>
-            <div class="trade-node">
-              <span class="node-icon">💼</span>
-              <span class="node-name">交易员</span>
-              <span class="node-desc">制定具体策略：买入 / 持有 / 卖出 + 目标价位 + 仓位建议</span>
-            </div>
-          </div>
-
-          <!-- 阶段3: 三方风控 -->
-          <div class="timeline-phase">
-            <div class="phase-label">🛡️ 三方风控</div>
-            <div class="risk-perspectives">
-              <div class="risk-card risk-card--aggressive">
-                <span class="risk-icon">🔥</span>
-                <span class="risk-name">激进风险</span>
-                <span class="risk-desc">高仓位 · 高杠杆 · 快进快出</span>
-              </div>
-              <div class="risk-card risk-card--neutral">
-                <span class="risk-icon">⚖️</span>
-                <span class="risk-name">中性风险</span>
-                <span class="risk-desc">均衡仓位 · 标准止损 · 趋势跟随</span>
-              </div>
-              <div class="risk-card risk-card--conservative">
-                <span class="risk-icon">🛡️</span>
-                <span class="risk-name">保守风险</span>
-                <span class="risk-desc">轻仓 · 宽止损 · 长周期持有</span>
-              </div>
-            </div>
-            <div class="risk-manager">
-              <span class="node-icon">🎯</span>
-              <span class="node-name">风险经理</span>
-              <span class="node-desc">综合三方风控视角 → 止损位 / 仓位上限 / 持有周期</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 最终决策 -->
-        <div class="final-decision">
-          <div class="decision-label">📡 最终决策</div>
-          <div class="decision-options">
-            <div class="decision-chip decision-chip--buy">BUY</div>
-            <div class="decision-chip decision-chip--hold">HOLD</div>
-            <div class="decision-chip decision-chip--sell">SELL</div>
-          </div>
-          <p class="decision-desc">综合所有分析师报告、多空辩论、风控意见，输出最终交易信号与完整分析报告</p>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -1188,6 +894,13 @@ const updateProgressInfo = (status: any) => {
 }
 
 // 重新开始分析
+const goToReportDetail = () => {
+  const reportId = analysisResults.value?.id || currentTaskId.value
+  if (reportId) {
+    router.push(`/reports/view/${reportId}`)
+  }
+}
+
 const restartAnalysis = () => {
   // 清除任务缓存
   clearTaskCache()
