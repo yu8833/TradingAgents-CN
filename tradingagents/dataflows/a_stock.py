@@ -656,6 +656,7 @@ def _augment_with_realtime(df: pd.DataFrame, rt: Dict[str, Any]) -> pd.DataFrame
 
     - 如果最新K线日期就是今天，更新最后一行
     - 如果最新K线日期早于今天，追加一行当日数据
+    - 周末或非交易时间不进行增强
     """
     if df is None or df.empty or "Close" not in df.columns:
         return df
@@ -685,6 +686,25 @@ def _augment_with_realtime(df: pd.DataFrame, rt: Dict[str, Any]) -> pd.DataFrame
     amt = rt.get("amount") or 0
 
     today = datetime.now().date()
+    now = datetime.now()
+
+    # === 交易时间判断 ===
+    # 1. 简单检查是否周末（周六=5，周日=6）
+    is_weekend = today.weekday() >= 5
+    # 2. 检查是否在交易时间内（A股: 9:30-11:30, 13:00-15:00）
+    is_trading_hours = False
+    current_time = now.time()
+    morning_start = datetime.strptime("09:30", "%H:%M").time()
+    morning_end = datetime.strptime("11:30", "%H:%M").time()
+    afternoon_start = datetime.strptime("13:00", "%H:%M").time()
+    afternoon_end = datetime.strptime("15:00", "%H:%M").time()
+    if (morning_start <= current_time <= morning_end) or (afternoon_start <= current_time <= afternoon_end):
+        is_trading_hours = True
+
+    # 周末或非交易时间不进行实时增强
+    if is_weekend or not is_trading_hours:
+        logger.debug(f"跳过实时行情增强: 周末={is_weekend}, 交易时间={is_trading_hours}, today={today}")
+        return df
 
     df = df.copy()
     if last_date >= today:

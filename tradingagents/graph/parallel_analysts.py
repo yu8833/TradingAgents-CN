@@ -88,6 +88,7 @@ def run_single_analyst(
     report_field = ANALYST_REPORT_FIELDS.get(analyst_type, f"{analyst_type}_report")
     report = ""
     error_msg = ""
+    tool_errors: List[str] = []  # 跟踪工具调用失败
     
     try:
         for i in range(max_iterations):
@@ -140,15 +141,19 @@ def run_single_analyst(
                                 ToolMessage(content=str(tool_output), tool_call_id=tool_id)
                             )
                         except Exception as e:
+                            error_msg = f"Tool call error: {str(e)}"
                             logger.warning(f"⚠️ [{analyst_type}] 工具 {tool_name} 调用失败: {e}")
                             new_tool_messages.append(
-                                ToolMessage(content=f"Tool call error: {str(e)}", tool_call_id=tool_id)
+                                ToolMessage(content=error_msg, tool_call_id=tool_id)
                             )
+                            tool_errors.append(f"{tool_name}: {str(e)}")
                     else:
+                        error_msg = f"Tool not found: {tool_name}"
                         logger.warning(f"⚠️ [{analyst_type}] 未找到工具: {tool_name}")
                         new_tool_messages.append(
-                            ToolMessage(content=f"Tool not found: {tool_name}", tool_call_id=tool_id)
+                            ToolMessage(content=error_msg, tool_call_id=tool_id)
                         )
+                        tool_errors.append(tool_name)
                 
                 current_state["messages"] = current_state["messages"] + new_tool_messages
             else:
@@ -181,6 +186,11 @@ def run_single_analyst(
         logger.error(f"❌ [{analyst_type}] 执行异常: {e}", exc_info=True)
     finally:
         set_current_logger(None)
+    
+    # 如果有工具调用失败，标记报告为数据不完整
+    if tool_errors:
+        report = f"[数据不完整] {report}"
+        logger.warning(f"⚠️ [{analyst_type}] 报告标记为数据不完整，失败工具: {tool_errors}")
     
     logger.info(f"📊 [{analyst_type}] 最终报告长度: {len(report)}")
     return {report_field: report}
