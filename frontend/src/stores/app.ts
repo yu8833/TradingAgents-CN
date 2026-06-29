@@ -111,12 +111,15 @@ export const useAppStore = defineStore('app', {
       this.loadingProgress = Math.max(0, Math.min(100, progress))
     },
     
-    // 切换主题
+    // 切换主题（亮色/暗色一键切换）
     toggleTheme() {
-      const themes: Array<'light' | 'dark' | 'auto'> = ['light', 'dark', 'auto']
-      const currentIndex = themes.indexOf(this.theme)
-      this.theme = themes[(currentIndex + 1) % themes.length]
+      if (this.isDarkTheme) {
+        this.theme = 'light'
+      } else {
+        this.theme = 'dark'
+      }
       this.applyTheme()
+      localStorage.setItem('app-theme', this.theme)
     },
     
     // 设置主题

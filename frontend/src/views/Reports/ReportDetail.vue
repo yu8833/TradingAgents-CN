@@ -3777,38 +3777,137 @@ onBeforeUnmount(() => {
         }
       }
 
-      @media (prefers-color-scheme: dark) {
-        .section--scores .dimension-grid .dimension-card {
-          &.dimension--technical {
-            background: linear-gradient(135deg, #78350f 0%, #1c1917 100%);
-            border-color: #d97706;
-            .dimension-name { color: #fef3c7; }
-            .score-value { color: #fde68a; }
-            .score-unit { color: #fcd34d; }
+      // 多维度评分区域
+      .section--scores {
+        .section-header {
+          h3 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0 0 10px 0;
+            letter-spacing: -0.3px;
           }
-          &.dimension--fundamental {
-            background: linear-gradient(135deg, #312e81 0%, #1c1917 100%);
-            border-color: #6366f1;
-            .dimension-name { color: #e0e7ff; }
-            .score-value { color: #c7d2fe; }
-            .score-unit { color: #a5b4fc; }
-          }
-          &.dimension--sentiment {
-            background: linear-gradient(135deg, #831843 0%, #1c1917 100%);
-            border-color: #ec4899;
-            .dimension-name { color: #fce7f3; }
-            .score-value { color: #fbcfe8; }
-            .score-unit { color: #f9a8d4; }
-          }
-          &.dimension--policy {
-            background: linear-gradient(135deg, #134e4a 0%, #1c1917 100%);
-            border-color: #14b8a6;
-            .dimension-name { color: #ccfbf1; }
-            .score-value { color: #99f6e4; }
-            .score-unit { color: #5eead4; }
+          .section-subtitle {
+            font-size: 14px;
+            color: #64748b;
+            margin: 0;
+            line-height: 1.6;
           }
         }
 
+        .dimension-group {
+          .dimension-group-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #374151;
+            margin-bottom: 16px;
+            padding-left: 8px;
+            border-left: 4px solid #6366f1;
+          }
+        }
+      }
+
+      html.dark & {
+        // 多维度评分卡片
+        .section--scores {
+          .section-header {
+            border-bottom-color: #334155;
+            h3 { color: #f8fafc; }
+            .section-subtitle { color: #94a3b8; }
+          }
+          .dimension-group {
+            .dimension-group-title {
+              color: #e2e8f0;
+              border-left-color: #818cf8;
+            }
+          }
+        }
+
+        // 多维度评分卡片
+        .section--scores .dimension-grid .dimension-card {
+          background: #1e293b !important;
+          border-color: #334155 !important;
+          
+          .dimension-name {
+            color: #f1f5f9 !important;
+          }
+          .score-unit {
+            color: #94a3b8 !important;
+          }
+          .score-bar {
+            background: rgba(15, 23, 42, 0.8) !important;
+          }
+          .dimension-analyst {
+            color: #64748b !important;
+            border-top-color: rgba(71, 85, 105, 0.5) !important;
+          }
+          .dimension-icon {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+          }
+
+          &:hover {
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+          }
+
+          &.dimension--technical {
+            background: linear-gradient(135deg, #422006 0%, #1e293b 100%) !important;
+            border-color: #d97706 !important;
+            .score-value { color: #fbbf24 !important; }
+            .dimension-icon { background: linear-gradient(135deg, rgba(217, 119, 6, 0.25), rgba(251, 191, 36, 0.15)) !important; }
+            .score-bar-fill { background: linear-gradient(90deg, #d97706, #fbbf24) !important; }
+            &::before { background: #f59e0b !important; }
+          }
+          &.dimension--fundamental {
+            background: linear-gradient(135deg, #1e1b4b 0%, #1e293b 100%) !important;
+            border-color: #6366f1 !important;
+            .score-value { color: #a5b4fc !important; }
+            .dimension-icon { background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(165, 180, 252, 0.15)) !important; }
+            .score-bar-fill { background: linear-gradient(90deg, #4f46e5, #818cf8) !important; }
+            &::before { background: #6366f1 !important; }
+          }
+          &.dimension--sentiment {
+            background: linear-gradient(135deg, #500724 0%, #1e293b 100%) !important;
+            border-color: #ec4899 !important;
+            .score-value { color: #f9a8d4 !important; }
+            .dimension-icon { background: linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(249, 168, 212, 0.15)) !important; }
+            .score-bar-fill { background: linear-gradient(90deg, #db2777, #f472b6) !important; }
+            &::before { background: #ec4899 !important; }
+          }
+          &.dimension--news {
+            background: linear-gradient(135deg, #422006 0%, #1e293b 100%) !important;
+            border-color: #eab308 !important;
+            .score-value { color: #fde047 !important; }
+            .dimension-icon { background: linear-gradient(135deg, rgba(234, 179, 8, 0.25), rgba(253, 224, 71, 0.15)) !important; }
+            .score-bar-fill { background: linear-gradient(90deg, #ca8a04, #facc15) !important; }
+            &::before { background: #eab308 !important; }
+          }
+          &.dimension--capital {
+            background: linear-gradient(135deg, #052e16 0%, #1e293b 100%) !important;
+            border-color: #22c55e !important;
+            .score-value { color: #86efac !important; }
+            .dimension-icon { background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(134, 239, 172, 0.15)) !important; }
+            .score-bar-fill { background: linear-gradient(90deg, #16a34a, #4ade80) !important; }
+            &::before { background: #22c55e !important; }
+          }
+          &.dimension--policy {
+            background: linear-gradient(135deg, #042f2e 0%, #1e293b 100%) !important;
+            border-color: #14b8a6 !important;
+            .score-value { color: #5eead4 !important; }
+            .dimension-icon { background: linear-gradient(135deg, rgba(20, 184, 166, 0.25), rgba(94, 234, 212, 0.15)) !important; }
+            .score-bar-fill { background: linear-gradient(90deg, #0d9488, #2dd4bf) !important; }
+            &::before { background: #14b8a6 !important; }
+          }
+          &.dimension--lockup {
+            background: linear-gradient(135deg, #2e1065 0%, #1e293b 100%) !important;
+            border-color: #a855f7 !important;
+            .score-value { color: #d8b4fe !important; }
+            .dimension-icon { background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(216, 180, 254, 0.15)) !important; }
+            .score-bar-fill { background: linear-gradient(90deg, #9333ea, #c084fc) !important; }
+            &::before { background: #a855f7 !important; }
+          }
+        }
+
+        // 置信度评估
         .section--confidence {
           background: linear-gradient(135deg, #0c4a6e 0%, #1c1917 100%);
           border-color: #0369a1;
@@ -3835,6 +3934,7 @@ onBeforeUnmount(() => {
           }
         }
 
+        // 辩论节点
         .debate-node {
           &.node--bull {
             background: linear-gradient(135deg, #14532d 0%, #1c1917 100%);
@@ -3875,16 +3975,17 @@ onBeforeUnmount(() => {
           &--vs { color: #f87171; }
         }
 
+        // 交易节点
         .trade-node {
           background: linear-gradient(135deg, #7c2d12 0%, #1c1917 100%);
           border-color: #9a3412;
-          
           .node-name { color: #ffedd5; }
           .node-desc { color: #fdba74; }
           .node-icon { background: linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(251, 146, 60, 0.1)); }
           &::before { background: linear-gradient(135deg, #f97316, #fb923c); }
         }
 
+        // 风险卡片
         .risk-perspectives .risk-card {
           &.risk-card--aggressive {
             background: linear-gradient(135deg, #7f1d1d 0%, #1c1917 100%);
@@ -3915,6 +4016,7 @@ onBeforeUnmount(() => {
           }
         }
 
+        // 风控经理
         .risk-manager {
           &:not(.risk-constraint) {
             background: linear-gradient(135deg, #831843 0%, #1c1917 100%);
@@ -3935,6 +4037,7 @@ onBeforeUnmount(() => {
           &::before { background: linear-gradient(135deg, #3b82f6, #60a5fa) !important; }
         }
 
+        // 最终决策卡片
         .final-decision-card {
           margin-top: 16px;
           background: linear-gradient(135deg, #7c2d12 0%, #1c1917 100%);
@@ -3966,6 +4069,7 @@ onBeforeUnmount(() => {
           }
         }
 
+        // 最终策略阶段
         .phase--final-strategy {
           background: linear-gradient(135deg, #431407 0%, #1c1917 100%);
           border-color: #9a3412;
@@ -4112,6 +4216,103 @@ html.dark {
 
     .decision-desc {
       color: #94a3b8;
+    }
+  }
+
+  // 多维度评分卡片暗色模式
+  .report-pipeline-intro .section--scores {
+    .section-header {
+      border-bottom-color: #334155;
+      h3 { color: #f8fafc; }
+      .section-subtitle { color: #94a3b8; }
+    }
+    .dimension-group {
+      .dimension-group-title {
+        color: #e2e8f0;
+        border-left-color: #818cf8;
+      }
+    }
+    .dimension-grid .dimension-card {
+      background: #1e293b;
+      border-color: #334155;
+
+      .dimension-name {
+        color: #f1f5f9;
+      }
+      .score-unit {
+        color: #94a3b8;
+      }
+      .score-bar {
+        background: rgba(15, 23, 42, 0.8);
+      }
+      .dimension-analyst {
+        color: #64748b;
+        border-top-color: rgba(71, 85, 105, 0.5);
+      }
+      .dimension-icon {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      }
+
+      &:hover {
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+
+      &.dimension--technical {
+        background: linear-gradient(135deg, #422006 0%, #1e293b 100%);
+        border-color: #d97706;
+        .score-value { color: #fbbf24; }
+        .dimension-icon { background: linear-gradient(135deg, rgba(217, 119, 6, 0.25), rgba(251, 191, 36, 0.15)); }
+        .score-bar-fill { background: linear-gradient(90deg, #d97706, #fbbf24); }
+        &::before { background: #f59e0b; }
+      }
+      &.dimension--fundamental {
+        background: linear-gradient(135deg, #1e1b4b 0%, #1e293b 100%);
+        border-color: #6366f1;
+        .score-value { color: #a5b4fc; }
+        .dimension-icon { background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(165, 180, 252, 0.15)); }
+        .score-bar-fill { background: linear-gradient(90deg, #4f46e5, #818cf8); }
+        &::before { background: #6366f1; }
+      }
+      &.dimension--sentiment {
+        background: linear-gradient(135deg, #500724 0%, #1e293b 100%);
+        border-color: #ec4899;
+        .score-value { color: #f9a8d4; }
+        .dimension-icon { background: linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(249, 168, 212, 0.15)); }
+        .score-bar-fill { background: linear-gradient(90deg, #db2777, #f472b6); }
+        &::before { background: #ec4899; }
+      }
+      &.dimension--news {
+        background: linear-gradient(135deg, #422006 0%, #1e293b 100%);
+        border-color: #eab308;
+        .score-value { color: #fde047; }
+        .dimension-icon { background: linear-gradient(135deg, rgba(234, 179, 8, 0.25), rgba(253, 224, 71, 0.15)); }
+        .score-bar-fill { background: linear-gradient(90deg, #ca8a04, #facc15); }
+        &::before { background: #eab308; }
+      }
+      &.dimension--capital {
+        background: linear-gradient(135deg, #052e16 0%, #1e293b 100%);
+        border-color: #22c55e;
+        .score-value { color: #86efac; }
+        .dimension-icon { background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(134, 239, 172, 0.15)); }
+        .score-bar-fill { background: linear-gradient(90deg, #16a34a, #4ade80); }
+        &::before { background: #22c55e; }
+      }
+      &.dimension--policy {
+        background: linear-gradient(135deg, #042f2e 0%, #1e293b 100%);
+        border-color: #14b8a6;
+        .score-value { color: #5eead4; }
+        .dimension-icon { background: linear-gradient(135deg, rgba(20, 184, 166, 0.25), rgba(94, 234, 212, 0.15)); }
+        .score-bar-fill { background: linear-gradient(90deg, #0d9488, #2dd4bf); }
+        &::before { background: #14b8a6; }
+      }
+      &.dimension--lockup {
+        background: linear-gradient(135deg, #2e1065 0%, #1e293b 100%);
+        border-color: #a855f7;
+        .score-value { color: #d8b4fe; }
+        .dimension-icon { background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(216, 180, 254, 0.15)); }
+        .score-bar-fill { background: linear-gradient(90deg, #9333ea, #c084fc); }
+        &::before { background: #a855f7; }
+      }
     }
   }
 }
