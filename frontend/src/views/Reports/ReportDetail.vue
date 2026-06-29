@@ -2059,6 +2059,32 @@ onBeforeUnmount(() => {
       background: linear-gradient(135deg, #fafbfc 0%, #f8fafc 100%);
       box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
 
+      :deep(.el-card__body) {
+        background: transparent;
+      }
+
+      html.dark & {
+        background: linear-gradient(135deg, #1e293b 0%, #1c1917 100%);
+        border-color: #334155;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+
+        .report-title {
+          color: #f8fafc;
+
+          .el-icon {
+            color: #60a5fa;
+          }
+        }
+
+        .meta-item {
+          color: #94a3b8;
+
+          .el-icon {
+            color: #64748b;
+          }
+        }
+      }
+
       .header-content {
         display: flex;
         justify-content: space-between;
@@ -3388,19 +3414,31 @@ onBeforeUnmount(() => {
         }
 
         &.node--bull {
-          .node-icon { background: linear-gradient(135deg, #ecfdf5, #d1fae5); }
-          &::before { background: linear-gradient(135deg, #10b981, #34d399); }
+          background: linear-gradient(145deg, #f0fdf4 0%, #dcfce7 50%, #ffffff 100%);
+          border-color: #bbf7d0;
+          .node-name { color: #166534; }
+          .node-icon { background: linear-gradient(145deg, #dcfce7, #bbf7d0); }
+          &::before { background: linear-gradient(135deg, #22c55e, #4ade80); }
         }
         &.node--bear {
-          .node-icon { background: linear-gradient(135deg, #fef2f2, #fee2e2); }
+          background: linear-gradient(145deg, #fef2f2 0%, #fee2e2 50%, #ffffff 100%);
+          border-color: #fecaca;
+          .node-name { color: #991b1b; }
+          .node-icon { background: linear-gradient(145deg, #fee2e2, #fecaca); }
           &::before { background: linear-gradient(135deg, #ef4444, #f87171); }
         }
         &.node--debate {
-          .node-icon { background: linear-gradient(135deg, #f5f3ff, #ede9fe); }
+          background: linear-gradient(145deg, #f5f3ff 0%, #ede9fe 50%, #ffffff 100%);
+          border-color: #ddd6fe;
+          .node-name { color: #4c1d95; }
+          .node-icon { background: linear-gradient(145deg, #ede9fe, #ddd6fe); }
           &::before { background: linear-gradient(135deg, #8b5cf6, #a78bfa); }
         }
         &.node--manager {
-          .node-icon { background: linear-gradient(135deg, #eff6ff, #dbeafe); }
+          background: linear-gradient(145deg, #eff6ff 0%, #dbeafe 50%, #ffffff 100%);
+          border-color: #bfdbfe;
+          .node-name { color: #1e40af; }
+          .node-icon { background: linear-gradient(145deg, #dbeafe, #bfdbfe); }
           &::before { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
         }
       }
@@ -3424,8 +3462,8 @@ onBeforeUnmount(() => {
         padding: 22px;
         transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
         border-radius: 16px;
-        background: var(--el-fill-color-light);
-        border: 1px solid var(--el-border-color);
+        background: linear-gradient(145deg, #fff7ed 0%, #ffedd5 50%, #ffffff 100%);
+        border: 1px solid #fed7aa;
         position: relative;
         overflow: hidden;
 
@@ -3447,7 +3485,7 @@ onBeforeUnmount(() => {
 
           &:hover {
             transform: translateY(-6px) scale(1.02);
-            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
+            box-shadow: 0 20px 40px rgba(249, 115, 22, 0.15), 0 4px 12px rgba(249, 115, 22, 0.08);
 
             &::before {
               opacity: 0.15;
@@ -3465,19 +3503,19 @@ onBeforeUnmount(() => {
           align-items: center;
           justify-content: center;
           border-radius: 12px;
-          background: linear-gradient(135deg, #fff7ed, #ffedd5);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+          background: linear-gradient(145deg, #ffedd5, #fed7aa);
+          box-shadow: 0 2px 8px rgba(249, 115, 22, 0.1);
           flex-shrink: 0;
         }
         .node-name {
           font-size: 15px;
           font-weight: 700;
-          color: var(--el-text-color-primary);
+          color: #9a3412;
           margin-bottom: 4px;
         }
         .node-desc {
           font-size: 12px;
-          color: var(--el-text-color-secondary);
+          color: #c2410c;
           line-height: 1.6;
         }
       }
@@ -3556,15 +3594,27 @@ onBeforeUnmount(() => {
           }
 
           &.risk-card--aggressive {
-            .risk-icon { background: linear-gradient(135deg, #fef2f2, #fee2e2); }
+            background: linear-gradient(145deg, #fef2f2 0%, #fee2e2 50%, #ffffff 100%);
+            border-color: #fecaca;
+            color: #991b1b;
+            .risk-name { color: #991b1b; }
+            .risk-icon { background: linear-gradient(145deg, #fee2e2, #fecaca); }
             &::before { background: linear-gradient(135deg, #ef4444, #f87171); }
           }
           &.risk-card--neutral {
-            .risk-icon { background: linear-gradient(135deg, #fffbeb, #fef3c7); }
+            background: linear-gradient(145deg, #fffbeb 0%, #fef3c7 50%, #ffffff 100%);
+            border-color: #fde68a;
+            color: #92400e;
+            .risk-name { color: #92400e; }
+            .risk-icon { background: linear-gradient(145deg, #fef3c7, #fde68a); }
             &::before { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
           }
           &.risk-card--conservative {
-            .risk-icon { background: linear-gradient(135deg, #eef2ff, #e0e7ff); }
+            background: linear-gradient(145deg, #eef2ff 0%, #e0e7ff 50%, #ffffff 100%);
+            border-color: #c7d2fe;
+            color: #3730a3;
+            .risk-name { color: #3730a3; }
+            .risk-icon { background: linear-gradient(145deg, #e0e7ff, #c7d2fe); }
             &::before { background: linear-gradient(135deg, #6366f1, #818cf8); }
           }
         }
@@ -3575,7 +3625,6 @@ onBeforeUnmount(() => {
         align-items: center;
         gap: 16px;
         padding: 22px;
-        background: var(--el-fill-color-light);
         border-radius: 16px;
         border: 1px solid var(--el-border-color);
         transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
@@ -3623,29 +3672,43 @@ onBeforeUnmount(() => {
         .node-name {
           font-size: 15px;
           font-weight: 700;
-          color: var(--el-text-color-primary);
           margin-bottom: 4px;
         }
         .node-desc {
           font-size: 12px;
-          color: var(--el-text-color-secondary);
           line-height: 1.6;
         }
 
         &:not(.risk-constraint) {
-          .node-icon { background: linear-gradient(135deg, #fdf2f8, #fce7f3); }
+          background: linear-gradient(145deg, #fdf2f8 0%, #fce7f3 50%, #ffffff 100%);
+          border-color: #fbcfe8;
+          .node-name { color: #9d174d; }
+          .node-desc { color: #be185d; }
+          .node-icon { background: linear-gradient(145deg, #fce7f3, #fbcfe8); }
           &::before { background: linear-gradient(135deg, #ec4899, #f472b6); }
+
+          &.is-clickable:hover {
+            box-shadow: 0 20px 40px rgba(236, 72, 153, 0.15), 0 4px 12px rgba(236, 72, 153, 0.08);
+          }
         }
         &.risk-constraint {
-          .node-icon { background: linear-gradient(135deg, #eff6ff, #dbeafe); }
+          background: linear-gradient(145deg, #eff6ff 0%, #dbeafe 50%, #ffffff 100%);
+          border-color: #bfdbfe;
+          .node-name { color: #1e40af; }
+          .node-desc { color: #2563eb; }
+          .node-icon { background: linear-gradient(145deg, #dbeafe, #bfdbfe); }
           &::before { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
+
+          &.is-clickable:hover {
+            box-shadow: 0 20px 40px rgba(59, 130, 246, 0.15), 0 4px 12px rgba(59, 130, 246, 0.08);
+          }
         }
       }
 
       .final-decision-card {
         margin-top: 16px;
-        background: var(--el-fill-color-light);
-        border: 1px solid var(--el-border-color);
+        background: linear-gradient(145deg, #fff7ed 0%, #ffedd5 50%, #ffffff 100%);
+        border: 1px solid #fed7aa;
         border-radius: 16px;
         padding: 24px;
         text-align: left;
@@ -3686,20 +3749,20 @@ onBeforeUnmount(() => {
           align-items: center;
           justify-content: center;
           border-radius: 14px;
-          background: linear-gradient(135deg, #fff7ed, #ffedd5);
+          background: linear-gradient(145deg, #ffedd5, #fed7aa);
           box-shadow: 0 2px 8px rgba(249, 115, 22, 0.15);
           margin-bottom: 14px;
         }
         .node-name {
           font-size: 18px;
           font-weight: 800;
-          color: var(--el-text-color-primary);
+          color: #9a3412;
           display: block;
           margin-bottom: 8px;
         }
         .node-desc {
           font-size: 13px;
-          color: var(--el-text-color-secondary);
+          color: #c2410c;
           line-height: 1.6;
         }
       }
@@ -3773,34 +3836,35 @@ onBeforeUnmount(() => {
         }
 
         .debate-node {
-          background: rgba(30, 41, 59, 0.5);
-          border-color: rgba(71, 85, 105, 0.5);
-          
           &.node--bull {
-            border-color: rgba(16, 185, 129, 0.3);
+            background: linear-gradient(135deg, #14532d 0%, #1c1917 100%);
+            border-color: #166534;
             .node-name { color: #d1fae5; }
-            .node-desc { color: #a7f3d0; }
+            .node-desc { color: #6ee7b7; }
             .node-icon { background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(52, 211, 153, 0.1)); }
             &::before { background: linear-gradient(135deg, #10b981, #34d399); }
           }
           &.node--bear {
-            border-color: rgba(239, 68, 68, 0.3);
+            background: linear-gradient(135deg, #7f1d1d 0%, #1c1917 100%);
+            border-color: #991b1b;
             .node-name { color: #fee2e2; }
-            .node-desc { color: #fecaca; }
+            .node-desc { color: #fca5a5; }
             .node-icon { background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(248, 113, 113, 0.1)); }
             &::before { background: linear-gradient(135deg, #ef4444, #f87171); }
           }
           &.node--debate {
-            border-color: rgba(139, 92, 246, 0.3);
+            background: linear-gradient(135deg, #4c1d95 0%, #1c1917 100%);
+            border-color: #5b21b6;
             .node-name { color: #ede9fe; }
-            .node-desc { color: #ddd6fe; }
+            .node-desc { color: #c4b5fd; }
             .node-icon { background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(167, 139, 250, 0.1)); }
             &::before { background: linear-gradient(135deg, #8b5cf6, #a78bfa); }
           }
           &.node--manager {
-            border-color: rgba(59, 130, 246, 0.3);
+            background: linear-gradient(135deg, #1e3a8a 0%, #1c1917 100%);
+            border-color: #1d4ed8;
             .node-name { color: #dbeafe; }
-            .node-desc { color: #bfdbfe; }
+            .node-desc { color: #93c5fd; }
             .node-icon { background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(96, 165, 250, 0.1)); }
             &::before { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
           }
@@ -3812,60 +3876,59 @@ onBeforeUnmount(() => {
         }
 
         .trade-node {
-          background: rgba(30, 41, 59, 0.5);
-          border-color: rgba(249, 115, 22, 0.3);
+          background: linear-gradient(135deg, #7c2d12 0%, #1c1917 100%);
+          border-color: #9a3412;
           
-          .node-name { color: #fef3c7; }
-          .node-desc { color: #fde68a; }
+          .node-name { color: #ffedd5; }
+          .node-desc { color: #fdba74; }
           .node-icon { background: linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(251, 146, 60, 0.1)); }
           &::before { background: linear-gradient(135deg, #f97316, #fb923c); }
         }
 
         .risk-perspectives .risk-card {
-          background: rgba(30, 41, 59, 0.5);
-          border-color: rgba(71, 85, 105, 0.5);
-          
           &.risk-card--aggressive {
-            border-color: rgba(239, 68, 68, 0.3);
+            background: linear-gradient(135deg, #7f1d1d 0%, #1c1917 100%);
+            border-color: #991b1b;
             color: #fee2e2;
             .risk-name { color: #fee2e2; }
-            .risk-desc { color: #fecaca; }
+            .risk-desc { color: #fca5a5; }
             .risk-icon { background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(248, 113, 113, 0.1)); }
             &::before { background: linear-gradient(135deg, #ef4444, #f87171); }
           }
           &.risk-card--neutral {
-            border-color: rgba(245, 158, 11, 0.3);
+            background: linear-gradient(135deg, #78350f 0%, #1c1917 100%);
+            border-color: #92400e;
             color: #fef3c7;
             .risk-name { color: #fef3c7; }
-            .risk-desc { color: #fde68a; }
+            .risk-desc { color: #fcd34d; }
             .risk-icon { background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(251, 191, 36, 0.1)); }
             &::before { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
           }
           &.risk-card--conservative {
-            border-color: rgba(99, 102, 241, 0.3);
+            background: linear-gradient(135deg, #312e81 0%, #1c1917 100%);
+            border-color: #3730a3;
             color: #e0e7ff;
             .risk-name { color: #e0e7ff; }
-            .risk-desc { color: #c7d2fe; }
+            .risk-desc { color: #a5b4fc; }
             .risk-icon { background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(129, 140, 248, 0.1)); }
             &::before { background: linear-gradient(135deg, #6366f1, #818cf8); }
           }
         }
 
         .risk-manager {
-          background: rgba(30, 41, 59, 0.5);
-          border-color: rgba(71, 85, 105, 0.5);
-          
           &:not(.risk-constraint) {
-            border-color: rgba(236, 72, 153, 0.3);
+            background: linear-gradient(135deg, #831843 0%, #1c1917 100%);
+            border-color: #9d174d;
             .node-name { color: #fce7f3; }
-            .node-desc { color: #fbcfe8; }
+            .node-desc { color: #f9a8d4; }
             .node-icon { background: linear-gradient(135deg, rgba(236, 72, 153, 0.2), rgba(244, 114, 182, 0.1)); }
             &::before { background: linear-gradient(135deg, #ec4899, #f472b6); }
           }
         }
 
         .risk-constraint {
-          border-color: rgba(59, 130, 246, 0.3) !important;
+          background: linear-gradient(135deg, #1e3a8a 0%, #1c1917 100%) !important;
+          border-color: #1d4ed8 !important;
           .node-name { color: #dbeafe; }
           .node-desc { color: #93c5fd; }
           .node-icon { background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(96, 165, 250, 0.1)) !important; }
@@ -3874,8 +3937,8 @@ onBeforeUnmount(() => {
 
         .final-decision-card {
           margin-top: 16px;
-          background: rgba(30, 41, 59, 0.5);
-          border: 1px solid rgba(249, 115, 22, 0.4);
+          background: linear-gradient(135deg, #7c2d12 0%, #1c1917 100%);
+          border: 1px solid #9a3412;
           border-radius: 16px;
           padding: 24px;
           text-align: left;
@@ -3896,10 +3959,10 @@ onBeforeUnmount(() => {
             box-shadow: 0 2px 8px rgba(249, 115, 22, 0.2);
           }
           .node-name {
-            color: #fff7ed;
+            color: #ffedd5;
           }
           .node-desc {
-            color: #fed7aa;
+            color: #fdba74;
           }
         }
 
@@ -4034,6 +4097,22 @@ onBeforeUnmount(() => {
     margin: 0;
     font-size: 13px;
     color: #64748b;
+  }
+}
+
+html.dark {
+  .report-pipeline-intro .final-decision {
+    background: linear-gradient(135deg, #1e293b 0%, #1c1917 100%);
+    border-color: #334155;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
+
+    .decision-label {
+      color: #f8fafc;
+    }
+
+    .decision-desc {
+      color: #94a3b8;
+    }
   }
 }
 
