@@ -31,6 +31,12 @@ import urllib.request
 import pandas as pd
 import requests as _requests
 
+try:
+    from curl_cffi import requests as _curl_cffi_requests
+    _HAS_CURL_CFFI = True
+except ImportError:
+    _HAS_CURL_CFFI = False
+
 from .utils import safe_ticker_component
 
 logger = logging.getLogger(__name__)
@@ -333,14 +339,25 @@ def _em_get(url, params=None, headers=None, timeout=15, **kwargs):
     所有 eastmoney.com 接口都应通过它请求，避免多 Agent 高频拉数据被封 IP。
     串行限流：与上次东财请求间隔 < EM_MIN_INTERVAL 时 sleep 补足 + 0.1~0.5s 随机抖动。
     传入的 headers 会覆盖 session 默认 UA（用于保留各端点自己的 Referer/Origin）。
+
+    优先使用 curl_cffi 模拟浏览器 TLS 指纹，绕过东财的 TLS 指纹反爬虫。
     """
     wait = _EM_MIN_INTERVAL - (time.time() - _em_last_call[0])
     if wait > 0:
         time.sleep(wait + random.uniform(0.1, 0.5))
     try:
-        return _EM_SESSION.get(
-            url, params=params, headers=headers, timeout=timeout, **kwargs
-        )
+        merged_headers = {"User-Agent": _UA}
+        if headers:
+            merged_headers.update(headers)
+        if _HAS_CURL_CFFI:
+            return _curl_cffi_requests.get(
+                url, params=params, headers=merged_headers,
+                timeout=timeout, impersonate="chrome", **kwargs
+            )
+        else:
+            return _EM_SESSION.get(
+                url, params=params, headers=merged_headers, timeout=timeout, **kwargs
+            )
     finally:
         _em_last_call[0] = time.time()
 
@@ -652,11 +669,11 @@ def _get_sina_realtime_quote(code: str) -> Optional[Dict[str, Any]]:
 
 
 def _augment_with_realtime(df: pd.DataFrame, rt: Dict[str, Any]) -> pd.DataFrame:
-    """用实时行情数据补充 K 线数据（盘中使用最新价格代替收盘价）。
+    """用实时行情数据补充 K 线数据（盘中/盘后使用最新价格更新当日K线）。
 
     - 如果最新K线日期就是今天，更新最后一行
-    - 如果最新K线日期早于今天，追加一行当日数据
-    - 周末或非交易时间不进行增强
+    - 如果最新K线日期早于今天且今天是工作日，追加一行当日数据
+    - 周末或节假日不追加新K线（当天不开市）
     """
     if df is None or df.empty or "Close" not in df.columns:
         return df
@@ -686,25 +703,32 @@ def _augment_with_realtime(df: pd.DataFrame, rt: Dict[str, Any]) -> pd.DataFrame
     amt = rt.get("amount") or 0
 
     today = datetime.now().date()
-    now = datetime.now()
 
-    # === 交易时间判断 ===
-    # 1. 简单检查是否周末（周六=5，周日=6）
-    is_weekend = today.weekday() >= 5
-    # 2. 检查是否在交易时间内（A股: 9:30-11:30, 13:00-15:00）
-    is_trading_hours = False
-    current_time = now.time()
-    morning_start = datetime.strptime("09:30", "%H:%M").time()
-    morning_end = datetime.strptime("11:30", "%H:%M").time()
-    afternoon_start = datetime.strptime("13:00", "%H:%M").time()
-    afternoon_end = datetime.strptime("15:00", "%H:%M").time()
-    if (morning_start <= current_time <= morning_end) or (afternoon_start <= current_time <= afternoon_end):
-        is_trading_hours = True
+    # 检查是否工作日（周一到周五）
+    is_weekday = today.weekday() < 5
 
-    # 周末或非交易时间不进行实时增强
-    if is_weekend or not is_trading_hours:
-        logger.debug(f"跳过实时行情增强: 周末={is_weekend}, 交易时间={is_trading_hours}, today={today}")
+    # 检查实时行情数据的日期是否与今日匹配
+    rt_date_str = rt.get("date", "")
+    rt_is_today = False
+    if rt_date_str:
+        try:
+            rt_date = datetime.strptime(rt_date_str, "%Y-%m-%d").date()
+            rt_is_today = rt_date == today
+        except ValueError:
+            rt_is_today = False
+
+    # 周末不进行实时增强（当天不开市，实时行情返回的是最近交易日数据）
+    if not is_weekday:
+        logger.debug(f"跳过实时行情增强: 周末/节假日, today={today}")
         return df
+
+    # 如果实时行情日期不是今日（可能是数据源延迟），跳过
+    # 但如果价格有效且今日是工作日，仍尝试更新（兼容数据源日期格式不一致的情况）
+    if rt_date_str and not rt_is_today:
+        logger.debug(f"实时行情日期与今日不符: rt_date={rt_date_str}, today={today}")
+        # 额外检查：如果实时行情的价格与最后一根K线收盘价差异很小，说明可能是同一交易日数据
+        if abs(price - yesterday_close) < 0.001:
+            return df
 
     df = df.copy()
     if last_date >= today:
@@ -781,10 +805,10 @@ def get_stock_data(
         try:
             df = _sina_kline_fallback(code, start_date, end_date)
             if df.empty:
-                return "K线数据获取失败：mootdx和新浪备用源均不可用，请检查网络连接"
+                raise RuntimeError("K线数据获取失败：mootdx和新浪备用源均不可用，请检查网络连接")
             data_source = "sina HTTP (fallback)"
-        except Exception:
-            return "K线数据获取失败：mootdx和新浪备用源均不可用，请检查网络连接"
+        except Exception as inner_e:
+            raise RuntimeError(f"K线数据获取失败：mootdx和新浪备用源均不可用: {inner_e}") from inner_e
 
     df, supplemented = _supplement_stale_ohlcv_with_sina(code, df, end_date, start_date)
     if supplemented:
@@ -867,6 +891,12 @@ def get_indicators(
 
     try:
         data = _load_ohlcv_astock(code, curr_date)
+        
+        # 用实时行情补充当日数据（盘中分析时使用最新价格）
+        rt_data = _get_sina_realtime_quote(code)
+        if rt_data and rt_data.get("price") and rt_data["price"] > 0:
+            data = _augment_with_realtime(data, rt_data)
+        
         df = wrap(data)
         df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
 
@@ -902,7 +932,7 @@ def get_indicators(
         return result
 
     except Exception as e:
-        return f"Error calculating {indicator} for {code}: {str(e)}"
+        raise RuntimeError(f"Error calculating {indicator} for {code}: {str(e)}") from e
 
 
 # ---- 3. get_fundamentals ----
@@ -1079,7 +1109,7 @@ def get_fundamentals(
         return header + "\n".join(lines)
 
     except Exception as e:
-        return f"Error retrieving fundamentals for {code}: {str(e)}"
+        raise RuntimeError(f"Error retrieving fundamentals for {code}: {str(e)}") from e
 
 
 # ---- 4. get_balance_sheet ----
@@ -1201,7 +1231,7 @@ def get_balance_sheet(
         return header + csv_string
 
     except Exception as e:
-        return f"Error retrieving balance sheet for {code}: {str(e)}"
+        raise RuntimeError(f"Error retrieving balance sheet for {code}: {str(e)}") from e
 
 
 # ---- 5. get_cashflow ----
@@ -1232,7 +1262,7 @@ def get_cashflow(
         return header + csv_string
 
     except Exception as e:
-        return f"Error retrieving cash flow for {code}: {str(e)}"
+        raise RuntimeError(f"Error retrieving cash flow for {code}: {str(e)}") from e
 
 
 # ---- 6. get_income_statement ----
@@ -1263,7 +1293,7 @@ def get_income_statement(
         return header + csv_string
 
     except Exception as e:
-        return f"Error retrieving income statement for {code}: {str(e)}"
+        raise RuntimeError(f"Error retrieving income statement for {code}: {str(e)}") from e
 
 
 # ---- 7. get_news ----
@@ -1570,7 +1600,7 @@ def get_insider_transactions(
         return header + text
 
     except Exception as e:
-        return f"Error retrieving insider/shareholder data for {code}: {str(e)}"
+        raise RuntimeError(f"Error retrieving insider/shareholder data for {code}: {str(e)}") from e
 
 
 # ---- 10. get_profit_forecast ----
@@ -1663,7 +1693,7 @@ def get_profit_forecast(
         return "\n".join(lines)
 
     except Exception as e:
-        return f"Error retrieving profit forecast for {code}: {str(e)}"
+        raise RuntimeError(f"Error retrieving profit forecast for {code}: {str(e)}") from e
 
 
 # ---- 11. get_hot_stocks ----
@@ -1745,7 +1775,7 @@ def get_hot_stocks(
         return "\n".join(lines)
 
     except Exception as e:
-        return f"Error fetching hot stocks for {curr_date}: {str(e)}"
+        raise RuntimeError(f"Error fetching hot stocks for {curr_date}: {str(e)}") from e
 
 
 # ---- 12. get_northbound_flow ----
@@ -1904,91 +1934,7 @@ def get_northbound_flow(
         return "\n".join(lines)
 
     except Exception as e:
-        return f"Error fetching northbound flow: {str(e)}"
-
-
-# ---------------------------------------------------------------------------
-# Baidu PAE (百度股市通) helpers
-# ---------------------------------------------------------------------------
-
-_BAIDU_PAE_HEADERS = {
-    "Host": "finance.pae.baidu.com",
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) "
-        "Gecko/20100101 Firefox/110.0"
-    ),
-    "Accept": "application/vnd.finance-web.v1+json",
-    "Origin": "https://gushitong.baidu.com",
-    "Referer": "https://gushitong.baidu.com/",
-}
-
-
-# ---- 13. get_concept_blocks ----
-
-
-def get_concept_blocks(
-    ticker: Annotated[str, "A-stock code (e.g. 688017)"],
-) -> str:
-    """Get concept/sector/region blocks that a stock belongs to (百度股市通).
-
-    Returns industry classification (申万), concept themes, and region.
-    Each block includes current day's change percentage.
-    """
-    import requests
-
-    code = _normalize_ticker(ticker)
-
-    try:
-        url = (
-            "https://finance.pae.baidu.com/api/getrelatedblock"
-            f'?stock=[{{"code":"{code}","market":"ab","type":"stock"}}]'
-            "&finClientType=pc"
-        )
-        r = requests.get(url, headers=_BAIDU_PAE_HEADERS, timeout=10)
-        d = r.json()
-
-        if str(d.get("ResultCode", -1)) != "0":
-            return (
-                f"Baidu PAE error: ResultCode={d.get('ResultCode')} "
-                f"{d.get('ResultMsg', '')}"
-            )
-
-        result = d.get("Result", {})
-        categories = result.get(code, [])
-        if not categories:
-            return f"No concept/block data for {code}"
-
-        lines = [
-            f"# Concept & Sector Blocks for {code} (A-stock)",
-            f"# Source: 百度股市通 (Baidu PAE)",
-            f"# Retrieved: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            "",
-        ]
-
-        concept_names: list[str] = []
-
-        for cat in categories:
-            cat_name = cat.get("name", "")
-            items = cat.get("list", [])
-            if not items:
-                continue
-            lines.append(f"## {cat_name}")
-            for item in items:
-                name = item.get("name", "")
-                ratio = item.get("ratio", "")
-                desc = item.get("describe", "")
-                suffix = f" ({desc})" if desc else ""
-                lines.append(f"  {name}{suffix}: {ratio}")
-                if cat_name == "概念":
-                    concept_names.append(name)
-
-        if concept_names:
-            lines.append(f"\nConcept tags: {' / '.join(concept_names)}")
-
-        return "\n".join(lines)
-
-    except Exception as e:
-        return f"Error fetching concept blocks for {code}: {str(e)}"
+        raise RuntimeError(f"Error fetching northbound flow: {str(e)}") from e
 
 
 # ---- 14. get_fund_flow ----
@@ -2103,7 +2049,7 @@ def get_fund_flow(
         return "\n".join(lines)
 
     except Exception as e:
-        return f"Error fetching fund flow for {code}: {str(e)}"
+        raise RuntimeError(f"Error fetching fund flow for {code}: {str(e)}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -2319,68 +2265,403 @@ def get_lockup_expiry(
 # 17. Industry Comparison (行业横向对比)
 # ---------------------------------------------------------------------------
 
+_BAIDU_PAE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Referer": "https://gushitong.baidu.com/",
+}
+
+
+def get_concept_blocks(
+    ticker: Annotated[str, "A-stock code (e.g. 688017)"],
+) -> str:
+    """Get concept/sector/region blocks that a stock belongs to (百度股市通).
+
+    Returns industry classification (申万), concept themes, and region.
+    Each block includes current day's change percentage.
+    """
+    import requests
+
+    code = _normalize_ticker(ticker)
+
+    try:
+        url = (
+            "https://finance.pae.baidu.com/api/getrelatedblock"
+            f'?stock=[{{"code":"{code}","market":"ab","type":"stock"}}]'
+            "&finClientType=pc"
+        )
+        r = requests.get(url, headers=_BAIDU_PAE_HEADERS, timeout=10)
+        d = r.json()
+
+        if str(d.get("ResultCode", -1)) != "0":
+            return (
+                f"Baidu PAE error: ResultCode={d.get('ResultCode')} "
+                f"{d.get('ResultMsg', '')}"
+            )
+
+        result = d.get("Result", {})
+        categories = result.get(code, [])
+        if not categories:
+            return f"No concept/block data for {code}"
+
+        lines = [
+            f"# Concept & Sector Blocks for {code} (A-stock)",
+            f"# Source: 百度股市通 (Baidu PAE)",
+            f"# Retrieved: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "",
+        ]
+
+        concept_names: list[str] = []
+
+        for cat in categories:
+            cat_name = cat.get("name", "")
+            items = cat.get("list", [])
+            if not items:
+                continue
+            lines.append(f"## {cat_name}")
+            for item in items:
+                name = item.get("name", "")
+                ratio = item.get("ratio", "")
+                desc = item.get("describe", "")
+                suffix = f" ({desc})" if desc else ""
+                lines.append(f"  {name}{suffix}: {ratio}")
+                if cat_name == "概念":
+                    concept_names.append(name)
+
+        if concept_names:
+            lines.append(f"\nConcept tags: {' / '.join(concept_names)}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        raise RuntimeError(f"Error fetching concept blocks for {code}: {str(e)}") from e
+
+
+def _extract_industry_from_blocks(blocks_text: str) -> list[str]:
+    """从概念板块文本中提取行业名称列表（申万一级、二级）"""
+    industries = []
+    in_industry = False
+    for line in blocks_text.split("\n"):
+        if line.startswith("## 行业"):
+            in_industry = True
+            continue
+        elif line.startswith("## "):
+            in_industry = False
+            continue
+        if in_industry and line.strip():
+            stripped = line.strip()
+            match = _re.search(r"(.+?)\s*\(申万", stripped)
+            if match:
+                industries.append(match.group(1).strip())
+            elif "：" in stripped:
+                # 格式如 "国防军工 (申万一级): +3.86%"
+                name_part = stripped.split("：")[0].strip()
+                name = name_part.split("(")[0].strip()
+                if name:
+                    industries.append(name)
+    return industries
+
+
+def _get_sina_industry_list() -> dict:
+    """从新浪财经获取行业列表，返回 {行业名称: {code, change_pct, count, leader}}"""
+    import requests
+
+    headers = {
+        "Referer": "https://finance.sina.com.cn/",
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+    }
+    url = "https://vip.stock.finance.sina.com.cn/q/view/newSinaHy.php"
+    r = requests.get(url, headers=headers, timeout=10)
+
+    # 提取 JSON 部分：找到第一个 { 和最后一个 }
+    text = r.text
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace < 0 or last_brace <= first_brace:
+        return {}
+
+    try:
+        raw = _json.loads(text[first_brace : last_brace + 1])
+    except (_json.JSONDecodeError, ValueError):
+        return {}
+    result = {}
+    for k, v in raw.items():
+        parts = v.split(",")
+        if len(parts) >= 6:
+            name = parts[1]
+            try:
+                change_pct = float(parts[5]) if parts[5] else 0.0
+            except (ValueError, IndexError):
+                change_pct = 0.0
+            result[name] = {
+                "code": k,
+                "name": name,
+                "count": parts[2] if len(parts) > 2 else "",
+                "change_pct": change_pct,
+                "leader_code": parts[-4] if len(parts) > 4 else "",
+                "leader_name": parts[-1] if parts else "",
+            }
+    return result
+
+
+def _match_industry(industry_names: list[str], industry_map: dict) -> Optional[dict]:
+    """在新浪行业列表中匹配申万行业名称，返回匹配的行业信息"""
+    if not industry_names or not industry_map:
+        return None
+
+    # 常见的行业名称映射（申万 -> 新浪）
+    name_mapping = {
+        "国防军工": ["飞机制造", "船舶制造", "航天航空"],
+        "电子": ["电子器件", "电子信息", "电子元件"],
+        "计算机": ["电子信息", "软件开发"],
+        "医药生物": ["生物制药", "医疗器械"],
+        "电力设备": ["电气设备", "太阳能"],
+        "汽车": ["汽车制造", "汽车配件"],
+        "机械设备": ["机械行业", "仪器仪表"],
+        "化工": ["化工行业", "化纤行业", "农药化肥"],
+        "有色金属": ["有色金属", "稀土永磁"],
+        "食品饮料": ["酿酒行业", "食品行业"],
+    }
+
+    # 1. 精确匹配
+    for ind_name in industry_names:
+        if ind_name in industry_map:
+            return industry_map[ind_name]
+
+    # 2. 预定义映射匹配
+    for ind_name in industry_names:
+        if ind_name in name_mapping:
+            for sina_alias in name_mapping[ind_name]:
+                if sina_alias in industry_map:
+                    return industry_map[sina_alias]
+
+    # 3. 模糊匹配（关键词包含）
+    keywords = []
+    for ind_name in industry_names:
+        # 提取关键词，如"国防军工"提取"军工"，"军工电子Ⅱ"提取"军工"
+        for kw in ["军工", "电子", "医药", "汽车", "化工", "机械", "电力", "银行", "地产", "食品", "计算机", "通信", "新能源", "光伏", "半导体", "芯片"]:
+            if kw in ind_name:
+                keywords.append(kw)
+
+    best_match = None
+    best_score = 0
+    for sina_name, sina_info in industry_map.items():
+        score = 0
+        for kw in keywords:
+            if kw in sina_name:
+                score += 1
+        if score > best_score:
+            best_score = score
+            best_match = sina_info
+
+    return best_match
+
+
+def _is_matched_industry(sina_name: str, industry_names: list[str]) -> bool:
+    """判断新浪行业名称是否与申万行业匹配"""
+    matched = _match_industry(industry_names, {sina_name: {"name": sina_name}})
+    return matched is not None
+
+
+def _get_sina_industry_stocks(industry_code: str, num: int = 10) -> list[dict]:
+    """从新浪财经获取行业成分股列表"""
+    import requests
+
+    headers = {
+        "Referer": "https://finance.sina.com.cn/",
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+    }
+    url = (
+        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+        f"Market_Center.getHQNodeData?page=1&num={num}&sort=changepercent&asc=0&node={industry_code}"
+    )
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        data = _json.loads(r.text)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
 def get_industry_comparison(
     ticker: str,
     trade_date: str,
-    top_n: int = 20,
+    top_n: int = 15,
 ) -> str:
-    """Get industry sector performance comparison.
+    """Get comprehensive industry/sector comparison including valuation context.
+
+    Uses Baidu PAE for concept/industry blocks and Sina Finance for industry rankings.
+    Provides peer valuation context for relative analysis.
 
     Args:
-        ticker: 6-digit A-share code (used to identify relevant sector)
+        ticker: 6-digit A-share code
         trade_date: YYYY-MM-DD
-        top_n: number of top/bottom industries to show (default 20)
+        top_n: number of top/bottom industries to show (default 15)
 
     Returns:
-        Formatted text with sector performance ranking, highlighting
-        the sector the target stock belongs to.
+        Formatted report with:
+        - Stock's industry and concept blocks
+        - Full industry performance ranking
+        - Target industry's component stocks (for valuation comparison)
+        - Market style context
     """
     code = safe_ticker_component(ticker)
-    lines = [f"# 行业横向对比 | {code} | {trade_date}"]
+    lines = [f"# 行业与板块综合对比 | {code} | {trade_date}"]
 
-    # 东财 push2 行业板块排名 (direct HTTP, replaces 同花顺 which has 401)
+    # === 第一部分：个股所属行业与概念板块 ===
+    lines.append("\n## 一、所属行业与概念板块")
+    blocks_text = ""
     try:
-        url = "https://push2.eastmoney.com/api/qt/clist/get"
-        params = {
-            "pn": "1",
-            "pz": "100",
-            "po": "1",
-            "np": "1",
-            "fltt": "2",
-            "invt": "2",
-            "fs": "m:90+t:2",
-            "fields": "f2,f3,f4,f12,f13,f14,f104,f105,f128,f136,f140,f141,f207",
-        }
-        r = _em_get(url, params=params, timeout=15)
-        d = r.json()
-        items = d.get("data", {}).get("diff", [])
-
-        if items:
-            lines.append(
-                f"\n## 全行业表现 (东财 {len(items)} 个行业)"
-            )
-            lines.append(
-                "排名 | 行业 | 涨跌幅 | 上涨 | 下跌 | 领涨股"
-            )
-            for i, item in enumerate(items):
-                name = item.get("f14", "")
-                change_pct = item.get("f3", 0)
-                up_count = item.get("f104", 0)
-                down_count = item.get("f105", 0)
-                leader = item.get("f140", "")
-                lines.append(
-                    f"  {i+1}. {name} "
-                    f"| {change_pct}% "
-                    f"| {up_count} "
-                    f"| {down_count} "
-                    f"| {leader}"
-                )
-                if i >= top_n * 2 - 1:
-                    lines.append(f"  ... (showing top/bottom {top_n})")
-                    break
+        blocks_text = get_concept_blocks(ticker)
+        if "Error" not in blocks_text[:50] and "error" not in blocks_text[:50]:
+            lines.append("数据来源：百度股市通")
+            # 提取行业部分
+            in_industry = False
+            for line in blocks_text.split("\n"):
+                if line.startswith("## 行业"):
+                    in_industry = True
+                    lines.append(line.replace("## 行业", "### 所属行业"))
+                    continue
+                elif line.startswith("## 概念"):
+                    in_industry = False
+                    lines.append("### 核心概念板块")
+                    continue
+                elif line.startswith("## 地域"):
+                    lines.append("### 地域板块")
+                    continue
+                elif line.startswith("## "):
+                    continue
+                elif line.startswith("Concept tags"):
+                    continue
+                elif line.startswith("# "):
+                    continue
+                if in_industry and line.strip():
+                    lines.append(line)
+                elif not in_industry and line.strip().startswith("  ") and len(line.strip()) < 30:
+                    # 概念板块只显示前10个
+                    pass
         else:
-            lines.append("行业数据获取为空。")
+            lines.append(f"板块数据获取异常: {blocks_text[:100]}")
     except Exception as e:
-        lines.append(f"行业对比查询失败: {e}")
+        lines.append(f"板块数据获取失败: {e}")
+
+    # 提取行业名称用于后续分析
+    industry_names = _extract_industry_from_blocks(blocks_text) if blocks_text else []
+
+    # === 第二部分：全行业涨跌幅排名 ===
+    lines.append("\n## 二、全行业涨跌幅排名")
+    industry_map = {}
+    try:
+        industry_map = _get_sina_industry_list()
+        if industry_map:
+            industries = sorted(
+                industry_map.values(), key=lambda x: x["change_pct"], reverse=True
+            )
+            lines.append(f"数据来源：新浪财经（共 {len(industries)} 个行业）")
+            lines.append("")
+            lines.append("| 排名 | 行业 | 涨跌幅 | 成分股数 | 领涨股 |")
+            lines.append("|------|------|--------|----------|--------|")
+
+            # 涨幅前 top_n
+            for i, item in enumerate(industries[:top_n]):
+                highlight = " ⭐" if _is_matched_industry(item["name"], industry_names) else ""
+                lines.append(
+                    f"| {i+1} | {item['name']}{highlight} | {item['change_pct']:.2f}% "
+                    f"| {item['count']} | {item['leader_name']} |"
+                )
+
+            # 中间省略
+            lines.append(f"| ... | ... (共 {len(industries)} 个行业) | ... | ... | ... |")
+
+            # 跌幅前 top_n
+            for i, item in enumerate(industries[-top_n:]):
+                rank = len(industries) - top_n + i + 1
+                highlight = " ⭐" if _is_matched_industry(item["name"], industry_names) else ""
+                lines.append(
+                    f"| {rank} | {item['name']}{highlight} | {item['change_pct']:.2f}% "
+                    f"| {item['count']} | {item['leader_name']} |"
+                )
+
+            # 标记所属行业位置
+            if industry_names:
+                lines.append("\n> 注：⭐ 标记为目标个股所属行业")
+        else:
+            lines.append("行业排名数据获取为空。")
+    except Exception as e:
+        lines.append(f"行业排名数据获取失败: {e}")
+
+    # === 第三部分：所属行业成分股（用于估值对比）===
+    lines.append("\n## 三、所属行业成分股（估值对比参考）")
+    if industry_names and industry_map:
+        # 使用智能匹配找到最相关的行业
+        target_industry = _match_industry(industry_names, industry_map)
+
+        if target_industry:
+            lines.append(f"对标行业：{target_industry['name']}（行业代码: {target_industry['code']}）")
+            lines.append("")
+
+            # 获取成分股列表（按涨跌幅排序，取前10和后5，加上领涨股）
+            stocks = _get_sina_industry_stocks(target_industry["code"], num=20)
+            if stocks:
+                lines.append("| 序号 | 股票代码 | 股票名称 | 现价 | 涨跌幅 | 换手率 |")
+                lines.append("|------|----------|----------|------|--------|--------|")
+                for i, s in enumerate(stocks[:15]):
+                    symbol = s.get("code", s.get("symbol", ""))
+                    name = s.get("name", "")
+                    price = s.get("trade", s.get("price", "-"))
+                    change_pct = s.get("changepercent", "-")
+                    turnover = s.get("turnoverratio", s.get("turnover", "-"))
+                    lines.append(
+                        f"| {i+1} | {symbol} | {name} | {price} | {change_pct}% | {turnover}% |"
+                    )
+                lines.append("")
+                lines.append(
+                    "> 💡 **估值建议**：请使用 `get_fundamentals` 工具获取上表中 3-5 只代表性股票（龙头股 + 同业务公司）的 PE/PB/ROE 数据，"
+                    "与目标股进行横向对比，判断其相对估值水平。"
+                    "建议关注：行业龙头估值、业务相近公司估值、估值分位数。"
+                )
+                lines.append("")
+                lines.append(
+                    "> ⚠️ **A股估值特点**："
+                    "A股整体估值中枢高于美股，成长股/题材股PE 30-60倍为常态；"
+                    "判断估值高低需结合行业景气度、市场风格、板块轮动阶段，不能仅凭绝对PE下结论。"
+                )
+            else:
+                lines.append("行业成分股数据获取为空。")
+                lines.append(
+                    "> 建议：直接选择3-5只同行业知名公司，使用 `get_fundamentals` 获取其估值数据进行对比。"
+                )
+        else:
+            lines.append(f"未在新浪行业列表中找到匹配的行业（申万行业: {', '.join(industry_names)}）")
+            lines.append(
+                "> 建议：手动选择3-5只同行业可比公司，使用 `get_fundamentals` 获取估值数据进行对比。"
+            )
+    else:
+        lines.append("无法获取行业成分股数据。")
+        lines.append(
+            "> 建议：使用 `get_fundamentals` 工具获取3-5只同行业代表性公司的PE/PB进行对比。"
+        )
+
+    # === 第四部分：市场风格与板块环境判断指引 ===
+    lines.append("\n## 四、市场风格与板块环境分析指引")
+    lines.append("")
+    lines.append("请结合以上数据分析：")
+    lines.append("")
+    lines.append("1. **板块位置**：目标行业在全市场涨幅排名中处于什么位置？处于领涨、跟涨还是落后状态？")
+    lines.append("2. **板块热度**：所属概念板块中，哪些涨幅最大？是否有明确的主题炒作主线？")
+    lines.append("3. **市场风格**：当前领涨行业偏向价值（金融/周期）还是成长（科技/新能源）？是否与目标股风格匹配？")
+    lines.append("4. **相对估值视角**：")
+    lines.append("   - 若整个板块都在拔估值，个股PE高可能是板块性行情，而非个股泡沫")
+    lines.append("   - 若板块整体估值合理但个股显著偏高，需警惕个股回调风险")
+    lines.append("   - A股主题炒作阶段，PE偏离行业均值是常见现象，需结合景气度判断")
+    lines.append("5. **资金流向验证**：可结合资金面分析，确认板块是否有主力资金持续流入")
 
     return "\n".join(lines)

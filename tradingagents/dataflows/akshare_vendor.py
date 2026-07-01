@@ -280,30 +280,57 @@ def get_global_news(
 def get_insider_transactions(
     ticker: Annotated[str, "A-stock code"],
 ) -> str:
-    """Get insider / 股东增减持/龙虎榜作为内部交易近似)."""
+    """Get insider / shareholder activity via akshare (股东增减持+主要股东+龙虎榜)."""
     ak = _ensure_akshare()
     code = _normalize_code(ticker)
     lines = []
 
+    # 1. 主要股东持股
     try:
-        from datetime import datetime as dt
-        curr_date = dt.now().strftime("%Y%m%d")
-        df = ak.stock_gdfh_detail_em(date=curr_date, indicator="个股详情")
+        df = ak.stock_main_stock_holder(stock=code)
+        if df is not None and not df.empty:
+            # 只取前10大股东
+            top10 = df.head(10)
+            lines.append(f"# 主要股东持股 (akshare 东方财富)")
+            lines.append(f"# 股票代码: {code}")
+            lines.append(f"# 数据来源: 东方财富网")
+            lines.append("")
+            lines.append("## 前10大股东")
+            lines.append(_df_to_str(top10, 10))
+    except Exception:
+        pass
+
+    # 2. 股东增减持变动
+    try:
+        df = ak.stock_shareholder_change_ths(symbol=code)
+        if df is not None and not df.empty:
+            # 只取最近的10条
+            recent = df.head(10)
+            lines.append("")
+            lines.append("## 股东增减持变动（近10条）")
+            lines.append(_df_to_str(recent, 10))
+    except Exception:
+        pass
+
+    # 3. 龙虎榜数据
+    try:
+        from datetime import datetime, timedelta
+        end_date = datetime.now().strftime("%Y%m%d")
+        start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
+        df = ak.stock_lhb_detail_em(start_date=start_date, end_date=end_date)
         if df is not None and not df.empty:
             target = df[df["代码"].astype(str).str.zfill(6) == code]
             if not target.empty:
-                lines.append(f"=== 龙虎榜 ({code})\n" + _df_to_str(target, 10))
+                lines.append("")
+                lines.append("## 龙虎榜上榜记录（近30日）")
+                lines.append(_df_to_str(target, 10))
     except Exception:
         pass
 
-    try:
-        holders = ak.stock_hold_num_cninfo(date=dt.now().strftime("%Y%m%d"), symbol="A股")
-        if holders is not None and not holders.empty:
-            lines.append(f"\n=== 股东户数 (全市场)\n" + _df_to_str(holders.head(5), 5))
-    except Exception:
-        pass
+    if not lines:
+        raise ValueError(f"akshare 内部交易/股东数据不可用: {code}")
 
-    return "\n".join(lines) if lines else f"akshare 内部交易数据不可用: {code}"
+    return "\n".join(lines)
 
 
 # ===========================================================================
