@@ -2904,3 +2904,129 @@ def get_shareholder_concentration(
         lines.append(f"股东户数数据获取失败: {e}")
 
     return "\n".join(lines)
+
+
+
+# ---------------------------------------------------------------------------
+# 通达信风险扫描数据
+# ---------------------------------------------------------------------------
+
+def get_risk_scan(
+    ticker: Annotated[str, "A-stock code"],
+    curr_date: Annotated[str, "Date YYYY-MM-DD"],
+) -> str:
+    """Get Tongdaxin risk scan data (通达信风险扫描).
+
+    Provides a comprehensive risk assessment covering 4 categories:
+    - Financial risks (财务类风险): earnings loss, goodwill, R&D capitalization, etc.
+    - Market risks (市场类风险): regulatory actions, debt default, management changes, etc.
+    - Trading risks (交易类风险): lockup expiry, pledge, northbound selling, etc.
+    - ST/delisting risks (ST风险和退市): ST warning, delisting risk, etc.
+
+    Args:
+        ticker: 6-digit A-share code
+        curr_date: YYYY-MM-DD
+
+    Returns:
+        Formatted text with risk scan results including risk items and their triggers
+    """
+    code = _normalize_ticker(ticker)
+
+    lines = [
+        f"# 通达信风险扫描 | {code} | {curr_date}",
+        "# Source: 通达信 (Tongdaxin / 通达信风险扫描)",
+        "",
+    ]
+
+    try:
+        url = f"http://page1.tdx.com.cn:7615/site/pcwebcall_static/bxb/json/{code}.json"
+
+        import gzip
+
+        response = _requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        try:
+            raw = gzip.decompress(response.content).decode("utf-8", errors="replace")
+        except OSError:
+            raw = response.text
+
+        raw_data = _json.loads(raw) if isinstance(raw, str) else raw
+
+        total = raw_data.get("total", 0)
+        num = raw_data.get("num", 0)
+        name = raw_data.get("name", "")
+        raw_categories = raw_data.get("data", [])
+
+        score = max(0, min(100, 100 - num * 5)) if total > 0 else 0
+
+        lines.append(f"## 风险概览")
+        lines.append(f"- **股票名称**: {name}")
+        lines.append(f"- **总检查项**: {total}")
+        lines.append(f"- **风险项数**: 🔴 {num}")
+        lines.append(f"- **风险安全分**: {score}/100（分数越高越安全）")
+        lines.append("")
+
+        if not raw_categories:
+            lines.append("暂无风险数据")
+            return "\n".join(lines)
+
+        risk_items_summary = []
+        for cat in raw_categories:
+            cat_name = cat.get("name", "")
+            rows = cat.get("rows", [])
+
+            risk_items = []
+            safe_items = []
+
+            for row in rows:
+                trig_yy = (row.get("trigyy") or "").strip()
+                trig_yy = trig_yy.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+                item_name = row.get("lx", "")
+
+                if trig_yy:
+                    risk_items.append({
+                        "name": item_name,
+                        "reason": trig_yy.strip(),
+                    })
+                else:
+                    safe_items.append(item_name)
+
+            lines.append(f"## {cat_name} ({len(risk_items)}风险 / {len(safe_items)}安全)")
+            lines.append("")
+
+            if risk_items:
+                lines.append("### 🔴 风险项")
+                for i, item in enumerate(risk_items, 1):
+                    lines.append(f"{i}. **{item['name']}**")
+                    reason = item["reason"]
+                    if "http" in reason:
+                        import re as _re
+                        reason = _re.sub(
+                            r'TXT:?\s*https?://\S+',
+                            '',
+                            reason
+                        ).strip()
+                    lines.append(f"   - 原因: {reason}")
+                    lines.append("")
+                    risk_items_summary.append(f"{cat_name} - {item['name']}")
+
+            if safe_items:
+                lines.append("### 🟢 安全项")
+                safe_display = "、".join(safe_items)
+                lines.append(f"- {safe_display}")
+                lines.append("")
+
+        lines.append("## 风险项汇总")
+        if risk_items_summary:
+            for i, r in enumerate(risk_items_summary, 1):
+                lines.append(f"{i}. {r}")
+        else:
+            lines.append("✅ 暂无风险项")
+        lines.append("")
+
+    except Exception as e:
+        lines.append(f"风险扫描数据获取失败: {e}")
+        logger.warning(f"风险扫描数据获取失败 {code}: {e}")
+
+    return "\n".join(lines)

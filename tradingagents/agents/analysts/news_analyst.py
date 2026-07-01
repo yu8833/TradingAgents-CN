@@ -4,6 +4,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_global_news,
     get_language_instruction,
     get_news,
+    get_risk_scan,
 )
 from tradingagents.dataflows.config import get_config
 
@@ -17,6 +18,7 @@ def create_news_analyst(llm):
         tools = [
             get_news,
             get_global_news,
+            get_risk_scan,
         ]
 
         system_message = (
@@ -33,6 +35,7 @@ def create_news_analyst(llm):
             "\n\n请使用以下工具："
             "\n- `get_news(query, start_date, end_date)`：获取公司相关的个股新闻和公告"
             "\n- `get_global_news(curr_date, look_back_days, limit)`：获取宏观新闻（仅用于判断市场大环境，不要展开分析）"
+            "\n- `get_risk_scan(ticker, curr_date)`：获取通达信风险扫描数据，包含监管函、监管警示、行政处罚等市场类风险（**必须调用，用于补充新闻未覆盖的监管类风险）"
             "\n\n撰写结构化的个股新闻分析报告，按时间线梳理重要事件，区分利好/利空/中性，评估每个事件对公司的直接影响。**报告开头**必须先给出评分，格式为单独一行："
             "\n```"
             "\n## 📰 消息面评分：XX/100"
@@ -48,7 +51,8 @@ def create_news_analyst(llm):
             "\n2. 关键事件时间线（至少 5 个重要公司事件，按时间倒序排列，每个事件含日期和简要内容）"
             "\n3. 利好事件清单（含事件名称、影响程度判断）"
             "\n4. 利空/风险事件清单（含事件名称、风险等级判断）"
-            "\n5. 公司层面的核心关注点总结（3-5 条）"
+            "\n5. **监管风险专项分析**：来自风险扫描的市场类风险（交易所监管、监管警示、行政处罚等），如有必须纳入利空清单"
+            "\n6. 公司层面的核心关注点总结（3-5条）"
 
             "\n\n⚠️ 数据准确性要求（CRITICAL）："
             "\n- 报告中的所有信息必须来自工具调用返回的原始数据"

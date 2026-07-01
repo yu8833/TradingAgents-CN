@@ -9,6 +9,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_insider_transactions,
     get_language_instruction,
     get_profit_forecast,
+    get_risk_scan,
 )
 from tradingagents.dataflows.config import get_config
 
@@ -26,6 +27,7 @@ def create_fundamentals_analyst(llm):
             get_income_statement,
             get_profit_forecast,
             get_industry_comparison,
+            get_risk_scan,
         ]
 
         system_message = (
@@ -43,6 +45,12 @@ def create_fundamentals_analyst(llm):
             "\n- `get_cashflow`：现金流量表详细数据"
             "\n- `get_income_statement`：利润表详细数据"
             "\n- `get_industry_comparison(ticker, curr_date)`：获取全行业横向对比（所属行业/概念板块、全行业涨跌幅排名、行业成分股列表、市场风格指引，**用于相对估值分析和行业定位**）"
+            "\n- `get_risk_scan(ticker, curr_date)`：获取通达信风险扫描数据（4大类40+检查项，包括财务类风险、市场类风险、交易类风险、ST/退市风险，**用于验证和补充风险提示**）"
+            "\n\n🔍 **风险扫描要求（CRITICAL）**："
+            "\n1. **必须调用 `get_risk_scan`** 获取全面的风险扫描数据"
+            "\n2. 在「风险提示」章节中，逐一回应风险扫描中发现的风险项，分析其影响程度和发生概率"
+            "\n3. 对于风险扫描中显示为「安全」的项目，简要确认其安全性（如：商誉风险已排查，无减值压力）"
+            "\n4. 重点关注：财报亏损、监管函、股权质押、解禁减持、ST风险等核心风险项"
             "\n\n🔍 **相对估值分析要求（CRITICAL）**："
             "\n1. **必须调用 `get_industry_comparison`** 获取行业对比数据，了解目标股所处行业和板块环境"
             "\n2. 从行业成分股中选择 3-5 只代表性公司（行业龙头 + 业务相近公司），使用 `get_fundamentals` 获取它们的 PE/PB/ROE 数据"

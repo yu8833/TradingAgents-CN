@@ -47,6 +47,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_industry_comparison,
     get_margin_trading,
     get_shareholder_concentration,
+    get_risk_scan,
 )
 
 from .checkpointer import checkpoint_step, clear_checkpoint, get_checkpointer, thread_id
@@ -177,6 +178,7 @@ class TradingAgentsGraph:
             get_news,
             get_global_news,
             get_insider_transactions,
+            get_risk_scan,
         ])
         fundamentals_tools = wrap_tools([
             get_fundamentals,
@@ -185,6 +187,7 @@ class TradingAgentsGraph:
             get_income_statement,
             get_profit_forecast,
             get_industry_comparison,
+            get_risk_scan,
         ])
         policy_tools = wrap_tools([
             get_news,
@@ -202,12 +205,14 @@ class TradingAgentsGraph:
             get_industry_comparison,
             get_margin_trading,
             get_shareholder_concentration,
+            get_risk_scan,
         ])
         lockup_tools = wrap_tools([
             get_insider_transactions,
             get_news,
             get_fundamentals,
             get_lockup_expiry,
+            get_risk_scan,
         ])
 
         return {

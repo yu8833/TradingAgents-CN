@@ -29,6 +29,7 @@ from tradingagents.agents.utils.signal_data_tools import (
     get_industry_comparison,
     get_margin_trading,
     get_shareholder_concentration,
+    get_risk_scan,
 )
 
 

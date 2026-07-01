@@ -238,25 +238,48 @@
                     class="debate-node node--bull is-clickable"
                     @click="openReportDialog('bull_researcher')"
                   >
-                    <span class="node-icon">🐂</span>
-                    <span class="node-name">看涨研究员</span>
-                    <span class="node-desc">构建买入逻辑<br/>行业景气 · 业绩拐点 · 资金流入</span>
+                    <div class="node-header">
+                      <span class="node-icon">🐂</span>
+                      <span class="node-name">看涨研究员</span>
+                    </div>
+                    <div class="node-keypoints">
+                      <div v-for="(pt, i) in extractKeyPoints('bull_researcher', 3)" :key="i" class="keypoint">
+                        <span class="kp-dot"></span>
+                        <span class="kp-text">{{ pt }}</span>
+                      </div>
+                      <div v-if="extractKeyPoints('bull_researcher', 3).length === 0" class="node-desc">构建买入逻辑</div>
+                    </div>
                   </div>
-                  <div v-if="hasReport('bull_researcher') && hasReport('bear_researcher')" class="timeline-arrow">⚡ VS ⚡</div>
+                  <div v-if="hasReport('bull_researcher') && hasReport('bear_researcher')" class="vs-divider">
+                    <div class="vs-line"></div>
+                    <div class="vs-badge">⚡ VS ⚡</div>
+                    <div class="vs-line"></div>
+                  </div>
                   <div
                     v-if="hasReport('bear_researcher')"
                     class="debate-node node--bear is-clickable"
                     @click="openReportDialog('bear_researcher')"
                   >
-                    <span class="node-icon">🐻</span>
-                    <span class="node-name">看跌研究员</span>
-                    <span class="node-desc">识别做空风险<br/>宏观压力 · 业绩雷点 · 顶背离</span>
+                    <div class="node-header">
+                      <span class="node-icon">🐻</span>
+                      <span class="node-name">看跌研究员</span>
+                    </div>
+                    <div class="node-keypoints">
+                      <div v-for="(pt, i) in extractKeyPoints('bear_researcher', 3)" :key="i" class="keypoint">
+                        <span class="kp-dot"></span>
+                        <span class="kp-text">{{ pt }}</span>
+                      </div>
+                      <div v-if="extractKeyPoints('bear_researcher', 3).length === 0" class="node-desc">识别做空风险</div>
+                    </div>
                   </div>
                 </div>
                 <!-- 综合↓箭头 -->
                 <div v-if="(hasReport('bull_researcher') || hasReport('bear_researcher')) && hasReport('research_team_decision')" class="debate-arrow-down">
-                  <span class="arrow-text">综合辩论</span>
-                  <span class="arrow-icon">↓</span>
+                  <div class="arrow-line"></div>
+                  <div class="arrow-badge">
+                    <div class="arrow-badge-text">综合辩论</div>
+                    <div class="arrow-badge-icon">↓</div>
+                  </div>
                 </div>
                 <!-- 第二行：研究经理综合 -->
                 <div v-if="hasReport('research_team_decision')" class="debate-row debate-row--manager">
@@ -264,9 +287,17 @@
                     class="debate-node node--manager is-clickable"
                     @click="openReportDialog('research_team_decision')"
                   >
-                    <span class="node-icon">👔</span>
-                    <span class="node-name">研究经理</span>
-                    <span class="node-desc">综合共识<br/>投资亮点 / 风险点 / 适用场景</span>
+                    <div class="node-header">
+                      <span class="node-icon">👔</span>
+                      <span class="node-name">研究经理</span>
+                    </div>
+                    <div class="node-keypoints">
+                      <div v-for="(pt, i) in extractKeyPoints('research_team_decision', 3)" :key="i" class="keypoint">
+                        <span class="kp-dot"></span>
+                        <span class="kp-text">{{ pt }}</span>
+                      </div>
+                      <div v-if="extractKeyPoints('research_team_decision', 3).length === 0" class="node-desc">综合共识</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -345,11 +376,133 @@
           </div>
         </div>
 
+        <!-- 风险扫描（位于置信度评估上方） -->
+        <div v-if="riskScanData || riskScanLoading" class="pipeline-section section--risk-scan">
+          <div class="section-header">
+            <div class="risk-header-title">
+              <el-icon class="risk-icon"><Warning /></el-icon>
+              <h3>风险扫描</h3>
+            </div>
+            <span class="risk-source">数据源：{{ riskScanData?.source || '通达信' }}</span>
+          </div>
+          <el-skeleton v-if="riskScanLoading" :rows="6" animated />
+          <div v-else-if="riskScanData" class="risk-content">
+            <!-- 评分概览 -->
+            <div class="risk-overview">
+              <div class="score-ring">
+                <svg viewBox="0 0 120 120" class="score-svg">
+                  <circle cx="60" cy="60" r="50" fill="none" stroke="#e8eaed" stroke-width="10" />
+                  <circle
+                    cx="60" cy="60" r="50" fill="none"
+                    :stroke="getRiskScoreColor(riskScanData.score)"
+                    stroke-width="10"
+                    stroke-linecap="round"
+                    :stroke-dasharray="(riskScanData.score / 100) * 314 + ' 314'"
+                    transform="rotate(-90 60 60)"
+                  />
+                </svg>
+                <div class="score-text">
+                  <div class="score-num" :style="{ color: getRiskScoreColor(riskScanData.score) }">
+                    {{ riskScanData.score }}
+                  </div>
+                  <div class="score-label">综合评分</div>
+                </div>
+              </div>
+              <div class="score-stats">
+                <div class="stat-item">
+                  <div class="stat-num">{{ riskScanData.total }}</div>
+                  <div class="stat-label">总检查项</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-num risk">{{ riskScanData.risk_count || 0 }}</div>
+                  <div class="stat-label">风险项</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-num safe">{{ riskScanData.safe_count || 0 }}</div>
+                  <div class="stat-label">安全项</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 风险分类 -->
+            <div class="risk-categories">
+              <div v-for="(cat, idx) in riskScanData.categories" :key="idx" class="risk-category">
+                <div class="cat-header">
+                  <span class="cat-name">{{ cat.name }}</span>
+                  <el-tag size="small" :type="cat.risk_count > 0 ? 'danger' : 'success'" effect="plain">
+                    {{ cat.risk_count > 0 ? cat.risk_count + ' 项风险' : '全部安全' }}
+                  </el-tag>
+                </div>
+                <div class="cat-items">
+                  <!-- 风险项（可展开） -->
+                  <div
+                    v-for="item in cat.risk_items"
+                    :key="'r-' + item.id"
+                    class="risk-item is-risk"
+                    :class="{ 'has-detail': hasRiskItemDetail(item), 'expanded': expandedRiskItems.has(item.id) }"
+                    @click="hasRiskItemDetail(item) && toggleRiskItem(item.id)"
+                  >
+                    <div class="item-head">
+                      <el-icon class="item-icon"><WarningFilled /></el-icon>
+                      <span class="item-name">{{ item.name }}</span>
+                      <el-tag v-if="item.score !== undefined" size="small" type="danger" effect="plain" class="item-score">
+                        {{ item.score }}分
+                      </el-tag>
+                      <el-icon v-if="hasRiskItemDetail(item)" class="expand-icon">
+                        <ArrowDown v-if="!expandedRiskItems.has(item.id)" />
+                        <ArrowUp v-else />
+                      </el-icon>
+                    </div>
+                    <div v-if="hasRiskItemDetail(item) && expandedRiskItems.has(item.id)" class="item-detail">
+                      <div v-if="item.reason" class="item-reason">
+                        <div class="reason-title">风险原因：</div>
+                        <div class="reason-content">{{ item.reason }}</div>
+                      </div>
+                      <div v-if="item.sub_items && item.sub_items.length > 0" class="sub-items">
+                        <div class="sub-title">检查细项（{{ item.sub_items.length }}项）：</div>
+                        <div
+                          v-for="sub in item.sub_items"
+                          :key="sub.id"
+                          class="sub-item"
+                          :class="sub.trig ? 'is-risk' : 'is-safe'"
+                        >
+                          <el-icon class="sub-icon">
+                            <WarningFilled v-if="sub.trig" />
+                            <CircleCheckFilled v-else />
+                          </el-icon>
+                          <span class="sub-name">{{ sub.name }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- 安全项（折叠） -->
+                  <div v-if="cat.safe_items && cat.safe_items.length > 0" class="safe-items-collapse">
+                    <el-collapse>
+                      <el-collapse-item title="安全项（全部通过）">
+                        <div
+                          v-for="item in cat.safe_items"
+                          :key="'s-' + item.id"
+                          class="risk-item is-safe"
+                        >
+                          <div class="item-head">
+                            <el-icon class="item-icon"><CircleCheckFilled /></el-icon>
+                            <span class="item-name">{{ item.name }}</span>
+                          </div>
+                        </div>
+                      </el-collapse-item>
+                    </el-collapse>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 置信度评估（移到页面最下端） -->
         <div v-if="hasConfidenceDetail" class="pipeline-section section--confidence">
           <div class="section-header">
             <h3>🎯 置信度评估</h3>
-            <p class="section-subtitle">综合评估分析结果的可靠程度</p>
+            <p class="section-subtitle">综合评估分析结果的可靠程度，涵盖数据质量、分析深度、逻辑一致性等维度</p>
           </div>
           <div class="confidence-content">
             <div class="confidence-total">
@@ -362,8 +515,9 @@
               </div>
             </div>
             <div class="confidence-detail-list">
+              <!-- 非满分项：正常展示 -->
               <div
-                v-for="(item, index) in getConfidenceDetailList()"
+                v-for="(item, index) in getNonFullScoreItems()"
                 :key="index"
                 class="confidence-detail-item"
               >
@@ -381,6 +535,40 @@
                   ></div>
                 </div>
                 <div class="detail-item-desc">{{ item.description }}</div>
+              </div>
+
+              <!-- 满分项：折叠展示 -->
+              <div v-if="getFullScoreItems().length > 0" class="full-score-collapse">
+                <el-collapse>
+                  <el-collapse-item>
+                    <template #title>
+                      <div class="collapse-title">
+                        <el-icon><CircleCheckFilled /></el-icon>
+                        <span>满分项（{{ getFullScoreItems().length }}项全部达标）</span>
+                      </div>
+                    </template>
+                    <div
+                      v-for="(item, index) in getFullScoreItems()"
+                      :key="'full-' + index"
+                      class="confidence-detail-item is-full-score"
+                    >
+                      <div class="detail-item-header">
+                        <span class="detail-item-name">{{ item.name }}</span>
+                        <span class="detail-item-score">{{ item.score }}/{{ item.max_score }}</span>
+                      </div>
+                      <div class="detail-item-bar">
+                        <div
+                          class="detail-item-bar-fill"
+                          :style="{
+                            width: '100%',
+                            background: 'linear-gradient(90deg, #10b981, #34d399)'
+                          }"
+                        ></div>
+                      </div>
+                      <div class="detail-item-desc">{{ item.description }}</div>
+                    </div>
+                  </el-collapse-item>
+                </el-collapse>
               </div>
             </div>
           </div>
@@ -460,6 +648,10 @@ import {
   Cpu,
   QuestionFilled,
   ArrowDown,
+  ArrowUp,
+  CircleCheckFilled,
+  CaretBottom,
+  CaretTop,
   Reading,
   MoreFilled
 } from '@element-plus/icons-vue'
@@ -511,6 +703,32 @@ const report = ref<ReportDetailData | null>(null)
 const activeModule = ref('')
 const llmConfigs = ref<LLMConfig[]>([]) // 存储所有模型配置
 const reportModuleKeys = computed<string[]>(() => report.value ? Object.keys(report.value.reports || {}) : [])
+
+// 风险扫描数据
+const riskScanData = ref<any>(null)
+const riskScanLoading = ref(false)
+const expandedRiskItems = ref<Set<number>>(new Set())
+
+// 风险评分颜色
+const getRiskScoreColor = (score: number): string => {
+  if (score >= 80) return '#10b068'
+  if (score >= 60) return '#f09832'
+  return '#ff4d4f'
+}
+
+// 检查风险项是否有详情
+const hasRiskItemDetail = (item: any): boolean => {
+  return (item.reason && item.reason.length > 0) || (item.sub_items && item.sub_items.length > 0)
+}
+
+// 展开/折叠风险项
+const toggleRiskItem = (id: number) => {
+  if (expandedRiskItems.value.has(id)) {
+    expandedRiskItems.value.delete(id)
+  } else {
+    expandedRiskItems.value.add(id)
+  }
+}
 
 // 弹窗相关
 const dialogVisible = ref(false)
@@ -590,6 +808,44 @@ const translateReportContent = (content: string): string => {
 const getReportContentByKey = (key: string): any => {
   if (!report.value) return null
   return report.value.reports?.[key] || null
+}
+
+// 从报告内容中提取要点（用于卡片简要展示）
+const extractKeyPoints = (key: string, maxPoints: number = 3): string[] => {
+  const content = getReportContentByKey(key)
+  if (!content || typeof content !== 'string') return []
+
+  const points: string[] = []
+  const lines = content.split('\n')
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    // 匹配以 -、*、• 或数字开头的列表项
+    if (/^[-*•]\s+/.test(trimmed) || /^\d+[.、)]\s+/.test(trimmed)) {
+      let text = trimmed.replace(/^[-*•]\s+/, '').replace(/^\d+[.、)]\s+/, '')
+      // 去掉 markdown 加粗等标记
+      text = text.replace(/\*\*/g, '').replace(/__/g, '')
+      // 截取前60个字符
+      if (text.length > 60) text = text.substring(0, 60) + '...'
+      if (text.length > 5) points.push(text)
+    }
+    if (points.length >= maxPoints) break
+  }
+
+  // 如果没有找到列表项，尝试取前几行的关键句
+  if (points.length === 0) {
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (trimmed.length > 15 && !trimmed.startsWith('#') && !trimmed.startsWith('|') && !trimmed.startsWith('```')) {
+        let text = trimmed.replace(/\*\*/g, '').replace(/__/g, '')
+        if (text.length > 60) text = text.substring(0, 60) + '...'
+        points.push(text)
+        if (points.length >= maxPoints) break
+      }
+    }
+  }
+
+  return points
 }
 
 let isClosingFromPopState = false
@@ -872,6 +1128,18 @@ const getConfidenceDetailList = (): ConfidenceDetailItem[] => {
   return []
 }
 
+// 获取满分项列表
+const getFullScoreItems = (): ConfidenceDetailItem[] => {
+  const items = getConfidenceDetailList()
+  return items.filter(item => item.score === item.max_score)
+}
+
+// 获取非满分项列表
+const getNonFullScoreItems = (): ConfidenceDetailItem[] => {
+  const items = getConfidenceDetailList()
+  return items.filter(item => item.score !== item.max_score)
+}
+
 const hasConfidenceDetail = computed(() => {
   const total = getConfidenceTotalScore()
   const detail = getConfidenceDetailList()
@@ -935,6 +1203,12 @@ const fetchReportDetail = async () => {
       if (moduleNames.length > 0) {
         activeModule.value = moduleNames[0]
       }
+
+      // 获取风险扫描数据（仅A股）
+      const stockSymbol = result.data.stock_code || result.data.stock_symbol
+      if (stockSymbol && /^\d{6}$/.test(stockSymbol)) {
+        fetchRiskScan(stockSymbol).catch(() => {})
+      }
     } else {
       throw new Error(result.message || '获取报告详情失败')
     }
@@ -943,6 +1217,21 @@ const fetchReportDetail = async () => {
     ElMessage.error('获取报告详情失败')
   } finally {
     loading.value = false
+  }
+}
+
+// 获取风险扫描数据
+const fetchRiskScan = async (symbol: string) => {
+  try {
+    riskScanLoading.value = true
+    const res = await stocksApi.getRiskAnalysis(symbol)
+    if (res && (res as any).success && (res as any).data) {
+      riskScanData.value = (res as any).data
+    }
+  } catch (e) {
+    console.warn('获取风险扫描数据失败', e)
+  } finally {
+    riskScanLoading.value = false
   }
 }
 
@@ -2935,33 +3224,296 @@ onBeforeUnmount(() => {
     }
   }
 
-  .section--confidence {
-    background: var(--el-bg-color);
-    border-radius: 16px;
-    padding: 28px;
-    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
-    border: 1px solid #e2e8f0;
+  .section--risk-scan {
+    .risk-header-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
 
-    .section-header {
-      margin-bottom: 24px;
-      padding-bottom: 20px;
-      border-bottom: 2px solid #f1f5f9;
+      .risk-icon {
+        color: #f09832;
+        font-size: 18px;
+      }
 
       h3 {
-        font-size: 20px;
-        font-weight: 700;
-        color: #0f172a;
-        margin: 0 0 10px 0;
-        letter-spacing: 0.3px;
-      }
-      .section-subtitle {
-        font-size: 14px;
-        color: #64748b;
         margin: 0;
-        line-height: 1.6;
+        font-size: 18px;
+        font-weight: 600;
       }
     }
 
+    .risk-source {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .risk-content {
+      .risk-overview {
+        display: flex;
+        align-items: center;
+        gap: 40px;
+        padding: 20px;
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+        border-radius: 12px;
+        margin-bottom: 20px;
+      }
+
+      .score-ring {
+        position: relative;
+        width: 120px;
+        height: 120px;
+        flex-shrink: 0;
+
+        .score-svg {
+          width: 100%;
+          height: 100%;
+        }
+
+        .score-text {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          text-align: center;
+
+          .score-num {
+            font-size: 32px;
+            font-weight: 700;
+            line-height: 1;
+          }
+
+          .score-label {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 4px;
+          }
+        }
+      }
+
+      .score-stats {
+        display: flex;
+        gap: 32px;
+        flex: 1;
+
+        .stat-item {
+          text-align: center;
+
+          .stat-num {
+            font-size: 28px;
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1;
+
+            &.risk {
+              color: #ef4444;
+            }
+
+            &.safe {
+              color: #10b981;
+            }
+          }
+
+          .stat-label {
+            font-size: 13px;
+            color: #64748b;
+            margin-top: 8px;
+          }
+        }
+      }
+
+      .risk-categories {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+      }
+
+      .risk-category {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+        background: #ffffff;
+        transition: all 0.2s ease;
+
+        &:hover {
+          border-color: #94a3b8;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+
+        .cat-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 12px;
+
+          .cat-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #0f172a;
+          }
+        }
+
+        .cat-items {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .risk-item {
+          font-size: 13px;
+          border-radius: 6px;
+          transition: all 0.2s ease;
+
+          .item-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+
+            .item-icon {
+              flex-shrink: 0;
+              font-size: 14px;
+            }
+
+            .item-name {
+              flex: 1;
+              line-height: 1.4;
+            }
+
+            .item-score {
+              flex-shrink: 0;
+              font-size: 11px;
+            }
+
+            .expand-icon {
+              flex-shrink: 0;
+              font-size: 12px;
+              opacity: 0.6;
+              transition: transform 0.2s ease;
+            }
+          }
+
+          .item-detail {
+            padding: 0 8px 10px 30px;
+          }
+
+          .item-reason {
+            margin-bottom: 10px;
+
+            .reason-title {
+              font-size: 12px;
+              font-weight: 600;
+              color: #ef4444;
+              margin-bottom: 4px;
+            }
+
+            .reason-content {
+              font-size: 12px;
+              color: #475569;
+              line-height: 1.6;
+              white-space: pre-wrap;
+              word-break: break-all;
+            }
+          }
+
+          .sub-items {
+            .sub-title {
+              font-size: 12px;
+              font-weight: 600;
+              color: #64748b;
+              margin-bottom: 6px;
+            }
+
+            .sub-item {
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              padding: 4px 6px;
+              font-size: 12px;
+              border-radius: 4px;
+
+              .sub-icon {
+                flex-shrink: 0;
+                font-size: 12px;
+              }
+
+              .sub-name {
+                flex: 1;
+                line-height: 1.4;
+              }
+            }
+          }
+
+          &.is-risk {
+            color: #ef4444;
+
+            .item-icon {
+              color: #ef4444;
+            }
+
+            &.has-detail {
+              cursor: pointer;
+
+              &:hover {
+                background: rgba(239, 68, 68, 0.06);
+              }
+            }
+
+            &.expanded {
+              background: rgba(239, 68, 68, 0.06);
+            }
+
+            .sub-item.is-risk {
+              color: #ef4444;
+              .sub-icon { color: #ef4444; }
+            }
+          }
+
+          &.is-safe {
+            color: #475569;
+
+            .item-icon {
+              color: #10b981;
+            }
+
+            .sub-item.is-safe {
+              color: #475569;
+              .sub-icon { color: #10b981; }
+            }
+          }
+        }
+
+        .safe-items-collapse {
+          margin-top: 8px;
+
+          .el-collapse {
+            border: none;
+
+            .el-collapse-item__header {
+              background: #f8fafc;
+              border: 1px dashed #cbd5e1;
+              border-radius: 6px;
+              font-size: 13px;
+              color: #64748b;
+              height: 36px;
+              line-height: 36px;
+            }
+
+            .el-collapse-item__wrap {
+              border: none;
+              background: transparent;
+            }
+
+            .el-collapse-item__content {
+              padding: 8px 0;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .section--confidence {
     .confidence-content {
       display: flex;
       flex-direction: column;
@@ -2972,11 +3524,12 @@ onBeforeUnmount(() => {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
-      padding: 24px;
-      background: linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(6, 182, 212, 0.06) 100%);
+      gap: 16px;
+      padding: 28px 24px;
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(6, 182, 212, 0.05) 100%);
       border-radius: 16px;
-      border: 1px solid rgba(14, 165, 233, 0.2);
+      border: 1px solid rgba(14, 165, 233, 0.15);
+      position: relative;
 
       .confidence-total-score {
         display: flex;
@@ -2984,7 +3537,7 @@ onBeforeUnmount(() => {
         line-height: 1;
 
         .total-score-value {
-          font-size: 64px;
+          font-size: 56px;
           font-weight: 800;
           background: linear-gradient(135deg, #0ea5e9, #06b6d4, #0891b2);
           -webkit-background-clip: text;
@@ -2994,7 +3547,7 @@ onBeforeUnmount(() => {
         }
 
         .total-score-unit {
-          font-size: 28px;
+          font-size: 24px;
           font-weight: 700;
           color: #0891b2;
           margin-left: 4px;
@@ -3002,7 +3555,7 @@ onBeforeUnmount(() => {
       }
 
       .confidence-total-label {
-        font-size: 18px;
+        font-size: 16px;
         font-weight: 700;
         color: #0ea5e9;
       }
@@ -3011,18 +3564,18 @@ onBeforeUnmount(() => {
     .confidence-detail-list {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 12px;
 
       .confidence-detail-item {
         padding: 16px 20px;
-        background: var(--el-bg-color);
+        background: #ffffff;
         border-radius: 12px;
-        border: 1px solid var(--el-border-color-lighter);
+        border: 1px solid #e2e8f0;
         transition: all 0.3s ease;
 
         &:hover {
           transform: translateY(-2px);
-          box-shadow: 0 8px 24px rgba(14, 165, 233, 0.12);
+          box-shadow: 0 8px 24px rgba(14, 165, 233, 0.1);
           border-color: #7dd3fc;
         }
 
@@ -3030,16 +3583,16 @@ onBeforeUnmount(() => {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
 
           .detail-item-name {
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
-            color: var(--el-text-color-primary);
+            color: #0f172a;
           }
 
           .detail-item-score {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 700;
             color: #0891b2;
             font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
@@ -3047,23 +3600,57 @@ onBeforeUnmount(() => {
         }
 
         .detail-item-bar {
-          height: 8px;
-          border-radius: 4px;
-          background: rgba(14, 165, 233, 0.1);
+          height: 6px;
+          border-radius: 3px;
+          background: rgba(14, 165, 233, 0.08);
           overflow: hidden;
-          margin-bottom: 10px;
+          margin-bottom: 8px;
 
           .detail-item-bar-fill {
             height: 100%;
-            border-radius: 4px;
-            transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            border-radius: 3px;
+            transition: width 1s cubic-bezier(0.16, 1, 0.3, 1);
           }
         }
 
         .detail-item-desc {
           font-size: 13px;
-          color: var(--el-text-color-secondary);
+          color: #64748b;
           line-height: 1.6;
+        }
+      }
+
+      // 满分项折叠样式
+      .full-score-collapse {
+        .collapse-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          color: #10b981;
+
+          .el-icon {
+            font-size: 16px;
+          }
+        }
+
+        .confidence-detail-item.is-full-score {
+          background: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, rgba(52, 211, 153, 0.03) 100%);
+          border-color: rgba(16, 185, 129, 0.15);
+
+          .detail-item-header .detail-item-score {
+            color: #10b981;
+          }
+
+          .detail-item-bar-fill {
+            background: linear-gradient(90deg, #10b981, #34d399) !important;
+          }
+
+          &:hover {
+            border-color: #34d399;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.12);
+          }
         }
       }
     }
@@ -3310,37 +3897,93 @@ onBeforeUnmount(() => {
         // 研究辩论行布局：看涨/看跌并排
         .debate-row {
           display: flex;
-          align-items: center;
-          gap: 12px;
+          align-items: stretch;
+          gap: 16px;
           justify-content: center;
 
+          .debate-node {
+            flex: 1;
+            max-width: 380px;
+          }
+
           &.debate-row--manager {
-            // 研究经理单独一行，居中显示
+            .debate-node {
+              max-width: 420px;
+            }
           }
         }
 
-        // 辩论向下箭头：表示综合
+        // VS 分隔线
+        .vs-divider {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0 8px;
+          flex-shrink: 0;
+
+          .vs-line {
+            display: none;
+          }
+
+          .vs-badge {
+            font-size: 14px;
+            font-weight: 800;
+            color: #f59e0b;
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+            padding: 10px 18px;
+            border-radius: 20px;
+            letter-spacing: 1px;
+            border: 2px solid #fde68a;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
+            white-space: nowrap;
+          }
+        }
+
         .debate-arrow-down {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 4px;
+          gap: 6px;
           padding: 8px 0;
 
-          .arrow-text {
-            font-size: 13px;
-            font-weight: 600;
-            color: #64748b;
-            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-            padding: 4px 12px;
-            border-radius: 6px;
+          .arrow-line {
+            width: 2px;
+            height: 24px;
+            background: linear-gradient(180deg, #93c5fd, #60a5fa);
+            border-radius: 1px;
           }
 
-          .arrow-icon {
-            font-size: 24px;
-            color: #3b82f6;
+          .arrow-badge {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            font-size: 12px;
             font-weight: 700;
+            color: #1d4ed8;
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            padding: 10px 20px;
+            border-radius: 16px;
+            border: 2px solid #bfdbfe;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.12);
+            white-space: nowrap;
+
+            .arrow-badge-text {
+              font-size: 13px;
+              font-weight: 700;
+              letter-spacing: 0.5px;
+            }
+            .arrow-badge-icon {
+              font-size: 16px;
+              line-height: 1;
+              animation: bounceDown 1.5s ease-in-out infinite;
+            }
           }
+        }
+
+        @keyframes bounceDown {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(3px); }
         }
 
         &.phase--trade {
@@ -3357,11 +4000,11 @@ onBeforeUnmount(() => {
       .debate-node {
         display: flex;
         flex-direction: column;
-        padding: 22px;
-        border-radius: 16px;
+        padding: 20px;
+        border-radius: 12px;
         min-width: 160px;
         text-align: left;
-        transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        transition: all 0.2s ease;
         position: relative;
         overflow: hidden;
         border: 1px solid var(--el-border-color);
@@ -3372,45 +4015,74 @@ onBeforeUnmount(() => {
           position: absolute;
           top: 0;
           right: 0;
-          width: 80px;
-          height: 80px;
-          border-radius: 0 16px 0 80px;
-          opacity: 0.08;
-          transition: all 0.35s ease;
+          width: 60px;
+          height: 60px;
+          border-radius: 0 12px 0 60px;
+          opacity: 0.06;
+          transition: all 0.2s ease;
         }
 
         &.is-clickable {
           cursor: pointer;
 
           &:hover {
-            transform: translateY(-6px) scale(1.02);
-            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
 
             &::before {
-              opacity: 0.15;
-              width: 120px;
-              height: 120px;
+              opacity: 0.1;
             }
           }
         }
 
         .node-icon {
-          font-size: 28px;
-          width: 48px;
-          height: 48px;
+          font-size: 22px;
+          width: 36px;
+          height: 36px;
           display: flex;
           align-items: center;
           justify-content: center;
-          border-radius: 12px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-          margin-bottom: 14px;
+          border-radius: 8px;
+        }
+
+        .node-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 12px;
         }
 
         .node-name {
           font-size: 15px;
           font-weight: 700;
           color: var(--el-text-color-primary);
-          margin-bottom: 8px;
+        }
+
+        .node-keypoints {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+
+          .keypoint {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+
+            .kp-dot {
+              width: 6px;
+              height: 6px;
+              border-radius: 50%;
+              margin-top: 5px;
+              flex-shrink: 0;
+            }
+
+            .kp-text {
+              color: var(--el-text-color-regular);
+              flex: 1;
+            }
+          }
         }
 
         .node-desc {
@@ -3424,6 +4096,7 @@ onBeforeUnmount(() => {
           border-color: #bbf7d0;
           .node-name { color: #166534; }
           .node-icon { background: linear-gradient(145deg, #dcfce7, #bbf7d0); }
+          .keypoint .kp-dot { background: #22c55e; }
           &::before { background: linear-gradient(135deg, #22c55e, #4ade80); }
         }
         &.node--bear {
@@ -3431,6 +4104,7 @@ onBeforeUnmount(() => {
           border-color: #fecaca;
           .node-name { color: #991b1b; }
           .node-icon { background: linear-gradient(145deg, #fee2e2, #fecaca); }
+          .keypoint .kp-dot { background: #ef4444; }
           &::before { background: linear-gradient(135deg, #ef4444, #f87171); }
         }
         &.node--debate {
@@ -3438,6 +4112,7 @@ onBeforeUnmount(() => {
           border-color: #ddd6fe;
           .node-name { color: #4c1d95; }
           .node-icon { background: linear-gradient(145deg, #ede9fe, #ddd6fe); }
+          .keypoint .kp-dot { background: #8b5cf6; }
           &::before { background: linear-gradient(135deg, #8b5cf6, #a78bfa); }
         }
         &.node--manager {
@@ -3445,6 +4120,7 @@ onBeforeUnmount(() => {
           border-color: #bfdbfe;
           .node-name { color: #1e40af; }
           .node-icon { background: linear-gradient(145deg, #dbeafe, #bfdbfe); }
+          .keypoint .kp-dot { background: #3b82f6; }
           &::before { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
         }
       }
@@ -3937,11 +4613,28 @@ onBeforeUnmount(() => {
           .confidence-detail-list .confidence-detail-item {
             background: rgba(15, 23, 42, 0.6);
             border-color: rgba(56, 189, 248, 0.2);
+
+            // 暗色模式下的满分项样式
+            &.is-full-score {
+              background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(52, 211, 153, 0.06) 100%);
+              border-color: rgba(16, 185, 129, 0.3);
+
+              .detail-item-header .detail-item-score {
+                color: #34d399;
+              }
+            }
+          }
+
+          // 暗色模式下的满分项折叠
+          .full-score-collapse .collapse-title {
+            color: #34d399;
           }
         }
 
         // 辩论节点
         .debate-node {
+          .node-keypoints .keypoint .kp-text { color: #94a3b8; }
+
           &.node--bull {
             background: linear-gradient(135deg, #14532d 0%, #1c1917 100%);
             border-color: #166534;
@@ -4319,6 +5012,140 @@ html.dark {
         .score-bar-fill { background: linear-gradient(90deg, #9333ea, #c084fc); }
         &::before { background: #a855f7; }
       }
+    }
+  }
+
+  // 风险扫描卡片暗色模式
+  .report-pipeline-intro .section--risk-scan {
+    .section-header {
+      border-bottom-color: #334155;
+      h3 { color: #f8fafc; }
+      .section-subtitle { color: #94a3b8; }
+    }
+
+    .risk-content {
+      .risk-overview {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border-color: #334155;
+      }
+
+      .score-ring {
+        .score-text {
+          .score-label { color: #94a3b8; }
+        }
+      }
+
+      .score-stats {
+        .stat-item {
+          .stat-num { color: #f1f5f9; }
+          .stat-label { color: #94a3b8; }
+        }
+      }
+
+      .risk-categories {
+        .risk-category {
+          background: #1e293b;
+          border-color: #334155;
+
+          &:hover {
+            border-color: #475569;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+          }
+
+          .cat-header {
+            .cat-name { color: #f1f5f9; }
+          }
+
+          .risk-item {
+            &.is-risk {
+              .item-name { color: #fca5a5; }
+              &.has-detail:hover { background: rgba(239, 68, 68, 0.1); }
+              &.expanded { background: rgba(239, 68, 68, 0.1); }
+            }
+
+            &.is-safe {
+              .item-name { color: #d1d5db; }
+            }
+
+            .item-detail {
+              .item-reason {
+                .reason-title { color: #f87171; }
+                .reason-content { color: #94a3b8; }
+              }
+              .sub-items {
+                .sub-title { color: #94a3b8; }
+                .sub-item.is-risk { color: #fca5a5; .sub-icon { color: #f87171; } }
+                .sub-item.is-safe { color: #d1d5db; .sub-icon { color: #34d399; } }
+              }
+            }
+          }
+
+          .safe-items-collapse .el-collapse {
+            .el-collapse-item__header {
+              background: #1e293b;
+              border-color: #475569;
+              color: #94a3b8;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 置信度评估暗色模式
+  .report-pipeline-intro .section--confidence {
+    background: linear-gradient(135deg, #0c4a6e 0%, #1e293b 100%);
+    border-color: #0369a1;
+
+    .section-header {
+      border-bottom-color: #334155;
+      h3 { color: #f8fafc; }
+      .section-subtitle { color: #94a3b8; }
+    }
+
+    .confidence-total {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(6, 182, 212, 0.08) 100%);
+      border-color: rgba(14, 165, 233, 0.2);
+
+      .confidence-total-score {
+        .total-score-value {
+          background: linear-gradient(135deg, #38bdf8, #22d3ee);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+        .total-score-unit {
+          color: #22d3ee;
+        }
+      }
+    }
+
+    .confidence-detail-list .confidence-detail-item {
+      background: rgba(15, 23, 42, 0.6);
+      border-color: rgba(56, 189, 248, 0.2);
+
+      .detail-item-header {
+        .detail-item-name { color: #f1f5f9; }
+      }
+
+      .detail-item-bar {
+        background: rgba(14, 165, 233, 0.1);
+      }
+
+      .detail-item-desc { color: #94a3b8; }
+
+      &.is-full-score {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(52, 211, 153, 0.06) 100%);
+        border-color: rgba(16, 185, 129, 0.3);
+
+        .detail-item-header .detail-item-score {
+          color: #34d399;
+        }
+      }
+    }
+
+    .full-score-collapse .collapse-title {
+      color: #34d399;
     }
   }
 }

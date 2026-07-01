@@ -6,6 +6,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_language_instruction,
     get_lockup_expiry,
     get_news,
+    get_risk_scan,
 )
 from tradingagents.dataflows.config import get_config
 
@@ -23,6 +24,7 @@ def create_lockup_watcher(llm):
             get_news,
             get_fundamentals,
             get_lockup_expiry,
+            get_risk_scan,
         ]
 
         system_message = (
@@ -44,6 +46,7 @@ def create_lockup_watcher(llm):
             "\n- `get_fundamentals`：获取公司股本结构信息"
             "\n- `get_news(query, start_date, end_date)`：搜索解禁/减持相关新闻和公告"
             "\n- `get_lockup_expiry(ticker, curr_date)`：获取限售解禁日历（历史解禁记录+未来90天待解禁计划，含解禁数量/占比/影响评估）"
+            "\n- `get_risk_scan(ticker, curr_date)`：获取通达信风险扫描数据，含大比例解禁、特定股东减持、高质押风险等交易类风险（**用于验证和补充解禁/减持/质押风险分析**）"
             "\n\n撰写详细的解禁/减持风险评估报告,给出减持压力总体评级(重大压力/中等压力/轻微压力/无明显压力),并估算潜在减持规模和时间窗口。**报告开头**必须先给出评分，格式为单独一行："
             "\n```"
             "\n## 🔓 解禁面评分：XX/100"

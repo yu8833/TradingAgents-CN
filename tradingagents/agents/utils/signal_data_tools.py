@@ -195,3 +195,22 @@ def get_shareholder_concentration(
         str: Shareholder concentration data with chip distribution analysis
     """
     return route_to_vendor("get_shareholder_concentration", ticker, curr_date)
+
+
+@tool
+def get_risk_scan(
+    ticker: Annotated[str, "A-stock code (e.g. 300902)"],
+    curr_date: Annotated[str, "Date in YYYY-MM-DD format"],
+) -> str:
+    """
+    Retrieve comprehensive risk scan data from Tongdaxin (通达信风险扫描).
+    Covers 4 categories: financial risks, market risks, trading risks, ST/delisting risks.
+    Use this to verify specific risk items like earnings loss, regulatory actions,
+    pledge risk, lockup expiry, ST warning, etc.
+    Args:
+        ticker (str): A-stock code
+        curr_date (str): Date in YYYY-MM-DD format
+    Returns:
+        str: Full risk scan report with categorized risk items and safe items
+    """
+    return route_to_vendor("get_risk_scan", ticker, curr_date)
