@@ -20,18 +20,14 @@ async def init_redis():
 
     try:
         # 创建连接池
+        # 注意：socket_keepalive_options 在 Docker/容器环境中可能导致
+        # "Error 22 Invalid argument" 错误，因此不在 from_url 中设置
         redis_pool = redis.ConnectionPool.from_url(
             settings.REDIS_URL,
-            max_connections=settings.REDIS_MAX_CONNECTIONS,  # 使用配置文件中的值
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
             retry_on_timeout=settings.REDIS_RETRY_ON_TIMEOUT,
             decode_responses=True,
-            socket_keepalive=True,  # 启用 TCP keepalive
-            socket_keepalive_options={
-                1: 60,  # TCP_KEEPIDLE: 60秒后开始发送keepalive探测
-                2: 10,  # TCP_KEEPINTVL: 每10秒发送一次探测
-                3: 3,   # TCP_KEEPCNT: 最多发送3次探测
-            },
-            health_check_interval=30,  # 每30秒检查一次连接健康状态
+            health_check_interval=30,
         )
 
         # 创建Redis客户端

@@ -18,11 +18,11 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from app.services.queue_service import get_queue_service
-from app.services.analysis_service import get_analysis_service
+from app.services.simple_analysis_service import get_simple_analysis_service
 from app.core.database import init_database, close_database
 from app.core.redis_client import init_redis, close_redis
 from app.core.config import settings
-from app.models.analysis import AnalysisTask, AnalysisParameters
+from app.models.analysis import AnalysisTask, AnalysisParameters, SingleAnalysisRequest
 from app.services.config_provider import provider as config_provider
 from app.services.queue import DEFAULT_USER_CONCURRENT_LIMIT, GLOBAL_CONCURRENT_LIMIT, VISIBILITY_TIMEOUT_SECONDS
 
@@ -142,7 +142,7 @@ class AnalysisWorker:
         success = False
 
         try:
-            # 构建分析任务对象
+            # 构建分析参数
             parameters_dict = task_data.get("parameters", {})
             if isinstance(parameters_dict, str):
                 import json
@@ -150,22 +150,23 @@ class AnalysisWorker:
 
             parameters = AnalysisParameters(**parameters_dict)
 
-            task = AnalysisTask(
-                task_id=task_id,
-                user_id=user_id,
+            # 构建单股分析请求
+            request = SingleAnalysisRequest(
+                symbol=stock_code,
                 stock_code=stock_code,
-                batch_id=task_data.get("batch_id"),
                 parameters=parameters
             )
 
-            # 执行分析
-            result = await get_analysis_service().execute_analysis_task(
-                task,
-                progress_callback=self._progress_callback
+            # 使用 simple_analysis_service 执行分析（与单股分析入口保持一致）
+            service = get_simple_analysis_service()
+            await service.execute_analysis_background(
+                task_id,
+                user_id,
+                request
             )
 
             success = True
-            logger.info(f"✅ 任务完成: {task_id} - 耗时: {result.execution_time:.2f}秒")
+            logger.info(f"✅ 任务完成: {task_id}")
 
         except Exception as e:
             logger.error(f"❌ 任务执行失败: {task_id} - {e}")

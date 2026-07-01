@@ -84,7 +84,7 @@
       <div class="pipeline-intro report-pipeline-intro">
         <!-- 最终决策 -->
         <div v-if="hasReport('final_trade_decision')" class="final-decision">
-          <div class="decision-label">📈 最终交易决策</div>
+          <div class="decision-label">📈 决策建议</div>
           <div class="decision-options">
             <div
               class="decision-chip decision-chip--buy"
@@ -134,7 +134,7 @@
           <div class="pipeline-section section--scores">
             <div class="section-header">
               <h3>📊 多维度评分</h3>
-              <p class="section-subtitle">7位分析师从不同维度综合评估股票，覆盖短线博弈到长线价值，满分10分</p>
+              <p class="section-subtitle">7位分析师从不同维度综合评估股票，覆盖短线博弈到长线价值</p>
             </div>
 
             <!-- 短线博弈组 -->
@@ -224,7 +224,7 @@
         <!-- 第二部分：辩论与决策流程 -->
         <div v-if="hasAnyDebateOrRiskReport" class="pipeline-section section--debate">
           <div class="section-header">
-            <h3>⚔️ 多空辩论 · 三方风控 · 最终交易决策</h3>
+            <h3>⚔️ 多空辩论 · 三方风控 · 决策建议</h3>
             <p class="section-subtitle">研究团队通过对抗性辩论形成共识，风控团队从三个视角兜底，最终给出可操作的投资建议</p>
           </div>
           <div class="debate-timeline">
@@ -324,7 +324,7 @@
             </div>
 
             <div v-if="hasReport('trader_investment_plan') || hasReport('final_trade_decision')" class="timeline-phase phase--final-strategy">
-              <div class="phase-label">📈 最终交易决策</div>
+              <div class="phase-label">📈 决策建议</div>
               <div class="phase-flow">
                 <div
                   v-if="hasReport('trader_investment_plan')"
@@ -337,8 +337,8 @@
                 </div>
                 <div v-if="!hasReport('trader_investment_plan') && hasReport('final_trade_decision')" class="trade-node is-clickable" @click="openReportDialog('final_trade_decision')">
                   <span class="node-icon">📈</span>
-                  <span class="node-name">最终交易决策</span>
-                  <span class="node-desc">最终交易决策与执行方案</span>
+                  <span class="node-name">决策建议</span>
+                  <span class="node-desc">决策建议与执行方案</span>
                 </div>
               </div>
             </div>
@@ -518,7 +518,7 @@ const currentDialogReport = ref<{ title: string; content: any; icon: string; des
 
 // 报告key到信息的映射
 const reportKeyToInfo: Record<string, { title: string; icon: string; description: string }> = {
-  final_trade_decision: { title: '最终交易决策', icon: '📈', description: '综合所有分析后的交易策略建议' },
+  final_trade_decision: { title: '决策建议', icon: '📈', description: '综合所有分析后的交易策略建议' },
   market_report: { title: '技术分析师', icon: '📈', description: '技术指标、均线/KDJ/MACD分析' },
   sentiment_report: { title: '市场情绪分析师', icon: '💭', description: '情绪量化、舆情热度、正负面比例' },
   hot_money_report: { title: '游资追踪师', icon: '💰', description: '主力资金、龙虎榜、北向资金' },
@@ -534,7 +534,9 @@ const reportKeyToInfo: Record<string, { title: string; icon: string; description
   neutral_analyst: { title: '中性风险', icon: '⚖️', description: '均衡仓位、标准止损、趋势跟随' },
   safe_analyst: { title: '保守风险', icon: '🛡️', description: '轻仓、宽止损、长周期持有' },
   risk_control_decision: { title: '风控约束', icon: '📋', description: '最大仓位、止损位、最大可接受亏损' },
-  risk_management_decision: { title: '风险经理', icon: '👔', description: '综合三方风控，输出止损位与仓位上限' }
+  risk_management_decision: { title: '风险经理', icon: '👔', description: '综合三方风控，输出止损位与仓位上限' },
+  data_quality_summary: { title: '数据质量评估', icon: '📊', description: '评估各维度数据的完整性和可靠性' },
+  quality_gate: { title: '数据质量门控', icon: '🚦', description: '数据质量校验与置信度评估' }
 }
 
 const normalizeAction = (text: string): string => {
@@ -704,7 +706,7 @@ const debateReportMap = {
   '保守风险': 'safe_analyst',
   '风控约束': 'risk_control_decision',
   '风险经理': 'risk_management_decision',
-  '最终交易决策': 'final_trade_decision'
+  '决策建议': 'final_trade_decision'
 }
 
 const hasAnyAnalystReport = computed(() => {
@@ -755,13 +757,13 @@ const dimensionScoreList = computed((): DimensionScoreItem[] => {
   }
   const result: DimensionScoreItem[] = []
   const defaultBasis: Record<string, { analyst: string; basis: string }> = {
-    '技术面评分': { analyst: '技术分析师', basis: '基于技术指标（均线、KDJ、MACD、RSI等）、趋势形态、量价关系等综合评估，满分10分。' },
-    '基本面评分': { analyst: '基本面分析师', basis: '基于财务数据（营收、利润、ROE等）、行业地位、护城河、估值水平等综合评估，满分10分。' },
-    '情绪面评分': { analyst: '市场情绪分析师', basis: '基于市场情绪指标、舆情热度、散户情绪逆向指标等综合评估，满分10分。' },
-    '消息面评分': { analyst: '新闻分析师', basis: '基于公司公告、研报动态、新闻事件冲击、重要消息面影响等综合评估，满分10分。' },
-    '资金面评分': { analyst: '游资追踪师', basis: '基于主力资金流向、龙虎榜数据、北向资金动向、机构持仓变化等综合评估，满分10分。' },
-    '政策面评分': { analyst: '政策分析师', basis: '基于产业政策、宏观调控、监管动向、行业利好/利空政策等综合评估，满分10分。' },
-    '解禁面评分': { analyst: '解禁追踪师', basis: '基于限售股解禁规模、大股东减持计划、解禁压力与市场承接能力等综合评估，满分10分。' }
+    '技术面评分': { analyst: '技术分析师', basis: '基于技术指标（均线、KDJ、MACD、RSI等）、趋势形态、量价关系等综合评估，满分100分。' },
+    '基本面评分': { analyst: '基本面分析师', basis: '基于财务数据（营收、利润、ROE等）、行业地位、护城河、估值水平等综合评估，满分100分。' },
+    '情绪面评分': { analyst: '市场情绪分析师', basis: '基于市场情绪指标、舆情热度、散户情绪逆向指标等综合评估，满分100分。' },
+    '消息面评分': { analyst: '新闻分析师', basis: '基于公司公告、研报动态、新闻事件冲击、重要消息面影响等综合评估，满分100分。' },
+    '资金面评分': { analyst: '游资追踪师', basis: '基于主力资金流向、龙虎榜数据、北向资金动向、机构持仓变化等综合评估，满分100分。' },
+    '政策面评分': { analyst: '政策分析师', basis: '基于产业政策、宏观调控、监管动向、行业利好/利空政策等综合评估，满分100分。' },
+    '解禁面评分': { analyst: '解禁追踪师', basis: '基于限售股解禁规模、大股东减持计划、解禁压力与市场承接能力等综合评估，满分100分。' }
   }
   for (const field of dimensionScoreFields) {
     const score = getDimensionScore(field)
@@ -771,7 +773,7 @@ const dimensionScoreList = computed((): DimensionScoreItem[] => {
         name: field.replace('评分', ''),
         field,
         score,
-        max_score: 10,
+        max_score: 100,
         analyst: info.analyst,
         basis: info.basis,
         source_type: '估算评分'
@@ -1417,33 +1419,38 @@ const getModelDescription = (modelInfo: string) => {
 }
 
 const getModuleDisplayName = (moduleName: string) => {
-  // 统一与单股分析的中文标签映射（完整的13个报告）
+  // 统一与单股分析的中文标签映射
   const nameMap: Record<string, string> = {
-    // 分析师团队 (7个) - A股特有：政策分析师、游资追踪师、解禁监控师
+    // 分析师团队 (7个)
     market_report: '📈 市场技术分析',
     sentiment_report: '💭 市场情绪分析',
     news_report: '📰 新闻事件分析',
     fundamentals_report: '💰 基本面分析',
-    policy_report: '🏛️ 政策分析师',
-    hot_money_report: '🔥 游资追踪师',
-    lockup_report: '🔒 解禁监控师',
+    policy_report: '🏛️ 政策分析',
+    hot_money_report: '💹 游资追踪分析',
+    lockup_report: '🔒 限售解禁分析',
 
     // 研究团队 (3个)
     bull_researcher: '🐂 看涨研究员',
     bear_researcher: '🐻 看跌研究员',
-    research_team_decision: '🔬 研究经理',
+    research_team_decision: '👔 研究经理决策',
 
     // 交易团队 (1个)
-    trader_investment_plan: '💼 交易员计划',
+    trader_investment_plan: '💼 交易员投资计划',
 
-    // 风险管理团队 (4个)
-    risky_analyst: '🔥 激进风险评估',
-    safe_analyst: '🛡️ 保守风险评估',
-    neutral_analyst: '⚖️ 中性风险评估',
-    risk_management_decision: '🎯 风险经理',
+    // 风险管理团队 (5个)
+    risky_analyst: '🔥 激进风险分析',
+    safe_analyst: '🛡️ 保守风险分析',
+    neutral_analyst: '⚖️ 中性风险分析',
+    risk_control_decision: '📋 风控约束决策',
+    risk_management_decision: '👔 风险经理决策',
 
     // 最终决策 (1个)
-    final_trade_decision: '📈 最终交易决策',
+    final_trade_decision: '🎯 决策建议',
+
+    // 数据质量
+    data_quality_summary: '📊 数据质量评估',
+    quality_gate: '🚦 数据质量门控',
 
     // 兼容旧字段
     investment_plan: '📋 投资建议',
@@ -1451,8 +1458,7 @@ const getModuleDisplayName = (moduleName: string) => {
     risk_debate_state: '⚖️ 风险管理（旧）',
     detailed_analysis: '📄 详细分析'
   }
-  // 未匹配到时，做一个友好的回退：下划线转空格
-  return nameMap[moduleName] || moduleName.replace(/_/g, ' ')
+  return nameMap[moduleName] || moduleName
 }
 
 const renderMarkdown = (content: string) => {

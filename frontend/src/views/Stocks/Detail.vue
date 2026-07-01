@@ -1436,37 +1436,44 @@ function formatNewsTime(dateStr: string | null | undefined): string {
 
 // 格式化报告名称
 function formatReportName(key: string): string {
-  // 完整的13个报告映射
   const nameMap: Record<string, string> = {
-    // 分析师团队 (4个)
+    // 分析师团队 (7个)
     'market_report': '📈 市场技术分析',
     'sentiment_report': '💭 市场情绪分析',
     'news_report': '📰 新闻事件分析',
     'fundamentals_report': '💰 基本面分析',
+    'policy_report': '🏛️ 政策分析',
+    'hot_money_report': '💹 游资追踪分析',
+    'lockup_report': '🔒 限售解禁分析',
 
     // 研究团队 (3个)
-    'bull_researcher': '🐂 多头研究员',
-    'bear_researcher': '🐻 空头研究员',
-    'research_team_decision': '🔬 研究经理决策',
+    'bull_researcher': '🐂 看涨研究员',
+    'bear_researcher': '🐻 看跌研究员',
+    'research_team_decision': '👔 研究经理决策',
 
     // 交易团队 (1个)
-    'trader_investment_plan': '💼 交易员计划',
+    'trader_investment_plan': '💼 交易员投资计划',
 
-    // 风险管理团队 (4个)
-    'risky_analyst': '⚡ 激进分析师',
-    'safe_analyst': '🛡️ 保守分析师',
-    'neutral_analyst': '⚖️ 中性分析师',
-    'risk_management_decision': '👔 投资组合经理',
+    // 风险管理团队 (5个)
+    'risky_analyst': '🔥 激进风险分析',
+    'safe_analyst': '🛡️ 保守风险分析',
+    'neutral_analyst': '⚖️ 中性风险分析',
+    'risk_control_decision': '📋 风控约束决策',
+    'risk_management_decision': '👔 风险经理决策',
 
     // 最终决策 (1个)
-    'final_trade_decision': '🎯 最终交易决策',
+    'final_trade_decision': '🎯 决策建议',
+
+    // 数据质量
+    'data_quality_summary': '📊 数据质量评估',
+    'quality_gate': '🚦 数据质量门控',
 
     // 兼容旧字段
     'investment_plan': '📋 投资建议',
     'investment_debate_state': '🔬 研究团队决策（旧）',
     'risk_debate_state': '⚖️ 风险管理团队（旧）'
   }
-  return nameMap[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  return nameMap[key] || key
 }
 
 // 渲染Markdown

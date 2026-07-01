@@ -159,6 +159,8 @@ ANALYST_CORE_TOOLS: Dict[str, List[str]] = {
     "social": [
         "get_news",              # 新闻数据 - 核心
         "get_global_news",      # 全球新闻 - 辅助
+        "get_fund_flow",        # 资金流向 - 辅助（散户行为分析）
+        "get_margin_trading",   # 融资融券 - 辅助（散户杠杆情绪）
     ],
     "news": [
         "get_news",              # 新闻数据 - 核心

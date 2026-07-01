@@ -344,25 +344,161 @@ async def create_stock_screening_view(db):
         logger.warning(f"⚠️ 创建视图失败: {e}")
 
 
+async def _safe_create_index(collection, keys, **kwargs):
+    """安全创建索引，捕获已存在或选项冲突的异常"""
+    try:
+        await collection.create_index(keys, **kwargs)
+        return True
+    except Exception as e:
+        # IndexOptionsConflict (code 85) - 索引已存在但选项不同
+        # 其他错误也静默跳过，确保初始化不中断
+        logger.debug(f"ℹ️ 跳过索引创建 {keys}: {e}")
+        return False
+
+
 async def create_database_indexes(db):
     """创建数据库索引"""
+    index_count = 0
     try:
         # stock_basic_info 的索引
         basic_info = db["stock_basic_info"]
-        await basic_info.create_index([("code", 1), ("source", 1)], unique=True)
-        await basic_info.create_index([("industry", 1)])
-        await basic_info.create_index([("total_mv", -1)])
-        await basic_info.create_index([("pe", 1)])
-        await basic_info.create_index([("pb", 1)])
+        if await _safe_create_index(basic_info, [("code", 1), ("source", 1)], unique=True):
+            index_count += 1
+        if await _safe_create_index(basic_info, [("industry", 1)]):
+            index_count += 1
+        if await _safe_create_index(basic_info, [("total_mv", -1)]):
+            index_count += 1
+        if await _safe_create_index(basic_info, [("pe", 1)]):
+            index_count += 1
+        if await _safe_create_index(basic_info, [("pb", 1)]):
+            index_count += 1
 
         # market_quotes 的索引
         market_quotes = db["market_quotes"]
-        await market_quotes.create_index([("code", 1)], unique=True)
-        await market_quotes.create_index([("pct_chg", -1)])
-        await market_quotes.create_index([("amount", -1)])
-        await market_quotes.create_index([("updated_at", -1)])
+        if await _safe_create_index(market_quotes, [("code", 1)], unique=True):
+            index_count += 1
+        if await _safe_create_index(market_quotes, [("pct_chg", -1)]):
+            index_count += 1
+        if await _safe_create_index(market_quotes, [("amount", -1)]):
+            index_count += 1
+        if await _safe_create_index(market_quotes, [("updated_at", -1)]):
+            index_count += 1
 
-        logger.info("✅ 数据库索引创建完成")
+        # analysis_tasks 的索引（分析任务 - 高频查询）
+        analysis_tasks = db["analysis_tasks"]
+        if await _safe_create_index(analysis_tasks, [("task_id", 1)], unique=True):
+            index_count += 1
+        if await _safe_create_index(analysis_tasks, [("user_id", 1), ("created_at", -1)]):
+            index_count += 1
+        if await _safe_create_index(analysis_tasks, [("status", 1), ("created_at", -1)]):
+            index_count += 1
+        if await _safe_create_index(analysis_tasks, [("batch_id", 1)]):
+            index_count += 1
+        if await _safe_create_index(analysis_tasks, [("symbol", 1), ("created_at", -1)]):
+            index_count += 1
+        if await _safe_create_index(analysis_tasks, [("user_id", 1), ("status", 1)]):
+            index_count += 1
+
+        # analysis_batches 的索引（分析批次）
+        analysis_batches = db["analysis_batches"]
+        if await _safe_create_index(analysis_batches, [("batch_id", 1)], unique=True):
+            index_count += 1
+        if await _safe_create_index(analysis_batches, [("user_id", 1), ("created_at", -1)]):
+            index_count += 1
+        if await _safe_create_index(analysis_batches, [("status", 1), ("created_at", -1)]):
+            index_count += 1
+
+        # analysis_reports 的索引（分析报告 - 高频查询）
+        analysis_reports = db["analysis_reports"]
+        if await _safe_create_index(analysis_reports, [("task_id", 1)], unique=True):
+            index_count += 1
+        if await _safe_create_index(analysis_reports, [("analysis_id", 1)], unique=True):
+            index_count += 1
+        if await _safe_create_index(analysis_reports, [("stock_symbol", 1), ("created_at", -1)]):
+            index_count += 1
+        if await _safe_create_index(analysis_reports, [("user_id", 1), ("created_at", -1)]):
+            index_count += 1
+        if await _safe_create_index(analysis_reports, [("created_at", -1)]):
+            index_count += 1
+
+        # notifications 的索引（通知）
+        notifications = db["notifications"]
+        if await _safe_create_index(notifications, [("user_id", 1), ("created_at", -1)]):
+            index_count += 1
+        if await _safe_create_index(notifications, [("user_id", 1), ("status", 1), ("created_at", -1)]):
+            index_count += 1
+        if await _safe_create_index(notifications, [("user_id", 1), ("read", 1), ("created_at", -1)]):
+            index_count += 1
+
+        # operation_logs 的索引（操作日志）
+        operation_logs = db["operation_logs"]
+        if await _safe_create_index(operation_logs, [("user_id", 1), ("timestamp", -1)]):
+            index_count += 1
+        if await _safe_create_index(operation_logs, [("action_type", 1), ("timestamp", -1)]):
+            index_count += 1
+        if await _safe_create_index(operation_logs, [("timestamp", -1)]):
+            index_count += 1
+        if await _safe_create_index(operation_logs, [("user_id", 1), ("action_type", 1), ("timestamp", -1)]):
+            index_count += 1
+
+        # system_configs 的索引（系统配置）
+        system_configs = db["system_configs"]
+        if await _safe_create_index(system_configs, [("is_active", 1), ("version", -1)]):
+            index_count += 1
+        if await _safe_create_index(system_configs, [("config_type", 1), ("version", -1)]):
+            index_count += 1
+        if await _safe_create_index(system_configs, [("created_at", -1)]):
+            index_count += 1
+
+        # usage_records 的索引（使用记录）
+        usage_records = db["usage_records"]
+        if await _safe_create_index(usage_records, [("user_id", 1), ("timestamp", -1)]):
+            index_count += 1
+        if await _safe_create_index(usage_records, [("provider", 1), ("timestamp", -1)]):
+            index_count += 1
+        if await _safe_create_index(usage_records, [("session_id", 1)]):
+            index_count += 1
+        if await _safe_create_index(usage_records, [("timestamp", -1)]):
+            index_count += 1
+
+        # stock_financial_data 的索引（财务数据）
+        stock_financial_data = db["stock_financial_data"]
+        if await _safe_create_index(stock_financial_data, [("code", 1), ("data_source", 1), ("report_period", -1)]):
+            index_count += 1
+        if await _safe_create_index(stock_financial_data, [("code", 1), ("report_period", -1)]):
+            index_count += 1
+        if await _safe_create_index(stock_financial_data, [("symbol", 1), ("report_period", -1)]):
+            index_count += 1
+
+        # stock_historical_data 的索引（历史行情数据）
+        stock_historical_data = db["stock_historical_data"]
+        if await _safe_create_index(stock_historical_data, [("code", 1), ("trade_date", -1)]):
+            index_count += 1
+        if await _safe_create_index(stock_historical_data, [("code", 1), ("source", 1), ("trade_date", -1)]):
+            index_count += 1
+        if await _safe_create_index(stock_historical_data, [("trade_date", -1)]):
+            index_count += 1
+
+        # users 的索引（用户表）
+        users = db["users"]
+        if await _safe_create_index(users, [("username", 1)], unique=True):
+            index_count += 1
+        if await _safe_create_index(users, [("email", 1)], unique=True, sparse=True):
+            index_count += 1
+
+        # favorites 的索引（自选股）
+        favorites = db["favorites"]
+        if await _safe_create_index(favorites, [("user_id", 1), ("symbol", 1)], unique=True):
+            index_count += 1
+        if await _safe_create_index(favorites, [("user_id", 1), ("created_at", -1)]):
+            index_count += 1
+
+        # tags 的索引（标签）
+        tags = db["tags"]
+        if await _safe_create_index(tags, [("user_id", 1), ("name", 1)], unique=True):
+            index_count += 1
+
+        logger.info(f"✅ 数据库索引创建完成（新增 {index_count} 个索引）")
 
     except Exception as e:
         logger.warning(f"⚠️ 创建索引失败: {e}")

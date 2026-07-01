@@ -27,6 +27,8 @@ from tradingagents.agents.utils.signal_data_tools import (
     get_dragon_tiger_board,
     get_lockup_expiry,
     get_industry_comparison,
+    get_margin_trading,
+    get_shareholder_concentration,
 )
 
 

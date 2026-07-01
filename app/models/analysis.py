@@ -44,8 +44,8 @@ class AnalysisParameters(BaseModel):
     # 速览分析结果（深度模式下复用）
     quick_result: Optional[Dict[str, Any]] = None
     # 模型配置
-    quick_analysis_model: Optional[str] = "qwen-turbo"
-    deep_analysis_model: Optional[str] = "qwen-max"
+    quick_analysis_model: Optional[str] = None
+    deep_analysis_model: Optional[str] = None
 
 
 class AnalysisResult(BaseModel):

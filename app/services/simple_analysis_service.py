@@ -1664,9 +1664,10 @@ class SimpleAnalysisService:
                         except (ValueError, TypeError):
                             target_price = None
 
-                # 解析评级 (Rating)
+                # 解析评级 (Rating) - 支持中英文两种格式
                 action = '持有'
                 if final_decision_markdown:
+                    # 英文格式
                     rating_match = re.search(r'\*\*Rating\*\*:\s*(\w+)', final_decision_markdown, re.IGNORECASE)
                     if rating_match:
                         rating = rating_match.group(1).lower()
@@ -1675,6 +1676,27 @@ class SimpleAnalysisService:
                             'underweight': '减持', 'sell': '卖出'
                         }
                         action = action_translation.get(rating, '持有')
+                    else:
+                        # 中文格式：最终交易决策/交易方向
+                        cn_rating_match = re.search(
+                            r'(?:最终交易决策|交易方向)[^：]*[：:]\s*[\*]*\s*(\S+?)(?:\s*[\*]*\s*[/／]|\n|$)',
+                            final_decision_markdown
+                        )
+                        if cn_rating_match:
+                            raw_action = cn_rating_match.group(1).strip()
+                            # 标准化动作映射
+                            if '买入' in raw_action or '做多' in raw_action:
+                                action = '买入'
+                            elif '增持' in raw_action:
+                                action = '增持'
+                            elif '卖出' in raw_action or '做空' in raw_action or '规避' in raw_action:
+                                action = '卖出'
+                            elif '减持' in raw_action:
+                                action = '减持'
+                            elif '持有' in raw_action or '观望' in raw_action:
+                                action = '持有'
+                            else:
+                                action = raw_action[:4] if len(raw_action) > 4 else raw_action
 
                 # 如果final_decision_markdown为空，使用decision字符串
                 if not final_decision_markdown and isinstance(decision, str):
@@ -1684,16 +1706,39 @@ class SimpleAnalysisService:
                     }
                     action = action_translation.get(decision.lower(), decision)
 
-                # 解析executive_summary作为reasoning
+                # 解析executive_summary/决策依据作为reasoning - 支持中英文
                 reasoning = '暂无分析推理'
+                confidence = 0.7
                 if final_decision_markdown:
+                    # 英文格式
                     exec_match = re.search(r'\*\*Executive Summary\*\*:\s*([\s\S]+?)(?:\n\*\*|\Z)', final_decision_markdown, re.IGNORECASE)
                     if exec_match:
-                        reasoning = exec_match.group(1).strip()[:500]  # 限制长度
+                        reasoning = exec_match.group(1).strip()[:500]
+                    else:
+                        # 中文格式：尝试从核心理由/决策依据/综合裁定中提取
+                        cn_reason_match = re.search(
+                            r'(?:核心理由|决策依据|综合裁定|我的最终裁定|核心考量)[^：]*[：:]\s*([\s\S]{20,800}?)(?:\n\s*#{1,3}\s|$)',
+                            final_decision_markdown
+                        )
+                        if cn_reason_match:
+                            raw_reason = cn_reason_match.group(1).strip()
+                            # 清理markdown符号，提取纯文本
+                            raw_reason = re.sub(r'[#*`>]', '', raw_reason).strip()
+                            reasoning = raw_reason[:500]
+
+                    # 解析置信度 - 支持中英文
+                    conf_match = re.search(r'(?:置信度|confidence)[^：\d]*[：:]?\s*[\*]*\s*(\d{1,3})\s*(?:/100|分)?', final_decision_markdown, re.IGNORECASE)
+                    if conf_match:
+                        try:
+                            conf_val = int(conf_match.group(1))
+                            if 0 <= conf_val <= 100:
+                                confidence = conf_val / 100.0
+                        except (ValueError, TypeError):
+                            pass
 
                 formatted_decision = {
                     'action': action,
-                    'confidence': 0.7,  # 默认置信度
+                    'confidence': confidence,
                     'risk_score': 0.3,  # 默认风险评分
                     'target_price': target_price,
                     'reasoning': reasoning

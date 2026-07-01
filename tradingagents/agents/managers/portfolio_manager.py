@@ -1,15 +1,11 @@
-"""Portfolio Manager: synthesises the risk-analyst debate into the final decision.
+"""组合经理：综合风控辩论，做出最终投资决策。
 
-Two-phase process:
-1. Risk Manager phase: produces a structured RiskControlDecision with position
-   sizing limits and stop-loss levels.
-2. Portfolio Manager phase: makes the final trading decision, respecting the
-   risk constraints set by phase 1.
+两阶段流程：
+1. 风控经理阶段：生成结构化的风控约束（仓位上限、止损位等）
+2. 组合经理阶段：做出最终交易决策，必须尊重阶段1设定的风险约束
 
-Uses LangChain's ``with_structured_output`` so the LLM produces typed schemas
-directly, in two calls. The results are rendered back to markdown for storage
-in ``risk_control_decision`` and ``final_trade_decision``. When a provider does
-not expose structured output, the agent falls back gracefully to free-text.
+使用 LangChain 的结构化输出，让 LLM 直接生成 typed schema，分两次调用。
+结果渲染回 markdown 格式，保存在 risk_control_decision 和 final_trade_decision 中。
 """
 
 from __future__ import annotations
@@ -31,10 +27,8 @@ from tradingagents.agents.utils.structured import (
 
 
 def create_portfolio_manager(llm):
-    # Phase 1: Risk Manager uses RiskControlDecision schema
-    risk_llm = bind_structured(llm, RiskControlDecision, "Risk Manager")
-    # Phase 2: Portfolio Manager uses PortfolioDecision schema
-    portfolio_llm = bind_structured(llm, PortfolioDecision, "Portfolio Manager")
+    risk_llm = bind_structured(llm, RiskControlDecision, "风控经理")
+    portfolio_llm = bind_structured(llm, PortfolioDecision, "组合经理")
 
     def portfolio_manager_node(state) -> dict:
         instrument_context = build_instrument_context(state["company_of_interest"])
@@ -46,127 +40,134 @@ def create_portfolio_manager(llm):
 
         past_context = state.get("past_context", "")
         lessons_line = (
-            f"- Lessons from prior decisions and outcomes:\n{past_context}\n"
+            f"- 历史决策和经验教训：\n{past_context}\n"
             if past_context
             else ""
         )
 
         # ============================================================
-        # Phase 1: Risk Manager - Set Risk Constraints (NOT final decision)
+        # 阶段1：风控经理 — 设定风险约束（不是最终决策）
         # ============================================================
-        risk_judge_prompt = f"""As the Risk Manager, your job is to set **risk constraints**, NOT to make the final trading decision.
+        risk_judge_prompt = f"""你是风控经理，你的职责是设定**风险约束**，而不是做出最终交易决策。
 
-Your role is pure risk control:
-- Set maximum position size limits (hard constraint)
-- Recommend position size based on risk/reward (soft guidance)
-- Define stop-loss level (protection against catastrophic losses)
-- Calculate max acceptable loss as % of portfolio
-- Identify worst-case scenarios and estimate loss magnitude
-- Provide risk mitigation strategies
+你的角色是纯粹的风险控制：
+- 设定最大仓位上限（硬性约束）
+- 建议基于风险/回报比的仓位（软性指导）
+- 定义止损水平（防止灾难性损失）
+- 计算最大可接受亏损（占组合的百分比）
+- 识别最坏情景并估计损失幅度
+- 提供风险缓释策略
+- 给出关键风险因素
+- 提供仓位管理建议
+- 列出重点监控点
 
-⚠️ You are NOT deciding whether to buy/sell — that's the Portfolio Manager's job.
-⚠️ You are NOT analyzing upside potential — that's the researchers' job.
-⚠️ You ONLY set risk parameters that the Portfolio Manager must respect.
+⚠️ 你不决定买/卖 — 那是组合经理的工作。
+⚠️ 你不分析上涨潜力 — 那是研究员的工作。
+⚠️ 你只设定组合经理必须遵守的风险参数。
 
 {instrument_context}
 
 ---
 
-**A-Stock Trading Constraints** (must factor into your risk assessment):
-- T+1 settlement: shares bought today cannot be sold until the next trading day
-- Daily price limits: main board ±10%, STAR/ChiNext ±20%, ST stocks ±5%
-- Minimum lot size: 100 shares (1 手) for main board; 200 shares for STAR/ChiNext
-- Trading hours: 09:30-11:30, 13:00-15:00 (Beijing time)
-- ST/delisting risk: ST or *ST status signals regulatory warning; factor into position sizing
-- Margin eligibility: not all A-shares are margin-eligible; assume cash-only unless stated
+**A 股交易约束**（必须纳入风险评估）：
+- T+1 交割：当日买入的股票次日才能卖出
+- 涨跌幅限制：主板 ±10%，科创板/创业板 ±20%，ST 股 ±5%
+- 最小交易单位：主板 100 股（1 手），科创板/创业板 200 股
+- 交易时间：北京时间 09:30-11:30，13:00-15:00
+- ST/退市风险：ST 或 *ST 状态表示监管警告，需纳入仓位评估
+- 融资融券资格：并非所有 A 股都可融资融券，默认只能现金交易
 
 ---
 
-**Risk Rating Scale** (based on RISK PROFILE, not upside):
-- **Buy**: Low risk profile (stable fundamentals, low volatility, no major overhangs)
-- **Overweight**: Manageable risk (some concerns but overall safe)
-- **Hold**: Moderate risk (balanced risk/reward, maintain with caution)
-- **Underweight**: Elevated risk (multiple risk factors present)
-- **Sell**: High risk (structural risks like consecutive limit-down risk, major policy reversal, ST status)
+**风险评级标准**（基于风险状况，而非上涨潜力）：
+- **买入（低风险）**：风险状况低（基本面稳定、低波动、无重大悬而未决的问题）
+- **增持（较低风险）**：风险可控（有一些担忧但整体安全）
+- **持有（中等风险）**：风险/回报平衡，谨慎持有
+- **减持（较高风险）**：存在多个风险因素
+- **卖出（高风险）**：结构性风险（如连续跌停风险、重大政策反转、ST 状态）
 
-**Context:**
-- Research Manager's investment plan: **{research_plan}**
-- Trader's transaction proposal: **{trader_plan}**
+**参考资料：**
+- 研究经理投资方案：**{research_plan}**
+- 交易员交易方案：**{trader_plan}**
 {lessons_line}
-**Risk Analysts Debate History:**
+**风控分析师辩论历史：**
 {history}
 
 ---
 
-Output a structured RiskControlDecision with specific numbers (position size %, stop-loss %, max loss %). Ground every constraint in specific evidence from the debate.{get_language_instruction()}"""
+请输出结构化的风控决策，包含具体的数字（仓位%、止损%、最大亏损%）。
+每个约束都必须基于辩论中的具体证据。
+{get_language_instruction()}"""
 
         risk_control_decision = invoke_structured_or_freetext(
             risk_llm,
             llm,
             risk_judge_prompt,
             render_risk_control_decision,
-            "Risk Manager",
+            "风控经理",
         )
 
         # ============================================================
-        # Phase 2: Portfolio Manager - Make Final Decision (respecting risk constraints)
+        # 阶段2：组合经理 — 做出最终决策（遵守风险约束）
         # ============================================================
-        final_decision_prompt = f"""As the Portfolio Manager, your job is to make the **final trading decision**, respecting the risk constraints set by the Risk Manager.
+        final_decision_prompt = f"""你是组合经理，你的职责是做出**最终交易决策**，必须遵守风控经理设定的风险约束。
 
-⚠️ You MUST respect these hard constraints from the Risk Manager:
-- Maximum position size: do NOT exceed this limit
-- Stop-loss level: you can tighten it but NOT loosen it
-- Max acceptable loss: your position size must respect this
+⚠️ 你必须遵守风控经理的以下硬性约束：
+- 最大仓位上限：绝对不能超过
+- 止损水平：可以更紧，但不能更松
+- 最大可接受亏损：仓位设置必须遵守
 
-You CAN:
-- Choose to be more conservative than the Risk Manager's recommendations
-- Tighten stop-loss beyond the Risk Manager's suggestion
-- Lower position size if you disagree with the upside potential
+你可以：
+- 选择比风控经理建议更保守的策略
+- 将止损设置得比风控经理建议更紧
+- 如果你不认同上涨潜力，可以降低仓位
 
-You CANNOT:
-- Exceed the max position size (this is a hard limit)
-- Loosen the stop-loss level (this is a safety constraint)
-- Ignore the worst-case scenario analysis
+你不可以：
+- 超过最大仓位上限（这是硬性限制）
+- 放松止损水平（这是安全约束）
+- 忽视最坏情景分析
 
 {instrument_context}
 
 ---
 
-**A-Stock Trading Constraints** (must factor into your decision):
-- T+1 settlement: shares bought today cannot be sold until the next trading day
-- Daily price limits: main board ±10%, STAR/ChiNext ±20%, ST stocks ±5%
-- Minimum lot size: 100 shares (1 手) for main board; 200 shares for STAR/ChiNext
-- Trading hours: 09:30-11:30, 13:00-15:00 (Beijing time)
-- ST/delisting risk: ST or *ST status signals regulatory warning; factor into position sizing
-- Margin eligibility: not all A-shares are margin-eligible; assume cash-only unless stated
+**A 股交易约束**（必须纳入决策）：
+- T+1 交割：当日买入的股票次日才能卖出
+- 涨跌幅限制：主板 ±10%，科创板/创业板 ±20%，ST 股 ±5%
+- 最小交易单位：主板 100 股（1 手），科创板/创业板 200 股
+- 交易时间：北京时间 09:30-11:30，13:00-15:00
+- ST/退市风险：ST 或 *ST 状态表示监管警告，需纳入仓位评估
+- 融资融券资格：并非所有 A 股都可融资融券，默认只能现金交易
 
 ---
 
-**Rating Scale** (based on UPSIDE vs DOWNSIDE balance):
-- **Buy**: Strong conviction in upside, risk constraints allow significant position
-- **Overweight**: Favorable upside, can take recommended position size
-- **Hold**: Balanced upside/downside, maintain with moderate position
-- **Underweight**: Upside limited or downside elevated, reduce exposure
-- **Sell**: Downside dominates or risk constraints prohibit meaningful position
+**评级标准**（基于上涨/下跌的平衡）：
+- **买入**：高度确信上涨，风险约束允许较大仓位
+- **增持**：上涨有利，可以采用建议仓位
+- **持有**：上涨/下跌平衡，维持适度仓位
+- **减持**：上涨有限或下跌风险升高，降低敞口
+- **卖出**：下跌主导或风险约束禁止有意义的仓位
 
-**Context:**
-- Research Manager's investment plan: **{research_plan}**
-- Trader's transaction proposal: **{trader_plan}**
-- **Risk Manager's constraints (MUST RESPECT):** **{risk_control_decision}**
+**参考资料：**
+- 研究经理投资方案：**{research_plan}**
+- 交易员交易方案：**{trader_plan}**
+- **风控经理约束（必须遵守）：** **{risk_control_decision}**
 {lessons_line}
-**Risk Analysts Debate History:**
+**风控分析师辩论历史：**
 {history}
 
 ---
 
-Make the final call. Your position size MUST be ≤ Risk Manager's max_position_size. Your stop-loss MUST be ≥ Risk Manager's stop_loss_level (i.e., tighter or equal).{get_language_instruction()}"""
+请做出最终决策。你的仓位必须 ≤ 风控经理的最大仓位上限。
+你的止损必须 ≥ 风控经理的止损水平（即更紧或相等）。
+{get_language_instruction()}"""
 
         final_trade_decision = invoke_structured_or_freetext(
             portfolio_llm,
             llm,
             final_decision_prompt,
             render_pm_decision,
-            "Portfolio Manager",
+            "组合经理",
         )
 
         new_risk_debate_state = {

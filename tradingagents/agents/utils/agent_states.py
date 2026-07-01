@@ -78,3 +78,17 @@ class AgentState(MessagesState):
     final_trade_decision: Annotated[str, "Final decision made by the Risk Analysts"]
     risk_control_decision: Annotated[str, "Risk control decision from the risk manager"]
     past_context: Annotated[str, "Memory log context injected at run start (same-ticker decisions + cross-ticker lessons)"]
+
+    # accuracy guardian (quality assurance)
+    _accuracy_guardian_report: Annotated[dict, "Full accuracy guardian report object"]
+    _quality_grade: Annotated[str, "Overall quality grade (A/B/C/D/F)"]
+    _confidence_level: Annotated[str, "Confidence level (高/中/低/谨慎参考/不可靠)"]
+    _overall_quality_score: Annotated[float, "Overall quality score (0-1)"]
+    _should_trust: Annotated[bool, "Whether the conclusion should be trusted"]
+    _trust_reason: Annotated[str, "Reason for trust/distrust"]
+
+    # debate convergence reports
+    _debate_reports: Annotated[dict, "Debate convergence reports (investment + risk)"]
+
+    # data integrity reports
+    _integrity_reports: Annotated[dict, "Data integrity reports from batch integrity manager"]

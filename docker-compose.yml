@@ -66,6 +66,60 @@ services:
         max-size: "100m"
         max-file: "3"
 
+  # 分析任务Worker服务（独立进程，消费队列中的分析任务）
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: tradingagents-backend:latest
+    container_name: tradingagents-worker
+    volumes:
+      # 日志目录映射
+      - ./logs:/app/logs
+      # 配置目录映射
+      - ./config:/app/config
+      # 数据目录映射
+      - ./data:/app/data
+      # 源代码映射（开发模式 - 本地修改自动生效）
+      - ./app:/app/app
+      - ./tradingagents:/app/tradingagents
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      TZ: "Asia/Shanghai"
+      # 日志配置
+      TRADINGAGENTS_LOG_LEVEL: "INFO"
+      TRADINGAGENTS_LOG_DIR: "/app/logs"
+      TRADINGAGENTS_LOG_FILE: "/app/logs/worker.log"
+      # Docker专用数据库配置
+      TRADINGAGENTS_MONGODB_URL: mongodb://admin:tradingagents123@mongodb:27017/tradingagentscn?authSource=admin
+      TRADINGAGENTS_REDIS_URL: redis://:tradingagents123@redis:6379
+      TRADINGAGENTS_CACHE_TYPE: redis
+      # 启用MongoDB缓存（优先使用MongoDB中的同步数据）
+      TA_USE_APP_CACHE: "true"
+      # Docker环境标识
+      DOCKER_CONTAINER: "true"
+      # Worker角色标识
+      WORKER_ROLE: "analysis"
+    depends_on:
+      backend:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tradingagents-network
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker.analysis_worker"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
   # Vue 3 前端服务
   frontend:
     build:

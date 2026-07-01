@@ -2665,3 +2665,242 @@ def get_industry_comparison(
     lines.append("5. **资金流向验证**：可结合资金面分析，确认板块是否有主力资金持续流入")
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# 融资融券数据（Margin Trading）
+# ---------------------------------------------------------------------------
+
+def get_margin_trading(
+    ticker: Annotated[str, "A-stock code"],
+    curr_date: Annotated[str, "Date YYYY-MM-DD"],
+    look_back_days: Annotated[int, "Days to look back (default 30)"] = 30,
+) -> str:
+    """Get margin trading (融资融券) data for a stock.
+
+    Shows financing balance (融资余额), margin buying (融资买入额),
+    short selling balance (融券余额), and short selling volume.
+    Key indicator for retail investor leverage sentiment.
+
+    Args:
+        ticker: 6-digit A-share code
+        curr_date: YYYY-MM-DD
+        look_back_days: how many days back to check
+
+    Returns:
+        Formatted text with margin trading history and trend analysis
+    """
+    code = _normalize_ticker(ticker)
+    secucode = f"{code}.SH" if code.startswith("6") else f"{code}.SZ"
+
+    lines = [
+        f"# 融资融券数据 | {code} | {curr_date} (近{look_back_days}日)",
+        "# Source: 东方财富 datacenter (Eastmoney)",
+        "",
+    ]
+
+    try:
+        url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+        params = {
+            "reportName": "RPTA_WEB_RZRQ_GGMX",
+            "columns": "ALL",
+            "filter": f'(SECUCODE="{secucode}")',
+            "pageNumber": "1",
+            "pageSize": str(look_back_days),
+            "sortColumns": "DATE",
+            "sortTypes": "-1",
+            "source": "WEB",
+            "client": "WEB",
+        }
+        r = _em_get(url, params=params, timeout=10)
+        d = r.json()
+        data = d.get("result", {}).get("data", [])
+
+        if not data:
+            lines.append("无融资融券数据（可能是两融标的范围外的股票）")
+            return "\n".join(lines)
+
+        # 数据是倒序的（最新的在前），反转成正序
+        data = list(reversed(data))
+
+        lines.append(f"## 融资融券历史（近{len(data)}个交易日）")
+        lines.append(
+            "日期 | 融资余额(万) | 融资买入额(万) | 融资偿还额(万) | "
+            "融券余额(万) | 融券卖出量(股)"
+        )
+
+        financing_balances = []
+        margin_buying = []
+        short_balances = []
+
+        for row in data:
+            date = str(row.get("DATE", ""))[:10]
+            fin_bal = float(row.get("RZYE", 0) or 0) / 1e4  # 融资余额（元→万元）
+            fin_buy = float(row.get("RZMRE", 0) or 0) / 1e4  # 融资买入额
+            fin_repay = float(row.get("RZCHE", 0) or 0) / 1e4  # 融资偿还额
+            short_bal = float(row.get("RQYE", 0) or 0) / 1e4  # 融券余额
+            short_sell = float(row.get("RQMCL", 0) or 0)  # 融券卖出量
+
+            financing_balances.append(fin_bal)
+            margin_buying.append(fin_buy)
+            short_balances.append(short_bal)
+
+            lines.append(
+                f"  {date} "
+                f"| {fin_bal:.0f} "
+                f"| {fin_buy:.0f} "
+                f"| {fin_repay:.0f} "
+                f"| {short_bal:.0f} "
+                f"| {short_sell:.0f}"
+            )
+
+        # 趋势分析
+        if len(financing_balances) >= 5:
+            latest = financing_balances[-1]
+            avg_5 = sum(financing_balances[-5:]) / 5
+            change_pct = ((latest - avg_5) / avg_5 * 100) if avg_5 > 0 else 0
+
+            lines.append("")
+            lines.append("## 散户杠杆情绪分析")
+            lines.append(f"- 最新融资余额: {latest:.0f} 万元")
+            lines.append(f"- 5日平均融资余额: {avg_5:.0f} 万元")
+            lines.append(f"- 融资余额变化: {'+' if change_pct >= 0 else ''}{change_pct:.2f}% (相对5日均值)")
+
+            if change_pct > 10:
+                lines.append(
+                    "⚠️ 信号: 融资余额快速上升 → 散户加杠杆积极，"
+                    "短期情绪亢奋，需警惕回调风险（反向指标）"
+                )
+            elif change_pct < -10:
+                lines.append(
+                    "📉 信号: 融资余额快速下降 → 杠杆资金出清，"
+                    "若股价企稳可能是见底信号（反向指标）"
+                )
+            else:
+                lines.append("📊 信号: 融资余额平稳 → 杠杆情绪中性")
+
+            # 融资买入占比分析
+            if len(margin_buying) >= 5:
+                avg_buy_5 = sum(margin_buying[-5:]) / 5
+                lines.append(f"- 5日平均融资买入额: {avg_buy_5:.0f} 万元")
+
+    except Exception as e:
+        lines.append(f"融资融券数据获取失败: {e}")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# 户均持股/筹码集中度数据
+# ---------------------------------------------------------------------------
+
+def get_shareholder_concentration(
+    ticker: Annotated[str, "A-stock code"],
+    curr_date: Annotated[str, "Date YYYY-MM-DD"],
+) -> str:
+    """Get shareholder concentration (户均持股) data.
+
+    Shows average shares per shareholder, shareholder count changes,
+    and chip concentration trend. Key metric for institutional accumulation.
+
+    Args:
+        ticker: 6-digit A-share code
+        curr_date: YYYY-MM-DD
+
+    Returns:
+        Formatted text with shareholder concentration data and analysis
+    """
+    code = _normalize_ticker(ticker)
+
+    lines = [
+        f"# 户均持股/筹码集中度 | {code} | {curr_date}",
+        "# Source: 东方财富 (Eastmoney F10)",
+        "",
+    ]
+
+    try:
+        url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+        params = {
+            "reportName": "RPT_F10_EH_HOLDERNUM",
+            "columns": "ALL",
+            "filter": f'(SECURITY_CODE="{code}")',
+            "pageNumber": "1",
+            "pageSize": "10",
+            "sortColumns": "END_DATE",
+            "sortTypes": "-1",
+            "source": "WEB",
+            "client": "WEB",
+        }
+        r = _em_get(url, params=params, timeout=10)
+        d = r.json()
+        data = d.get("result", {}).get("data", [])
+
+        if not data:
+            lines.append("暂无股东户数数据")
+            return "\n".join(lines)
+
+        lines.append(f"## 股东户数变化（近{len(data)}期）")
+        lines.append("报告期 | 股东户数 | 户均持股(股) | 较上期变化(%)")
+
+        holder_counts = []
+        avg_shares_list = []
+
+        for row in data:
+            report_date = str(row.get("END_DATE", ""))[:10]
+            holder_num = row.get("HOLDER_TOTAL_NUM", 0) or 0
+            avg_shares = row.get("AVG_FREE_SHARES", 0) or 0
+            change_pct = row.get("CHANGEWITHLAST", None)
+
+            holder_counts.append(holder_num)
+            avg_shares_list.append(avg_shares)
+
+            change_str = (
+                f"{change_pct:.2f}%"
+                if change_pct is not None
+                else "N/A"
+            )
+
+            lines.append(
+                f"  {report_date} "
+                f"| {holder_num:,} 户 "
+                f"| {avg_shares:,.0f} "
+                f"| {change_str}"
+            )
+
+        # 筹码集中度分析
+        if len(holder_counts) >= 2:
+            latest = holder_counts[0]
+            previous = holder_counts[1]
+            change = ((latest - previous) / previous * 100) if previous > 0 else 0
+
+            lines.append("")
+            lines.append("## 筹码集中度分析")
+            lines.append(f"- 最新股东户数: {latest:,} 户")
+            lines.append(f"- 较上期变化: {'+' if change >= 0 else ''}{change:.2f}%")
+
+            if change < -5:
+                lines.append(
+                    "📈 信号: 股东户数显著下降 → 筹码正在集中，"
+                    "可能有主力/机构在吸筹（看多信号）"
+                )
+            elif change > 5:
+                lines.append(
+                    "📉 信号: 股东户数显著增加 → 筹码正在分散，"
+                    "可能主力在派发给散户（看空信号）"
+                )
+            else:
+                lines.append("📊 信号: 股东户数变化不大 → 筹码集中度稳定")
+
+            if len(avg_shares_list) >= 2:
+                avg_latest = avg_shares_list[0]
+                avg_prev = avg_shares_list[1]
+                avg_change = (
+                    ((avg_latest - avg_prev) / avg_prev * 100)
+                    if avg_prev > 0 else 0
+                )
+                lines.append(f"- 户均持股变化: {'+' if avg_change >= 0 else ''}{avg_change:.2f}%")
+
+    except Exception as e:
+        lines.append(f"股东户数数据获取失败: {e}")
+
+    return "\n".join(lines)

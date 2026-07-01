@@ -1,4 +1,6 @@
 
+from tradingagents.agents.utils.agent_utils import get_language_instruction
+
 
 def create_bull_researcher(llm):
     def bull_node(state) -> dict:
@@ -16,48 +18,83 @@ def create_bull_researcher(llm):
         lockup_report = state.get("lockup_report", "")
         data_quality_summary = state.get("data_quality_summary", "")
 
-        # 获取速览分析结果作为辩论起点
         from tradingagents.agents.utils.agent_utils import get_quick_scan_summary
         quick_scan_summary = get_quick_scan_summary(state)
 
-        prompt = f"""You are a Bull Analyst advocating for investing in this A-share (China mainland) stock. Your task is to build a strong, evidence-based case emphasizing growth potential, competitive advantages, and positive market indicators. Leverage the provided research and data to address concerns and counter bearish arguments effectively.
+        prompt = f"""你是一位专注于 A 股市场的**看涨研究员（多方）**。你的任务是构建一个有说服力、证据充分的看多论点，强调股票的成长潜力、竞争优势和积极的市场信号。你需要利用提供的研究报告和数据，有效回应看空方的质疑。
 
 {quick_scan_summary}
 
-A-Share Bull Framework — prioritize these China-specific bullish catalysts:
-- Policy Tailwinds: Government subsidies, industry support policies (e.g. "专精特新", national strategic sectors), favorable regulatory signals from CSRC/State Council
-- Northbound Capital (北向资金): Sustained net inflow from Hong Kong Stock Connect indicates foreign institutional conviction
-- Hot Money Momentum (游资接力): Consecutive limit-ups with volume confirmation, strong theme attribution (reason tags), sector rotation just beginning
-- Valuation Growth Story: Use forward PE, PEG, and PE digestion timeframe (30x anchor for A-stock growth stocks) to argue the current premium is justified by earnings trajectory
-- Lockup Expiry Cleared: If major lockup periods have passed or insiders are NOT reducing, this removes a key overhang
+## A 股看涨分析框架（优先考虑中国市场特有的催化剂）
 
-General bull points:
-- Growth Potential: Market opportunities, revenue projections, and scalability
-- Competitive Advantages: Unique products, dominant market positioning, or moat in the domestic market
-- Positive Indicators: Financial health, industry trends, and recent positive news
-- Bear Counterpoints: Critically analyze the bear argument with specific data and sound reasoning
-- Engagement: Present your argument conversationally, engaging directly with the bear analyst's points
+- **政策东风**：政府补贴、产业支持政策（如「专精特新」、国家战略新兴产业）、证监会/国务院释放的利好监管信号
+- **北向资金**：沪深港通持续净流入，表明外资机构坚定看好
+- **游资接力**：连续涨停配合放量确认、题材归因明确（理由标签强）、板块轮动刚开始
+- **估值成长故事**：用动态 PE、PEG、PE 消化时间（A 股成长股 30 倍锚定）论证当前溢价有业绩支撑
+- **解禁压力释放**：如果主要解禁期已过或内部股东未减持，消除了重大抛压
+- **机构吸筹信号**：
+  - 主力资金持续流入 + 小单资金净流出 = 机构在悄悄吸筹（散户在卖，机构在买）
+  - 户均持股数持续上升 = 筹码正在集中（主力收集筹码）
+  - 机构调研频次显著增加 = 机构正在关注并准备建仓
+- **行业景气度拐点**：行业基本面边际改善、需求复苏信号、产能利用率提升
+- **板块轮动补涨**：所属板块处于轮动上升期，该股涨幅落后于板块平均，存在补涨需求
+- **散户情绪反向指标**：
+  - 股吧情绪极度悲观 + 股价企稳 = 恐慌见底信号（反向看多）
+  - 融资余额持续下降 + 股价不跌 = 杠杆出清完毕，即将反弹
+  - 散户持续净流出（小单流出）+ 主力净流入 = 机构在建仓
 
-Resources available:
-Market research report: {market_research_report}
-Social media sentiment report: {sentiment_report}
-Latest news report: {news_report}
-Company fundamentals report: {fundamentals_report}
-Policy analysis report: {policy_report}
-Hot money / capital flow report: {hot_money_report}
-Lockup expiry / insider reduction report: {lockup_report}
-Data quality assessment: {data_quality_summary}
-Conversation history of the debate: {history}
-Last bear argument: {current_response}
+## 通用看涨逻辑
 
-⚠️ If the data quality assessment flags any report as low-confidence (grade C/D/F), reduce your reliance on that report and note the data limitation in your argument.
+- **成长潜力**：市场空间、收入预测、可扩展性
+- **竞争优势**：独特产品、主导市场地位、国内护城河
+- **积极信号**：财务健康、行业趋势、近期利好新闻
+- **反驳看空**：用具体数据和充分论证批判性分析看空论点
+- **对话互动**：直接回应看空研究员的观点，有针对性地反驳
 
-Deliver a compelling bull argument that integrates A-share market dynamics. Refute the bear's concerns and demonstrate why the bull position holds stronger merit in the Chinese market context.
+## 参考资料
+
+技术分析报告：{market_research_report}
+社媒情绪报告：{sentiment_report}
+最新新闻报告：{news_report}
+公司基本面报告：{fundamentals_report}
+政策分析报告：{policy_report}
+游资/资金流向报告：{hot_money_report}
+限售解禁/股东减持报告：{lockup_report}
+数据质量评估：{data_quality_summary}
+辩论历史：{history}
+对方最新观点：{current_response}
+
+⚠️ 如果数据质量评估标记任何报告为低置信度（C/D/F 级），请减少对该报告的依赖，并在论证中注明数据局限性。
+
+## 输出要求（严格遵循以下格式）
+
+📊 **看多强度评分**：XX/100（分数越高，越坚定看多）
+
+### 一、核心看涨逻辑（3-5 条）
+每条观点需有具体数据支撑，标注数据来源（如「技术面」「基本面」「政策面」等）
+
+### 二、关键催化剂
+- 短期催化剂（1-4 周）：
+- 中期催化剂（1-3 个月）：
+- 长期催化剂（3 个月以上）：
+
+### 三、对看空观点的反驳
+针对看空方的核心论点逐一回应，用数据说话
+
+### 四、风险提示（诚实承认）
+承认 2-3 个主要风险，但说明为何风险可控或已有对冲手段
+
+### 五、投资建议
+- 建议评级：买入/增持/持有
+- 目标价位区间：XX-XX 元
+- 建议仓位：XX%
+
+（以上分析仅供研究参考，不构成投资建议）{get_language_instruction()}
 """
 
         response = llm.invoke(prompt)
 
-        argument = f"Bull Analyst: {response.content}"
+        argument = f"看涨研究员：{response.content}"
 
         new_investment_debate_state = {
             "history": history + "\n" + argument,

@@ -45,6 +45,8 @@ from tradingagents.agents.utils.agent_utils import (
     get_dragon_tiger_board,
     get_lockup_expiry,
     get_industry_comparison,
+    get_margin_trading,
+    get_shareholder_concentration,
 )
 
 from .checkpointer import checkpoint_step, clear_checkpoint, get_checkpointer, thread_id
@@ -166,6 +168,10 @@ class TradingAgentsGraph:
         ])
         social_tools = wrap_tools([
             get_news,
+            get_fund_flow,
+            get_margin_trading,
+            get_shareholder_concentration,
+            get_dragon_tiger_board,
         ])
         news_tools = wrap_tools([
             get_news,
@@ -194,6 +200,8 @@ class TradingAgentsGraph:
             get_fund_flow,
             get_dragon_tiger_board,
             get_industry_comparison,
+            get_margin_trading,
+            get_shareholder_concentration,
         ])
         lockup_tools = wrap_tools([
             get_insider_transactions,

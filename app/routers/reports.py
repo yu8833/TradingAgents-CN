@@ -62,6 +62,80 @@ def _iter_text(reports: Dict[str, Any]):
             yield v
 
 
+def _clean_report_text(text: str) -> str:
+    """
+    清理报告文本，移除开头的思考过程、寒暄语、工具调用痕迹等无关内容。
+    确保报告从正式内容（评分标题、章节标题等）开始。
+    """
+    if not text or not isinstance(text, str):
+        return text
+    
+    lines = text.split("\n")
+    cleaned_lines = []
+    found_start = False
+    
+    # 判断一行是否是报告正式开始的标志
+    def is_formal_start(line: str) -> bool:
+        stripped = line.strip()
+        if not stripped:
+            return False
+        # markdown 标题（## 或 ### 开头）
+        if re.match(r'^#{1,6}\s+', stripped):
+            return True
+        # 评分标题行（包含"评分："或"评分:"）
+        if re.search(r'面评分\s*[:：]', stripped):
+            return True
+        # 带编号的正式章节
+        if re.match(r'^\d+[\.、]\s+', stripped) and len(stripped) > 10:
+            return True
+        return False
+    
+    # 判断一行是否是应该跳过的寒暄/思考内容
+    def is_filler(line: str) -> bool:
+        stripped = line.strip()
+        if not stripped:
+            return True  # 空行在开头跳过
+        # 跳过分隔线
+        if re.match(r'^[-=*_]{3,}$', stripped):
+            return True
+        filler_patterns = [
+            r'^好的', r'^让我', r'^现在', r'^我来', r'^开始', r'^首先',
+            r'分析.*报告', r'撰写.*报告', r'整理.*报告', r'生成.*报告',
+            r'数据.*齐全', r'数据.*获取', r'获取.*数据', r'收集.*数据',
+            r'接下来', r'下面.*分析', r'以下.*分析', r'这是', r'以下是',
+            r'根据.*分析', r'基于.*分析',
+            r'^ok', r'^sure', r'^certainly', r'^let me', r'^i will',
+            r'工具调用', r'调用.*工具', r'执行.*工具',
+        ]
+        for pat in filler_patterns:
+            if re.search(pat, stripped, re.IGNORECASE):
+                # 但如果是正式章节标题的一部分，就不跳过
+                if is_formal_start(stripped):
+                    return False
+                return True
+        return False
+    
+    for line in lines:
+        if found_start:
+            cleaned_lines.append(line)
+        else:
+            if is_formal_start(line):
+                found_start = True
+                cleaned_lines.append(line)
+            elif is_filler(line):
+                continue
+            else:
+                # 遇到既不是正式开始也不是寒暄语的内容，就从这里开始
+                # 可能是正文的第一段，保留
+                found_start = True
+                cleaned_lines.append(line)
+    
+    if not cleaned_lines:
+        return text
+    
+    return "\n".join(cleaned_lines)
+
+
 def _match_price(text: str, aliases: List[str]) -> Optional[str]:
     """
     在文本中查找诸如 `理想买入\n10.70 元` 或 `7. 支撑位：10.88元` 的价格。
@@ -122,13 +196,14 @@ def _match_score(text: str, aliases: List[str]) -> Optional[str]:
     n = len(lines)
 
     for alias in aliases:
-        # 方式 A：在一行内出现 "名称：数值"（支持列表项前缀 `-`/`*`）
+        # 方式 A：在一行内出现 "名称：数值"（支持列表项前缀、markdown标题、emoji、/100后缀）
         for line in lines:
-            stripped = line.strip().strip("* \t-*•")
-            # "置信度：0.75" / "置信度 0.75" / "- 技术面评分：0.55（注释）"
-            m = re.match(
-                r"(?:\d+[\.、]\s*)?" + re.escape(alias) +
-                r"\s*[:：]\s*(-?\d+(?:\.\d+)?|高|中|低|中等|较高|较低)\b",
+            stripped = line.strip()
+            # 使用 search 而非 match，支持前缀为 emoji、markdown 标题标记等
+            # 匹配形如 "技术面评分：58/100"、"📊 技术面评分: 75"、"## 技术面评分 80分" 等
+            m = re.search(
+                re.escape(alias) +
+                r"\s*[:：\s]\s*(-?\d+(?:\.\d+)?|高|中|低|中等|较高|较低)(?:\s*/\s*100|\s*分)?\b",
                 stripped,
             )
             if m:
@@ -136,17 +211,16 @@ def _match_score(text: str, aliases: List[str]) -> Optional[str]:
 
         # 方式 B：标题行 + 下一行是数字
         for i, line in enumerate(lines):
-            stripped = line.strip().strip("*")
+            stripped = line.strip().strip("*# \t")
             if alias in stripped:
-                # 只允许标题形式
-                normalized = stripped.strip("* \t")
-                if re.match(r"^\d*[\.、]?\s*" + re.escape(alias) + r"\s*$", normalized):
+                normalized = stripped.strip("*# \t")
+                if alias in normalized:
                     for j in range(i + 1, min(i + 3, n)):
                         next_line = lines[j].strip().strip("* \t-•")
                         if not next_line:
                             continue
                         m = re.match(
-                            r"(-?\d+(?:\.\d+)?|高|中|低|中等|较高|较低)\b",
+                            r"(-?\d+(?:\.\d+)?|高|中|低|中等|较高|较低)(?:\s*/\s*100|\s*分)?\b",
                             next_line,
                         )
                         if m:
@@ -302,23 +376,33 @@ def _normalize_rating(val: str) -> str:
             v = v[len(kw):].lstrip("：:、•·- ")
             v = v.strip()
             break
-    v = v.strip("，。；：:、•·()（） ")
+    v = v.strip("，。；：:、•·()（）【】 ")
     en_map = {
         "BUY": "买入", "SELL": "卖出", "HOLD": "持有",
         "STRONG_BUY": "买入", "STRONG_SELL": "卖出",
         "STRONG BUY": "买入", "STRONG SELL": "卖出",
         "OVERWEIGHT": "增持", "UNDERWEIGHT": "减持",
-        "NEUTRAL": "持有", "WAIT": "持有", "观望": "持有",
+        "NEUTRAL": "持有", "WAIT": "持有",
         "ADD": "增持", "REDUCE": "减持",
         "ACCUMULATE": "增持", "SELL SHORT": "卖出",
+        "MARKET PERFORM": "持有", "MARKET OUTPERFORM": "增持",
+        "MARKET UNDERPERFORM": "减持", "EQUAL WEIGHT": "持有",
+        "OUTPERFORM": "增持", "UNDERPERFORM": "减持",
+        "SELL SHORT": "卖出",
     }
-    v_upper = v.upper()
+    v_upper = v.upper().strip()
     if v_upper in en_map:
         return en_map[v_upper]
+    for en_key, cn_val in en_map.items():
+        if en_key in v_upper:
+            return cn_val
     cn_aliases = [
         ("强烈买入", "买入"),
         ("强烈卖出", "卖出"),
         ("清仓", "卖出"),
+        ("超配", "增持"),
+        ("低配", "减持"),
+        ("标配", "持有"),
         ("买入", "买入"),
         ("增持", "增持"),
         ("加仓", "增持"),
@@ -332,7 +416,7 @@ def _normalize_rating(val: str) -> str:
     for alias, final in cn_aliases:
         if alias in v:
             return final
-    return v
+    return "持有"
 
 
 def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
@@ -358,6 +442,15 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
     if not isinstance(reports, dict) or not reports:
         return result
+
+    # 0) 清理所有报告文本，移除开头的思考过程、寒暄语等无关内容
+    cleaned_reports: Dict[str, Any] = {}
+    for k, v in reports.items():
+        if isinstance(v, str):
+            cleaned_reports[k] = _clean_report_text(v)
+        else:
+            cleaned_reports[k] = v
+    reports = cleaned_reports
 
     # 0) 先从高优先级文本模块提取操作建议（评级），比 decision 字典更权威
     priority_modules = [
@@ -471,15 +564,15 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
         (["阻力位", "压力位"], "阻力位"),
     ]
     score_aliases = [
-        (["置信度"], "置信度"),
-        (["风险等级"], "风险等级"),
-        (["技术面评分"], "技术面评分"),
-        (["基本面评分"], "基本面评分"),
-        (["情绪面评分"], "情绪面评分"),
-        (["消息面评分"], "消息面评分"),
-        (["资金面评分"], "资金面评分"),
-        (["政策面评分"], "政策面评分"),
-        (["解禁面评分"], "解禁面评分"),
+        (["置信度"], "置信度", None),
+        (["风险等级"], "风险等级", None),
+        (["技术面评分"], "技术面评分", "market_report"),
+        (["基本面评分"], "基本面评分", "fundamentals_report"),
+        (["情绪面评分"], "情绪面评分", "sentiment_report"),
+        (["消息面评分"], "消息面评分", "news_report"),
+        (["资金面评分"], "资金面评分", "hot_money_report"),
+        (["政策面评分"], "政策面评分", "policy_report"),
+        (["解禁面评分"], "解禁面评分", "lockup_report"),
     ]
 
     # 2b) 价格字段
@@ -500,9 +593,18 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
                         break
 
     # 2c) 评分/置信度/风险
-    for aliases, field_name in score_aliases:
+    for aliases, field_name, primary_source in score_aliases:
         if result.get(field_name):
             continue
+        # 优先从指定的主来源模块提取（确保评分来自对应分析师报告）
+        if primary_source:
+            primary_text = reports.get(primary_source)
+            if isinstance(primary_text, str) and primary_text.strip():
+                val = _match_score(primary_text, aliases)
+                if val:
+                    result[field_name] = val
+                    continue
+        # 再从高优先级模块提取
         for module_text in _priority_texts():
             val = _match_score(module_text, aliases)
             if val and not result.get(field_name):
@@ -563,7 +665,7 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     # 6) 多维度评分估算（技术面/基本面/情绪面/政策面/消息面/资金面/解禁面）
     #    如果已有明确评分则保留，否则基于报告倾向估算
     def _estimate_score_from_text(text: str) -> Optional[float]:
-        """基于文本的整体倾向估算评分（0-10分）"""
+        """基于文本的整体倾向估算评分（0-100分）"""
         if not text:
             return None
         bullish_words = [
@@ -583,38 +685,38 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
             return None
         diff = bull_count - bear_count
         if diff > 3:
-            return 8.0
+            return 80.0
         elif diff > 0:
-            return 7.0
+            return 70.0
         elif diff < -3:
-            return 3.0
+            return 30.0
         elif diff < 0:
-            return 4.0
+            return 40.0
         else:
-            return 5.0
+            return 50.0
 
     def _parse_score_value(val: Any) -> Optional[float]:
-        """将评分值标准化为 0-10 分"""
+        """将评分值标准化为 0-100 分（百分制）"""
         if val is None or val == "":
             return None
         try:
             num = float(val)
             if 0 <= num <= 1:
-                return round(num * 10, 1)
+                return round(num * 100, 1)
             elif 0 <= num <= 10:
-                return round(num, 1)
+                return round(num * 10, 1)
             elif 0 <= num <= 100:
-                return round(num / 10, 1)
+                return round(num, 1)
             else:
                 return None
         except (TypeError, ValueError):
             val_str = str(val).lower()
             if val_str in ["高", "较高", "强", "强势", "积极"]:
-                return 8.0
+                return 80.0
             elif val_str in ["中", "中等", "中性", "一般"]:
-                return 5.0
+                return 50.0
             elif val_str in ["低", "较低", "弱", "弱势", "消极"]:
-                return 3.0
+                return 30.0
             return None
 
     dimension_config = [
@@ -622,43 +724,43 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
             "field": "技术面评分",
             "sources": ["market_report", "trader_investment_plan", "final_trade_decision", "investment_plan"],
             "analyst": "技术分析师",
-            "basis": "基于技术指标（均线、KDJ、MACD、RSI等）、趋势形态、量价关系等综合评估，满分10分。分数越高表示技术形态越有利。"
+            "basis": "基于技术指标（均线、KDJ、MACD、RSI等）、趋势形态、量价关系等综合评估，满分100分。分数越高表示技术形态越有利。"
         },
         {
             "field": "基本面评分",
             "sources": ["fundamentals_report", "bull_researcher", "bear_researcher", "research_team_decision", "final_trade_decision"],
             "analyst": "基本面分析师",
-            "basis": "基于财务数据（营收、利润、ROE等）、行业地位、护城河、估值水平等综合评估，满分10分。分数越高表示基本面越健康。"
+            "basis": "基于财务数据（营收、利润、ROE等）、行业地位、护城河、估值水平等综合评估，满分100分。分数越高表示基本面越健康。"
         },
         {
             "field": "情绪面评分",
             "sources": ["sentiment_report", "news_report", "hot_money_report", "bull_researcher", "final_trade_decision"],
             "analyst": "市场情绪分析师",
-            "basis": "基于市场情绪指标、舆情热度、散户情绪逆向指标等综合评估，满分10分。分数越高表示市场情绪越积极。"
+            "basis": "基于市场情绪指标、舆情热度、散户情绪逆向指标等综合评估，满分100分。分数越高表示市场情绪越积极。"
         },
         {
             "field": "消息面评分",
             "sources": ["news_report", "sentiment_report", "policy_report", "bull_researcher", "final_trade_decision"],
             "analyst": "新闻分析师",
-            "basis": "基于公司公告、研报动态、新闻事件冲击、重要消息面影响等综合评估，满分10分。分数越高表示消息面越利好。"
+            "basis": "基于公司公告、研报动态、新闻事件冲击、重要消息面影响等综合评估，满分100分。分数越高表示消息面越利好。"
         },
         {
             "field": "资金面评分",
             "sources": ["hot_money_report", "sentiment_report", "news_report", "trader_investment_plan", "final_trade_decision"],
             "analyst": "游资追踪师",
-            "basis": "基于主力资金流向、龙虎榜数据、北向资金动向、机构持仓变化等综合评估，满分10分。分数越高表示资金面越充裕。"
+            "basis": "基于主力资金流向、龙虎榜数据、北向资金动向、机构持仓变化等综合评估，满分100分。分数越高表示资金面越充裕。"
         },
         {
             "field": "政策面评分",
             "sources": ["policy_report", "news_report", "bull_researcher", "research_team_decision", "final_trade_decision"],
             "analyst": "政策分析师",
-            "basis": "基于产业政策、宏观调控、监管动向、行业利好/利空政策等综合评估，满分10分。分数越高表示政策环境越有利。"
+            "basis": "基于产业政策、宏观调控、监管动向、行业利好/利空政策等综合评估，满分100分。分数越高表示政策环境越有利。"
         },
         {
             "field": "解禁面评分",
             "sources": ["lockup_report", "fundamentals_report", "news_report", "risk_control_decision", "final_trade_decision"],
             "analyst": "解禁追踪师",
-            "basis": "基于限售股解禁规模、大股东减持计划、解禁压力与市场承接能力等综合评估，满分10分。分数越高表示解禁压力越小。"
+            "basis": "基于限售股解禁规模、大股东减持计划、解禁压力与市场承接能力等综合评估，满分100分。分数越高表示解禁压力越小。"
         },
     ]
 
@@ -683,26 +785,26 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
                 if est is not None:
                     estimated = est
                     break
-            # 如果所有来源都无法估算，使用整体评级作为兜底（5-7分区间，根据评级调整）
+            # 如果所有来源都无法估算，使用整体评级作为兜底（50-75分区间，根据评级调整）
             if estimated is None:
                 rating = result.get("评级", result.get("操作建议", ""))
                 if rating == "买入":
-                    estimated = 7.5
+                    estimated = 75.0
                     source_type = "整体评级推断"
                 elif rating == "增持":
-                    estimated = 7.0
+                    estimated = 70.0
                     source_type = "整体评级推断"
                 elif rating == "持有":
-                    estimated = 5.5
+                    estimated = 55.0
                     source_type = "整体评级推断"
                 elif rating == "减持":
-                    estimated = 4.0
+                    estimated = 40.0
                     source_type = "整体评级推断"
                 elif rating == "卖出":
-                    estimated = 3.0
+                    estimated = 30.0
                     source_type = "整体评级推断"
                 else:
-                    estimated = 5.0
+                    estimated = 50.0
                     source_type = "默认中性"
             if estimated is not None:
                 score = estimated
@@ -714,7 +816,7 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
                 "name": field_name.replace("评分", ""),
                 "field": field_name,
                 "score": score,
-                "max_score": 10,
+                "max_score": 100,
                 "analyst": dim["analyst"],
                 "basis": dim["basis"],
                 "source_type": source_type
@@ -1092,12 +1194,16 @@ def _match_rating(text: str, aliases: List[str]) -> Optional[str]:
         return None
 
     # 0) 最高优先级：匹配"最终定性评级"、"最终评级"等明确的最终结论格式
+    # 注意：支持匹配带空白的评级（如"卖出 / 规避"），使用 .+? 非贪婪匹配
     highest_priority_patterns = [
-        r"(?:^|\n)\s*\*\*\s*最终定性评级\s*[:：]\s*(\S+)\s*\*\*",
-        r"(?:^|\n)\s*\*\*\s*最终评级\s*[:：]\s*(\S+)\s*\*\*",
-        r"(?:^|\n)\s*\*\*\s*最终投资评级\s*[:：]\s*(\S+)\s*\*\*",
-        r"(?:^|\n)\s*最终定性评级\s*[:：]\s*(\S+)",
-        r"(?:^|\n)\s*最终评级\s*[:：]\s*(\S+)",
+        r"(?:^|\n)\s*\*+\s*最终定性评级\s*[:：]\s*(.+?)\s*\*+\s*$",
+        r"(?:^|\n)\s*\*+\s*最终评级\s*[:：]\s*(.+?)\s*\*+\s*$",
+        r"(?:^|\n)\s*\*+\s*最终投资评级\s*[:：]\s*(.+?)\s*\*+\s*$",
+        r"(?:^|\n)\s*最终定性评级\s*[:：]\s*(.+?)(?:\s|\*|$)",
+        r"(?:^|\n)\s*最终评级\s*[:：]\s*(.+?)(?:\s|\*|$)",
+        # 兼容不带**的格式：**最终评级：卖出 / 规避**
+        r"\*\*最终评级[：:]\s*(.+?)\s*\*\*",
+        r"最终评级[：:]\s*([^\n]{1,30})",
     ]
     for pattern in highest_priority_patterns:
         try:
@@ -1429,26 +1535,15 @@ async def get_reports_list(
             created_at = doc.get("created_at", datetime.utcnow())
             created_at_tz = to_config_tz(created_at)
 
-            # 决策建议：优先从 final_trade_decision 提取，保持与详情页一致
+            # 决策建议：使用 extract_structured_fields 提取，确保与详情页完全一致
             action = ""
-            reports_dict = doc.get("reports", {})
-
-            # 方法1：从 final_trade_decision 提取（与详情页一致）
-            final_decision_text = reports_dict.get("final_trade_decision", "") if isinstance(reports_dict, dict) else ""
-            if final_decision_text:
-                rating_val = _match_rating(final_decision_text, ["操作建议", "评级", "投资建议", "建议", "行动评级", "执行评级", "最终结论", "核心观点", "结论"])
-                if rating_val:
-                    action = _normalize_rating(rating_val)
-
-            # 方法2：回退到 decision.action
-            if not action:
-                decision = doc.get("decision", {}) or doc.get("state", {}) or {}
-                if isinstance(decision, dict):
-                    action_raw = decision.get("action", "")
-                    if action_raw and isinstance(action_raw, str):
-                        action_upper = action_raw.upper()
-                        action_map = {"BUY": "买入", "SELL": "卖出", "HOLD": "持有", "STRONG_BUY": "强烈买入", "STRONG_SELL": "强烈卖出"}
-                        action = action_map.get(action_upper, _normalize_rating(action_raw))
+            reports_dict = doc.get("reports", {}) if isinstance(doc.get("reports"), dict) else {}
+            _decision = doc.get("decision") or doc.get("detailed_analysis") or doc.get("final_decision") or doc.get("state") or {}
+            _combined_for_extract = dict(reports_dict)
+            if isinstance(_decision, dict) and _decision:
+                _combined_for_extract["decision"] = _decision
+            _extracted = extract_structured_fields(_combined_for_extract)
+            action = _extracted.get("action", "") or _extracted.get("评级", "") or _extracted.get("操作建议", "")
 
             # 置信度：直接从数据库字段获取，转换为百分比（0-100）
             confidence_score = doc.get("confidence_score", 0.0)
@@ -1569,6 +1664,14 @@ async def get_report_detail(
             _combined_for_extract = dict(report["reports"])
             if isinstance(_decision, dict) and _decision:
                 _combined_for_extract["decision"] = _decision
+            # 🔥 清理所有文本报告，移除开头的思考过程、寒暄语等
+            _cleaned_reports = {}
+            for _k, _v in report["reports"].items():
+                if isinstance(_v, str):
+                    _cleaned_reports[_k] = _clean_report_text(_v)
+                else:
+                    _cleaned_reports[_k] = _v
+            report["reports"] = _cleaned_reports
             # 🔥 从 markdown 子报告中抽取结构化字段（核心洞察、策略点位等）
             _extracted = extract_structured_fields(_combined_for_extract)
             # 已有字段保留优先级，仅在缺失时覆盖
@@ -1628,6 +1731,14 @@ async def get_report_detail(
             _combined_for_extract = dict(report["reports"])
             if isinstance(_decision, dict) and _decision:
                 _combined_for_extract["decision"] = _decision
+            # 🔥 清理所有文本报告，移除开头的思考过程、寒暄语等
+            _cleaned_reports = {}
+            for _k, _v in report["reports"].items():
+                if isinstance(_v, str):
+                    _cleaned_reports[_k] = _clean_report_text(_v)
+                else:
+                    _cleaned_reports[_k] = _v
+            report["reports"] = _cleaned_reports
             # 🔥 从 markdown 子报告中抽取结构化字段（核心洞察、策略点位、止盈止损等）
             _extracted = extract_structured_fields(_combined_for_extract)
             for _k, _v in _extracted.items():
@@ -1681,6 +1792,10 @@ async def get_report_module_content(
             raise HTTPException(status_code=404, detail=f"模块 {module} 不存在")
 
         content = reports[module]
+
+        # 清理报告内容，移除开头的思考过程、寒暄语等
+        if isinstance(content, str):
+            content = _clean_report_text(content)
 
         return {
             "success": True,

@@ -137,7 +137,14 @@ async def websocket_notifications_endpoint(
         await websocket.close(code=1008, reason="Unauthorized")
         return
     
-    user_id = "admin"  # 从 token_data 中获取
+    # 从 token 中获取用户名，然后查找用户 ID
+    from app.services.user_service import user_service
+    user = await user_service.get_user_by_username(token_data.sub)
+    if not user:
+        await websocket.close(code=1008, reason="User not found")
+        return
+    
+    user_id = str(user.id)
     
     # 连接 WebSocket
     await manager.connect(websocket, user_id)
@@ -227,7 +234,14 @@ async def websocket_task_progress_endpoint(
         await websocket.close(code=1008, reason="Unauthorized")
         return
     
-    user_id = "admin"
+    # 从 token 中获取用户名，然后查找用户 ID
+    from app.services.user_service import user_service
+    user = await user_service.get_user_by_username(token_data.sub)
+    if not user:
+        await websocket.close(code=1008, reason="User not found")
+        return
+    
+    user_id = str(user.id)
     channel = f"task_progress:{task_id}"
     
     # 连接 WebSocket

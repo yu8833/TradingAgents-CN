@@ -414,7 +414,7 @@
           <div class="intro-item">
             <div class="intro-icon">⚔️</div>
             <div class="intro-text">
-              <h4>多空辩论 · 三方风控 · 最终交易决策</h4>
+              <h4>多空辩论 · 三方风控 · 决策建议</h4>
               <p>看涨/看跌研究员进行辩论，研究经理综合裁决；激进/中性/保守三个风控视角；最终给出可操作的投资建议</p>
             </div>
           </div>
@@ -1003,26 +1003,31 @@ const getAnalysisReports = (data: any) => {
     { key: 'sentiment_report', title: '💭 市场情绪分析', category: '分析师团队' },
     { key: 'news_report', title: '📰 新闻事件分析', category: '分析师团队' },
     { key: 'fundamentals_report', title: '💰 基本面分析', category: '分析师团队' },
-    { key: 'policy_report', title: '📜 政策分析', category: '分析师团队' },
-    { key: 'hot_money_report', title: '🔥 游资追踪', category: '分析师团队' },
-    { key: 'lockup_report', title: '🔓 解禁追踪', category: '分析师团队' },
+    { key: 'policy_report', title: '🏛️ 政策分析', category: '分析师团队' },
+    { key: 'hot_money_report', title: '💹 游资追踪分析', category: '分析师团队' },
+    { key: 'lockup_report', title: '🔒 限售解禁分析', category: '分析师团队' },
 
     // 研究团队 (3个)
-    { key: 'bull_researcher', title: '🐂 多头研究员', category: '研究团队' },
-    { key: 'bear_researcher', title: '🐻 空头研究员', category: '研究团队' },
-    { key: 'research_team_decision', title: '🔬 研究经理决策', category: '研究团队' },
+    { key: 'bull_researcher', title: '🐂 看涨研究员', category: '研究团队' },
+    { key: 'bear_researcher', title: '🐻 看跌研究员', category: '研究团队' },
+    { key: 'research_team_decision', title: '👔 研究经理决策', category: '研究团队' },
 
     // 交易团队 (1个)
-    { key: 'trader_investment_plan', title: '💼 交易员计划', category: '交易团队' },
+    { key: 'trader_investment_plan', title: '💼 交易员投资计划', category: '交易团队' },
 
-    // 风险管理团队 (4个)
-    { key: 'risky_analyst', title: '⚡ 激进分析师', category: '风险管理团队' },
-    { key: 'safe_analyst', title: '🛡️ 保守分析师', category: '风险管理团队' },
-    { key: 'neutral_analyst', title: '⚖️ 中性分析师', category: '风险管理团队' },
-    { key: 'risk_management_decision', title: '👔 投资组合经理', category: '风险管理团队' },
+    // 风险管理团队 (5个)
+    { key: 'risky_analyst', title: '🔥 激进风险分析', category: '风险管理团队' },
+    { key: 'safe_analyst', title: '🛡️ 保守风险分析', category: '风险管理团队' },
+    { key: 'neutral_analyst', title: '⚖️ 中性风险分析', category: '风险管理团队' },
+    { key: 'risk_control_decision', title: '📋 风控约束决策', category: '风险管理团队' },
+    { key: 'risk_management_decision', title: '👔 风险经理决策', category: '风险管理团队' },
 
     // 最终决策 (1个)
-    { key: 'final_trade_decision', title: '🎯 最终交易决策', category: '最终决策' },
+    { key: 'final_trade_decision', title: '🎯 决策建议', category: '最终决策' },
+
+    // 数据质量
+    { key: 'data_quality_summary', title: '📊 数据质量评估', category: '数据质量' },
+    { key: 'quality_gate', title: '🚦 数据质量门控', category: '数据质量' },
 
     // 兼容旧格式
     { key: 'investment_plan', title: '📋 投资建议', category: '其他' },
@@ -1063,7 +1068,7 @@ const getReportIcon = (title: string) => {
     '🔬 研究团队决策': '🔬',
     '💼 交易团队计划': '💼',
     '⚖️ 风险管理团队': '⚖️',
-    '🎯 最终交易决策': '🎯'
+    '🎯 决策建议': '🎯'
   }
   return iconMap[title] || '📊'
 }
@@ -1084,7 +1089,7 @@ const getReportDescription = (title: string) => {
     '🔬 研究团队决策': '多头/空头研究员辩论分析，研究经理综合决策',
     '💼 交易团队计划': '专业交易员制定的具体交易执行计划',
     '⚖️ 风险管理团队': '激进/保守/中性分析师风险评估，投资组合经理最终决策',
-    '🎯 最终交易决策': '综合所有团队分析后的最终投资决策'
+    '🎯 决策建议': '综合所有团队分析后的最终投资决策'
   }
   return descMap[title] || '详细分析报告'
 }

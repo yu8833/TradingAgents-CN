@@ -153,3 +153,45 @@ def get_industry_comparison(
         str: Industry performance ranking with key metrics
     """
     return route_to_vendor("get_industry_comparison", ticker, curr_date)
+
+
+@tool
+def get_margin_trading(
+    ticker: Annotated[str, "A-stock code (e.g. 000858)"],
+    curr_date: Annotated[str, "Date in YYYY-MM-DD format"],
+    look_back_days: Annotated[int, "Days to look back (default 30)"] = 30,
+) -> str:
+    """
+    Retrieve margin trading (融资融券) data for a stock.
+    Shows financing balance (融资余额), margin buying amount,
+    short selling balance, and trend analysis.
+    Key indicator for retail investor leverage sentiment.
+    Rapidly rising margin balance = retail FOMO (contrarian bearish signal).
+    Rapidly falling margin balance + price stable = leverage washout (contrarian bullish signal).
+    Args:
+        ticker (str): A-stock code
+        curr_date (str): Date in YYYY-MM-DD format
+        look_back_days (int): How many days back to check
+    Returns:
+        str: Margin trading history with retail leverage sentiment analysis
+    """
+    return route_to_vendor("get_margin_trading", ticker, curr_date, look_back_days)
+
+
+@tool
+def get_shareholder_concentration(
+    ticker: Annotated[str, "A-stock code (e.g. 000858)"],
+    curr_date: Annotated[str, "Date in YYYY-MM-DD format"],
+) -> str:
+    """
+    Retrieve shareholder concentration (户均持股/筹码集中度) data.
+    Shows shareholder count changes and average shares per holder.
+    Decreasing shareholder count = chips concentrating (institutional accumulation, bullish).
+    Increasing shareholder count = chips dispersing (distribution to retail, bearish).
+    Args:
+        ticker (str): A-stock code
+        curr_date (str): Date in YYYY-MM-DD format
+    Returns:
+        str: Shareholder concentration data with chip distribution analysis
+    """
+    return route_to_vendor("get_shareholder_concentration", ticker, curr_date)

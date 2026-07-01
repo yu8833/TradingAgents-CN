@@ -90,11 +90,43 @@ class NotificationsService:
 
     async def unread_count(self, user_id: str) -> int:
         db = get_mongo_db()
-        return await db[self.collection].count_documents({"user_id": user_id, "status": "unread"})
+        # user_id 兼容查询：支持字符串和 ObjectId，支持 admin 特殊处理
+        uid_candidates = self._build_uid_candidates(user_id)
+        or_conditions = [
+            {"user_id": {"$in": uid_candidates}},
+            {"user": {"$in": uid_candidates}}
+        ]
+        query = {"$and": [{"$or": or_conditions}, {"status": "unread"}]}
+        return await db[self.collection].count_documents(query)
+
+    def _build_uid_candidates(self, user_id: str) -> list:
+        """构建 user_id 候选列表，支持字符串和 ObjectId 兼容"""
+        uid_candidates = [user_id]
+        # 特殊处理 admin 用户
+        if str(user_id) == 'admin':
+            try:
+                admin_oid_str = '507f1f77bcf86cd799439011'
+                uid_candidates.append(ObjectId(admin_oid_str))
+                uid_candidates.append(admin_oid_str)
+            except Exception:
+                pass
+        else:
+            # 普通用户：尝试转换为 ObjectId
+            try:
+                uid_candidates.append(ObjectId(user_id))
+            except Exception:
+                pass
+        return uid_candidates
 
     async def list(self, user_id: str, *, status: Optional[str] = None, ntype: Optional[str] = None, page: int = 1, page_size: int = 20) -> NotificationList:
         db = get_mongo_db()
-        q: Dict[str, Any] = {"user_id": user_id}
+        # user_id 兼容查询：支持字符串和 ObjectId，支持 admin 特殊处理
+        uid_candidates = self._build_uid_candidates(user_id)
+        or_conditions = [
+            {"user_id": {"$in": uid_candidates}},
+            {"user": {"$in": uid_candidates}}
+        ]
+        q: Dict[str, Any] = {"$or": or_conditions}
         if status in ("read", "unread"):
             q["status"] = status
         if ntype in ("analysis", "alert", "system"):
@@ -125,12 +157,26 @@ class NotificationsService:
             oid = ObjectId(notif_id)
         except Exception:
             return False
-        res = await db[self.collection].update_one({"_id": oid, "user_id": user_id}, {"$set": {"status": "read"}})
+        # user_id 兼容查询
+        uid_candidates = self._build_uid_candidates(user_id)
+        or_conditions = [
+            {"user_id": {"$in": uid_candidates}},
+            {"user": {"$in": uid_candidates}}
+        ]
+        query = {"$and": [{"_id": oid}, {"$or": or_conditions}]}
+        res = await db[self.collection].update_one(query, {"$set": {"status": "read"}})
         return res.modified_count > 0
 
     async def mark_all_read(self, user_id: str) -> int:
         db = get_mongo_db()
-        res = await db[self.collection].update_many({"user_id": user_id, "status": "unread"}, {"$set": {"status": "read"}})
+        # user_id 兼容查询
+        uid_candidates = self._build_uid_candidates(user_id)
+        or_conditions = [
+            {"user_id": {"$in": uid_candidates}},
+            {"user": {"$in": uid_candidates}}
+        ]
+        query = {"$and": [{"$or": or_conditions}, {"status": "unread"}]}
+        res = await db[self.collection].update_many(query, {"$set": {"status": "read"}})
         return res.modified_count
 
 

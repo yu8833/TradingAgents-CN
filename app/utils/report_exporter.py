@@ -73,18 +73,54 @@ class ReportExporter:
         "analysis_summary": "📊 分析摘要",
         "overview": "🔎 综合概览",
 
-        # 市场/宏观/政策
-        "market_report": "🌍 市场分析",
-        "market_analysis": "🌍 市场分析",
-        "macro_report": "📈 宏观分析",
+        # 分析师团队 (7个)
+        "market_report": "📈 市场技术分析",
+        "market_analysis": "📈 市场技术分析",
+        "sentiment_report": "💭 市场情绪分析",
+        "news_report": "📰 新闻事件分析",
+        "fundamentals_report": "💰 基本面分析",
         "policy_report": "🏛️ 政策分析",
+        "hot_money_report": "💹 游资追踪分析",
+        "lockup_report": "🔒 限售解禁分析",
 
-        # 情绪 / 新闻
-        "sentiment_report": "🔥 市场情绪分析",
-        "news_report": "📰 新闻与舆情分析",
+        # 研究团队 (3个)
+        "bull_researcher": "🐂 看涨研究员",
+        "bear_researcher": "🐻 看跌研究员",
+        "research_team_decision": "👔 研究经理决策",
+        "investment_debate_state": "🧠 多空辩论",
+        "bull_history": "🐂 多头观点",
+        "bear_history": "🐻 空头观点",
+        "debate_history": "🧐 辩论记录",
 
-        # 基本面 / 财务 / 公司
-        "fundamentals_report": "💼 基本面分析",
+        # 交易团队 (1个)
+        "trader_investment_plan": "💼 交易员投资计划",
+        "trader_investment_decision": "💼 交易员投资决策",
+
+        # 风险管理团队 (5个)
+        "risky_analyst": "🔥 激进风险分析",
+        "safe_analyst": "🛡️ 保守风险分析",
+        "neutral_analyst": "⚖️ 中性风险分析",
+        "risk_control_decision": "📋 风控约束决策",
+        "risk_management_decision": "👔 风险经理决策",
+        "risk_debate_state": "🛡️ 风险辩论",
+        "aggressive_history": "🔥 激进观点",
+        "conservative_history": "❄️ 保守观点",
+        "neutral_history": "⚖️ 中性观点",
+
+        # 最终决策
+        "final_trade_decision": "🎯 决策建议",
+        "final_decision": "🎯 决策建议",
+        "decision_summary": "📌 决策摘要",
+
+        # 数据质量
+        "data_quality_summary": "📊 数据质量评估",
+        "quality_gate": "🚦 数据质量门控",
+
+        # 市场/宏观
+        "macro_report": "📈 宏观分析",
+        "market_overview": "🌍 市场概况",
+
+        # 公司/财务
         "company_overview": "🏢 公司概况",
         "financial_analysis": "💰 财务分析",
         "valuation_analysis": "💎 估值分析",
@@ -94,27 +130,9 @@ class ReportExporter:
         "technical_analysis_report": "📈 技术分析",
         "technical_report": "📈 技术分析",
 
-        # 交易 / 资金 / 特殊事件
-        "hot_money_report": "💹 主力资金分析",
+        # 交易量
         "trading_volume": "📊 交易量分析",
-        "lockup_report": "🔒 解禁与限售分析",
         "volume_report": "📊 成交量分析",
-
-        # 决策 / 计划
-        "investment_plan": "📝 投资计划",
-        "investment_debate_state": "🧠 多空辩论",
-        "bull_history": "🐂 多头观点",
-        "bear_history": "🐻 空头观点",
-        "debate_history": "🧐 辩论记录",
-        "trader_investment_plan": "🧭 交易员投资计划",
-        "trader_investment_decision": "🧭 交易员投资决策",
-        "risk_debate_state": "🛡️ 风险辩论",
-        "aggressive_history": "🔥 激进观点",
-        "conservative_history": "❄️ 保守观点",
-        "neutral_history": "⚖️ 中性观点",
-        "final_trade_decision": "🎯 最终交易决策",
-        "final_decision": "🎯 最终交易决策",
-        "decision_summary": "📌 决策摘要",
 
         # 风险
         "risk_analysis": "⚠️ 风险分析",
@@ -123,13 +141,16 @@ class ReportExporter:
         "confidence_score": "🎯 置信度",
 
         # 投资建议
+        "investment_plan": "📝 投资计划",
         "investment_recommendation": "🎯 投资建议",
         "recommendation": "🎯 投资建议",
         "trading_signal": "🚦 交易信号",
 
-        # 其他
+        # 行业/板块
         "industry_report": "🏭 行业分析",
         "sector_analysis": "🏭 板块分析",
+
+        # 其他
         "detailed_analysis": "📂 详细分析",
         "state": "📊 完整分析状态",
 
@@ -141,7 +162,6 @@ class ReportExporter:
         "reasoning": "推理说明",
         "bull_points": "看多理由",
         "bear_points": "看空理由",
-        "risk_level": "风险等级",
         "key_points": "核心要点",
         "technical_signals": "技术信号",
         "judge_decision": "裁判裁决",
@@ -149,16 +169,14 @@ class ReportExporter:
     }
 
     def get_module_title(self, module_key: str) -> str:
-        """获取模块的中文标题，未命中时返回原 key（去除首尾下划线）"""
+        """获取模块的中文标题，未命中时返回原 key"""
         if module_key in self.MODULE_TITLE_MAP:
             return self.MODULE_TITLE_MAP[module_key]
         # 模糊匹配：去除常见后缀再查
         cleaned = module_key.replace("_report", "").replace("_analysis", "").replace("_state", "")
         if cleaned in self.MODULE_TITLE_MAP:
             return self.MODULE_TITLE_MAP[cleaned]
-        # 兜底：英文下划线改为空格 + 中文标题
-        readable = module_key.replace("_", " ").strip()
-        return f"📂 {readable}"
+        return module_key
 
     def __init__(self):
         self.export_available = EXPORT_AVAILABLE

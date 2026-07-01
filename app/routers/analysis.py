@@ -42,9 +42,10 @@ class BatchAnalyzeRequest(BaseModel):
 async def submit_single_analysis(
     request: SingleAnalysisRequest,
     background_tasks: BackgroundTasks,
-    user: dict = Depends(get_current_user)
+    user: dict = Depends(get_current_user),
+    queue_svc: QueueService = Depends(get_queue_service)
 ):
-    """提交单股分析任务 - 使用 BackgroundTasks 异步执行"""
+    """提交单股分析任务 - 优先使用队列+Worker模式，兜底使用BackgroundTasks"""
     try:
         logger.info(f"🎯 收到单股分析请求")
         logger.info(f"👤 用户信息: {user}")
@@ -57,39 +58,65 @@ async def submit_single_analysis(
         # 提取变量，避免闭包问题
         task_id = result["task_id"]
         user_id = user["id"]
+        stock_code = request.get_symbol()
 
-        # 定义一个包装函数来运行异步任务
-        async def run_analysis_task():
-            """包装函数：在后台运行分析任务"""
-            try:
-                logger.info(f"🚀 [BackgroundTask] 开始执行分析任务: {task_id}")
-                logger.info(f"📝 [BackgroundTask] task_id={task_id}, user_id={user_id}")
-                logger.info(f"📝 [BackgroundTask] request={request}")
+        # 构建队列参数
+        params_dict = request.parameters.model_dump() if request.parameters else {}
+        queue_params = {
+            "task_id": task_id,
+            "symbol": stock_code,
+            "stock_code": stock_code,
+            "user_id": str(user_id),
+            "created_at": datetime.utcnow().isoformat(),
+            **params_dict
+        }
 
-                # 重新获取服务实例，确保在正确的上下文中
-                logger.info(f"🔧 [BackgroundTask] 正在获取服务实例...")
-                service = get_simple_analysis_service()
-                logger.info(f"✅ [BackgroundTask] 服务实例获取成功: {id(service)}")
+        # 优先入队到Redis队列，由独立Worker进程消费
+        enqueued = False
+        try:
+            await queue_svc.enqueue_task(
+                user_id=str(user_id),
+                symbol=stock_code,
+                params=queue_params
+            )
+            enqueued = True
+            logger.info(f"✅ 任务已入队: {task_id}，将由Worker进程消费")
+        except Exception as queue_error:
+            logger.warning(f"⚠️ 任务入队失败: {queue_error}，将使用BackgroundTasks兜底")
 
-                logger.info(f"🚀 [BackgroundTask] 准备调用 execute_analysis_background...")
-                await service.execute_analysis_background(
-                    task_id,
-                    user_id,
-                    request
-                )
-                logger.info(f"✅ [BackgroundTask] 分析任务完成: {task_id}")
-            except Exception as e:
-                logger.error(f"❌ [BackgroundTask] 分析任务失败: {task_id}, 错误: {e}", exc_info=True)
+        # 如果入队失败，使用 BackgroundTasks 在API进程内执行（兜底）
+        if not enqueued:
+            # 定义一个包装函数来运行异步任务
+            async def run_analysis_task():
+                """包装函数：在后台运行分析任务"""
+                try:
+                    logger.info(f"🚀 [BackgroundTask] 开始执行分析任务: {task_id}")
+                    logger.info(f"📝 [BackgroundTask] task_id={task_id}, user_id={user_id}")
+                    logger.info(f"📝 [BackgroundTask] request={request}")
 
-        # 使用 BackgroundTasks 执行异步任务
-        background_tasks.add_task(run_analysis_task)
+                    # 重新获取服务实例，确保在正确的上下文中
+                    logger.info(f"🔧 [BackgroundTask] 正在获取服务实例...")
+                    service = get_simple_analysis_service()
+                    logger.info(f"✅ [BackgroundTask] 服务实例获取成功: {id(service)}")
 
-        logger.info(f"✅ 分析任务已在后台启动: {result}")
+                    logger.info(f"🚀 [BackgroundTask] 准备调用 execute_analysis_background...")
+                    await service.execute_analysis_background(
+                        task_id,
+                        user_id,
+                        request
+                    )
+                    logger.info(f"✅ [BackgroundTask] 分析任务完成: {task_id}")
+                except Exception as e:
+                    logger.error(f"❌ [BackgroundTask] 分析任务失败: {task_id}, 错误: {e}", exc_info=True)
+
+            # 使用 BackgroundTasks 执行异步任务
+            background_tasks.add_task(run_analysis_task)
+            logger.info(f"✅ 分析任务已在后台启动(兜底模式): {result}")
 
         return {
             "success": True,
             "data": result,
-            "message": "分析任务已在后台启动"
+            "message": "分析任务已提交到队列" if enqueued else "分析任务已在后台启动"
         }
     except Exception as e:
         logger.error(f"❌ 提交单股分析任务失败: {e}")

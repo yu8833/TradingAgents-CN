@@ -6,6 +6,7 @@ from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
+from tradingagents.agents.guardians.accuracy_guardian import create_accuracy_guardian_node
 
 from .conditional_logic import ConditionalLogic
 from .parallel_analysts import create_parallel_analysts_node
@@ -65,6 +66,9 @@ class GraphSetup:
         conservative_analyst = create_conservative_debator(self.quick_thinking_llm)
         portfolio_manager_node = create_portfolio_manager(self.deep_thinking_llm)
 
+        # Create accuracy guardian node
+        accuracy_guardian_node = create_accuracy_guardian_node()
+
         # Create workflow
         workflow = StateGraph(AgentState)
 
@@ -86,6 +90,7 @@ class GraphSetup:
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Conservative Analyst", conservative_analyst)
         workflow.add_node("Portfolio Manager", portfolio_manager_node)
+        workflow.add_node("Accuracy Guardian", accuracy_guardian_node)  # 新增节点
 
         # Define edges
         # Start with parallel analysts
@@ -137,6 +142,8 @@ class GraphSetup:
             },
         )
 
-        workflow.add_edge("Portfolio Manager", END)
+        # Portfolio Manager -> Accuracy Guardian -> END
+        workflow.add_edge("Portfolio Manager", "Accuracy Guardian")
+        workflow.add_edge("Accuracy Guardian", END)
 
         return workflow
