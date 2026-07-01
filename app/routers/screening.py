@@ -338,3 +338,71 @@ async def get_industries(user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"[get_industries] 获取行业列表失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== 涨停回调策略 ==========
+
+class LimitUpPullbackRequest(BaseModel):
+    """涨停回调策略请求参数"""
+    max_lookback_days: int = Field(15, ge=5, le=30, description="最多往前找多少天的涨停")
+    min_pullback_days: int = Field(2, ge=1, le=10, description="最少回调天数")
+    max_pullback_days: int = Field(8, ge=3, le=20, description="最多回调天数")
+    shrink_volume_ratio: float = Field(0.5, ge=0.1, le=1.0, description="缩量比例阈值")
+    min_shrink_days: int = Field(2, ge=1, le=10, description="最少缩量天数")
+    above_ma10: bool = Field(True, description="是否要求站上10日线")
+    ground_volume_ratio: float = Field(0.35, ge=0.1, le=1.0, description="地量比例阈值")
+    lower_shadow_ratio: float = Field(0.015, ge=0.001, le=0.1, description="下影线比例阈值")
+    breakout_ma5: bool = Field(False, description="是否要求突破5日线（右侧买点）")
+    breakout_volume_ratio: float = Field(1.5, ge=1.0, le=5.0, description="突破放量倍数")
+    min_score: int = Field(40, ge=0, le=100, description="最低评分阈值")
+    limit: int = Field(50, ge=1, le=200, description="返回数量限制")
+
+
+class LimitUpPullbackResponse(BaseModel):
+    """涨停回调策略响应"""
+    total: int = Field(..., description="符合条件的股票总数")
+    items: List[dict] = Field(..., description="股票列表")
+    took_ms: Optional[int] = Field(None, description="耗时(毫秒)")
+    scanned_count: Optional[int] = Field(None, description="扫描的股票总数")
+    params: Optional[dict] = Field(None, description="使用的参数")
+
+
+@router.post("/limit-up-pullback/scan", response_model=LimitUpPullbackResponse)
+async def scan_limit_up_pullback(
+    req: LimitUpPullbackRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    涨停回调（龙回头/N字反包）策略选股
+    
+    策略逻辑：
+    1. 筛选最近N天内出现过涨停的股票
+    2. 涨停后出现缩量回调（3-5天）
+    3. 回调期间出现地量+下影线（左侧买点）
+    4. 放量突破5日线（右侧确认买点）
+    5. 回调期间不破10日线（生命线）
+    """
+    try:
+        from app.services.limit_up_pullback_service import get_limit_up_pullback_service
+        
+        service = get_limit_up_pullback_service()
+        params = req.model_dump()
+        
+        logger.info(f"[limit_up_pullback] 扫描请求: {params}")
+        
+        result = await service.scan_limit_up_pullback(params)
+        
+        logger.info(f"[limit_up_pullback] 扫描完成: 找到 {result['total']} 只股票, "
+                   f"耗时 {result.get('took_ms')}ms")
+        
+        return LimitUpPullbackResponse(
+            total=result["total"],
+            items=result["items"],
+            took_ms=result.get("took_ms"),
+            scanned_count=result.get("scanned_count"),
+            params=result.get("params")
+        )
+        
+    except Exception as e:
+        logger.error(f"[limit_up_pullback] 扫描失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"涨停回调扫描失败: {str(e)}")

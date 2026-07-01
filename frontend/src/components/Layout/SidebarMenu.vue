@@ -31,10 +31,14 @@
       <template #title>任务</template>
     </el-menu-item>
 
-    <el-menu-item index="/screening">
-      <el-icon><Search /></el-icon>
-      <template #title>选股</template>
-    </el-menu-item>
+    <el-sub-menu index="/screening">
+      <template #title>
+        <el-icon><Search /></el-icon>
+        <span>选股</span>
+      </template>
+      <el-menu-item index="/screening/common">常用策略</el-menu-item>
+      <el-menu-item index="/screening/limit-up-pullback">涨停回调</el-menu-item>
+    </el-sub-menu>
 
     <el-menu-item index="/favorites">
       <el-icon><Star /></el-icon>

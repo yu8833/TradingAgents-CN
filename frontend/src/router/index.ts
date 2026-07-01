@@ -87,6 +87,7 @@ const routes: RouteRecordRaw[] = [
     path: '/screening',
     name: 'StockScreening',
     component: () => import('@/layouts/BasicLayout.vue'),
+    redirect: '/screening/common',
     meta: {
       title: '选股',
       icon: 'Search',
@@ -95,11 +96,22 @@ const routes: RouteRecordRaw[] = [
     },
     children: [
       {
-        path: '',
-        name: 'StockScreeningHome',
+        path: 'common',
+        name: 'StockScreeningCommon',
         component: () => import('@/views/Screening/index.vue'),
         meta: {
-          title: '选股',
+          title: '常用策略',
+          parentTitle: '选股',
+          requiresAuth: true
+        }
+      },
+      {
+        path: 'limit-up-pullback',
+        name: 'LimitUpPullback',
+        component: () => import('@/views/Screening/LimitUpPullback.vue'),
+        meta: {
+          title: '涨停回调',
+          parentTitle: '选股',
           requiresAuth: true
         }
       }
