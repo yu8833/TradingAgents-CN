@@ -406,3 +406,70 @@ async def scan_limit_up_pullback(
     except Exception as e:
         logger.error(f"[limit_up_pullback] 扫描失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"涨停回调扫描失败: {str(e)}")
+
+
+class LimitUpPullbackBacktestRequest(BaseModel):
+    """涨停回调策略回测请求参数"""
+    start_date: Optional[str] = Field(None, description="回测开始日期 YYYY-MM-DD")
+    end_date: Optional[str] = Field(None, description="回测结束日期 YYYY-MM-DD")
+    hold_days: int = Field(15, ge=3, le=30, description="最大持有天数（安全阀，实际按卖点规则卖出）")
+    top_n: int = Field(10, ge=1, le=100, description="每次选前N只股票")
+    min_score: int = Field(50, ge=0, le=100, description="最低评分阈值")
+    max_lookback_days: int = Field(15, ge=5, le=30, description="最多往前找多少天的涨停")
+    min_pullback_days: int = Field(2, ge=1, le=10, description="最少回调天数")
+    max_pullback_days: int = Field(8, ge=3, le=20, description="最多回调天数")
+    shrink_volume_ratio: float = Field(0.5, ge=0.1, le=1.0, description="缩量比例阈值")
+    min_shrink_days: int = Field(2, ge=1, le=10, description="最少缩量天数")
+    above_ma10: bool = Field(True, description="是否要求站上10日线")
+    ground_volume_ratio: float = Field(0.35, ge=0.1, le=1.0, description="地量比例阈值")
+    lower_shadow_ratio: float = Field(0.015, ge=0.001, le=0.1, description="下影线比例阈值")
+    breakout_ma5: bool = Field(True, description="是否要求突破5日线（右侧买点）")
+    breakout_volume_ratio: float = Field(1.5, ge=1.0, le=5.0, description="突破放量倍数")
+
+
+class LimitUpPullbackBacktestResponse(BaseModel):
+    """涨停回调策略回测响应"""
+    total_trades: int = Field(..., description="总交易次数")
+    win_rate: float = Field(..., description="胜率(%)")
+    avg_return: float = Field(..., description="平均收益(%)")
+    avg_win: float = Field(..., description="平均盈利(%)")
+    avg_loss: float = Field(..., description="平均亏损(%)")
+    max_drawdown: float = Field(..., description="最大回撤(%)")
+    total_return: float = Field(..., description="总收益(%)")
+    backtest_days: int = Field(..., description="回测天数")
+    signal_stats: dict = Field(default_factory=dict, description="按信号类型统计")
+    sell_reason_stats: dict = Field(default_factory=dict, description="按卖出原因统计")
+    daily_results: List[dict] = Field(default_factory=list, description="每日结果(前50天)")
+    top_trades: List[dict] = Field(default_factory=list, description="盈利最多的20笔")
+    worst_trades: List[dict] = Field(default_factory=list, description="亏损最多的20笔")
+    params: Optional[dict] = Field(None, description="使用的参数")
+    took_ms: Optional[int] = Field(None, description="耗时(毫秒)")
+
+
+@router.post("/limit-up-pullback/backtest", response_model=LimitUpPullbackBacktestResponse)
+async def backtest_limit_up_pullback(
+    req: LimitUpPullbackBacktestRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    涨停回调策略回测
+    """
+    try:
+        from app.services.limit_up_pullback_service import get_limit_up_pullback_service
+        
+        service = get_limit_up_pullback_service()
+        params = req.model_dump()
+        
+        logger.info(f"[limit_up_pullback_backtest] 回测请求: {params}")
+        
+        result = await service.backtest(params)
+        
+        logger.info(f"[limit_up_pullback_backtest] 回测完成: {result['total_trades']} 笔交易, "
+                   f"胜率 {result['win_rate']}%, 平均收益 {result['avg_return']}%, "
+                   f"耗时 {result.get('took_ms')}ms")
+        
+        return LimitUpPullbackBacktestResponse(**result)
+        
+    except Exception as e:
+        logger.error(f"[limit_up_pullback_backtest] 回测失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"涨停回调回测失败: {str(e)}")

@@ -17,6 +17,18 @@ class _DummyCache:
     def clear(self, *args, **kwargs):
         return False
 
+    def get_cache_stats(self, *args, **kwargs):
+        return {}
+
+    def clear_old_cache(self, *args, **kwargs):
+        return 0
+
+    def get_cache_details(self, *args, **kwargs):
+        return []
+
+    def get_cache_backend_info(self, *args, **kwargs):
+        return {}
+
 
 _cache_instance = None
 

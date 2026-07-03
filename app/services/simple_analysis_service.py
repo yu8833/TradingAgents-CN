@@ -975,6 +975,46 @@ class SimpleAnalysisService:
             except Exception as notif_err:
                 logger.warning(f"⚠️ 创建通知失败(忽略): {notif_err}")
 
+            # 记录 token 使用
+            try:
+                from app.models.config import UsageRecord
+                from app.services.usage_statistics_service import UsageStatisticsService
+
+                tokens_used = result.get("tokens_used", 0) if isinstance(result, dict) else 0
+                input_tokens = tokens_used // 2 if tokens_used > 0 else 2000
+                output_tokens = tokens_used - input_tokens if tokens_used > 0 else 1000
+
+                # 获取模型信息
+                model_info = result.get("model_info", "Unknown") if isinstance(result, dict) else "Unknown"
+                if model_info == "Unknown":
+                    model_info = request.parameters.quick_analysis_model if request.parameters else "qwen-plus"
+
+                # 估算成本（简化处理）
+                cost = 0.0
+                currency = "CNY"
+
+                usage_record = UsageRecord(
+                    timestamp=datetime.now().isoformat(),
+                    provider="dashscope",
+                    model_name=model_info,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cost=cost,
+                    currency=currency,
+                    session_id=task_id,
+                    analysis_type="stock_analysis",
+                    stock_code=request.stock_code
+                )
+
+                usage_svc = UsageStatisticsService()
+                success = await usage_svc.add_usage_record(usage_record)
+                if success:
+                    logger.info(f"💰 记录使用成本: {model_info} - task={task_id}")
+                else:
+                    logger.warning(f"⚠️ 记录使用成本失败: task={task_id}")
+            except Exception as usage_err:
+                logger.error(f"❌ 记录 token 使用失败: {usage_err}")
+
             logger.info(f"✅ 后台分析任务完成: {task_id}")
 
         except Exception as e:

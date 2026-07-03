@@ -1535,15 +1535,20 @@ async def get_reports_list(
             created_at = doc.get("created_at", datetime.utcnow())
             created_at_tz = to_config_tz(created_at)
 
-            # 决策建议：使用 extract_structured_fields 提取，确保与详情页完全一致
+            # 决策建议：列表页简化提取，避免完整结构化解析以提升性能
             action = ""
             reports_dict = doc.get("reports", {}) if isinstance(doc.get("reports"), dict) else {}
             _decision = doc.get("decision") or doc.get("detailed_analysis") or doc.get("final_decision") or doc.get("state") or {}
-            _combined_for_extract = dict(reports_dict)
             if isinstance(_decision, dict) and _decision:
-                _combined_for_extract["decision"] = _decision
-            _extracted = extract_structured_fields(_combined_for_extract)
-            action = _extracted.get("action", "") or _extracted.get("评级", "") or _extracted.get("操作建议", "")
+                action = _normalize_rating(_decision.get("action", ""))
+            if not action and reports_dict:
+                for key in ["final_trade_decision", "trader_investment_plan", "research_team_decision"]:
+                    text = reports_dict.get(key, "")
+                    if text:
+                        rating = _match_rating(text, ["操作建议", "评级", "投资建议"])
+                        if rating:
+                            action = _normalize_rating(rating)
+                            break
 
             # 置信度：直接从数据库字段获取，转换为百分比（0-100）
             confidence_score = doc.get("confidence_score", 0.0)

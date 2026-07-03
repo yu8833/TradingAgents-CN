@@ -536,9 +536,12 @@ const appearanceSettings = ref({
   sidebarWidth: authStore.user?.preferences?.sidebar_width || 240
 })
 
+const defaultAnalystList = ['技术分析师', '基本面分析师', '新闻分析师', '市场情绪分析师', '政策分析师', '游资追踪师', '解禁追踪师']
 const analysisSettings = ref({
   defaultMarket: authStore.user?.preferences?.default_market || 'A股',
-  defaultAnalysts: authStore.user?.preferences?.default_analysts || ['技术分析师', '基本面分析师', '新闻分析师', '市场情绪分析师', '政策分析师', '游资追踪师', '解禁追踪师'],
+  defaultAnalysts: authStore.user?.preferences?.default_analysts?.length
+    ? authStore.user.preferences.default_analysts
+    : defaultAnalystList,
   autoRefresh: authStore.user?.preferences?.auto_refresh ?? true,
   refreshInterval: authStore.user?.preferences?.refresh_interval || 30
 })
@@ -555,7 +558,9 @@ const buildPreferencesPayload = (
   const current = authStore.user?.preferences
   return {
     default_market: current?.default_market || 'A股',
-    default_analysts: current?.default_analysts || ['技术分析师', '基本面分析师', '新闻分析师', '市场情绪分析师', '政策分析师', '游资追踪师', '解禁追踪师'],
+    default_analysts: current?.default_analysts?.length
+      ? current.default_analysts
+      : defaultAnalystList,
     auto_refresh: current?.auto_refresh ?? true,
     refresh_interval: current?.refresh_interval || 30,
     ui_theme: current?.ui_theme || 'light',

@@ -291,9 +291,34 @@ class NewsDataSyncService:
             self.logger.error(f"❌ 实时新闻同步失败: {e}")
             return []
     
+    def _parse_publish_time(self, time_val: Any) -> Optional[datetime]:
+        """解析发布时间，支持多种格式"""
+        if not time_val:
+            return None
+        time_str = str(time_val).strip()
+        if not time_str:
+            return None
+        formats = [
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%d",
+            "%Y%m%d%H%M%S",
+            "%Y%m%d",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%dT%H:%M:%SZ",
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(time_str, fmt)
+            except ValueError:
+                continue
+        return None
+
     def _standardize_tushare_news(self, news: Dict[str, Any], symbol: str) -> Optional[Dict[str, Any]]:
         """标准化Tushare新闻数据"""
         try:
+            # tushare adapter 使用 "time" 字段存储时间
+            publish_time = self._parse_publish_time(news.get("publish_time") or news.get("time"))
             return {
                 "symbol": symbol,
                 "title": news.get("title", ""),
@@ -302,7 +327,7 @@ class NewsDataSyncService:
                 "url": news.get("url", ""),
                 "source": news.get("source", "Tushare"),
                 "author": news.get("author", ""),
-                "publish_time": news.get("publish_time"),
+                "publish_time": publish_time,
                 "category": self._classify_news_category(news.get("title", "")),
                 "sentiment": self._analyze_sentiment(news.get("title", "") + " " + news.get("content", "")),
                 "importance": self._assess_importance(news.get("title", "")),
@@ -312,10 +337,12 @@ class NewsDataSyncService:
         except Exception as e:
             self.logger.error(f"❌ 标准化Tushare新闻失败: {e}")
             return None
-    
+
     def _standardize_akshare_news(self, news: Dict[str, Any], symbol: str) -> Optional[Dict[str, Any]]:
         """标准化AKShare新闻数据"""
         try:
+            # akshare adapter 使用 "time" 字段存储时间
+            publish_time = self._parse_publish_time(news.get("publish_time") or news.get("time"))
             return {
                 "symbol": symbol,
                 "title": news.get("title", ""),
@@ -324,7 +351,7 @@ class NewsDataSyncService:
                 "url": news.get("url", ""),
                 "source": news.get("source", "AKShare"),
                 "author": news.get("author", ""),
-                "publish_time": news.get("publish_time"),
+                "publish_time": publish_time,
                 "category": self._classify_news_category(news.get("title", "")),
                 "sentiment": self._analyze_sentiment(news.get("title", "") + " " + news.get("content", "")),
                 "importance": self._assess_importance(news.get("title", "")),
@@ -456,32 +483,57 @@ class NewsDataSyncService:
             self.logger.info("📰 开始同步市场新闻...")
             
             if data_sources is None:
-                data_sources = ["realtime"]
-            
+                data_sources = ["realtime", "akshare", "tushare"]
+
             news_service = await self._get_news_service()
             all_news = []
-            
+
             # 实时市场新闻
             if "realtime" in data_sources:
                 try:
                     aggregator = await self._get_realtime_aggregator()
-                    
+
                     # 获取市场新闻（不指定股票代码）
                     news_items = aggregator.get_realtime_stock_news(
                         None, hours_back, max_news_per_source
                     )
-                    
+
                     if news_items:
                         for news_item in news_items:
                             standardized = self._standardize_realtime_news(news_item, None)
                             if standardized:
                                 all_news.append(standardized)
-                        
+
                         stats.sources_used.append("realtime")
                         self.logger.info(f"✅ 市场新闻获取成功: {len(all_news)}条")
-                        
+
                 except Exception as e:
                     self.logger.error(f"❌ 市场新闻获取失败: {e}")
+
+            # 从代表性股票获取新闻作为市场新闻补充
+            representative_symbols = ["000001", "600519", "000858", "600036", "000333"]
+            for symbol in representative_symbols:
+                if "akshare" in data_sources:
+                    try:
+                        akshare_news = await self._sync_akshare_news(symbol, hours_back, max_news_per_source // len(representative_symbols))
+                        for news_item in akshare_news:
+                            news_item["symbol"] = None  # 标记为市场新闻
+                        all_news.extend(akshare_news)
+                        if akshare_news and "akshare" not in stats.sources_used:
+                            stats.sources_used.append("akshare")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ 从akshare获取{symbol}新闻失败: {e}")
+
+                if "tushare" in data_sources:
+                    try:
+                        tushare_news = await self._sync_tushare_news(symbol, hours_back, max_news_per_source // len(representative_symbols))
+                        for news_item in tushare_news:
+                            news_item["symbol"] = None  # 标记为市场新闻
+                        all_news.extend(tushare_news)
+                        if tushare_news and "tushare" not in stats.sources_used:
+                            stats.sources_used.append("tushare")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ 从tushare获取{symbol}新闻失败: {e}")
             
             # 保存新闻数据
             if all_news:
