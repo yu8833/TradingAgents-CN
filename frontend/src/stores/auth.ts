@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { useStorage } from '@vueuse/core'
+import { ElMessage } from 'element-plus'
 import { authApi } from '@/api/auth'
 import type { User, LoginForm, RegisterForm } from '@/types/auth'
 
@@ -79,7 +80,7 @@ export const useAuthStore = defineStore('auth', {
     
     // 是否为管理员
     isAdmin(): boolean {
-      return this.roles.includes('admin')
+      return this.user?.is_admin === true || this.roles.includes('admin')
     },
     
     // 检查权限
@@ -198,9 +199,14 @@ export const useAuthStore = defineStore('auth', {
           // 设置认证信息
           this.setAuthInfo(access_token, refresh_token, user)
 
-          // 开源版admin用户拥有所有权限
-          this.permissions = ['*']
-          this.roles = ['admin']
+          // 根据用户角色设置权限
+          if (user.is_admin) {
+            this.permissions = ['*']
+            this.roles = ['admin']
+          } else {
+            this.permissions = ['*']
+            this.roles = ['user']
+          }
 
           // 同步用户偏好设置到 appStore
           this.syncUserPreferencesToAppStore()
@@ -337,10 +343,15 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     
-    // 开源版不需要权限检查，admin拥有所有权限
+    // 根据用户信息设置权限
     async fetchUserPermissions() {
-      this.permissions = ['*']
-      this.roles = ['admin']
+      if (this.user?.is_admin) {
+        this.permissions = ['*']
+        this.roles = ['admin']
+      } else {
+        this.permissions = ['*']
+        this.roles = ['user']
+      }
       return true
     },
     

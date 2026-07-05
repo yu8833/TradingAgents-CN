@@ -57,7 +57,10 @@
           <el-form-item>
             <div class="login-tip">
               <el-text type="info" size="small">
-                开源版使用默认账号：admin / admin123
+                还没有账号？
+                <el-link type="primary" :underline="false" @click="$router.push('/register')">
+                  立即注册
+                </el-link>
               </el-text>
             </div>
           </el-form-item>

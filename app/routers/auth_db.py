@@ -4,6 +4,7 @@
 """
 
 import time
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
@@ -66,6 +67,20 @@ class CreateUserRequest(BaseModel):
     password: str
     is_admin: bool = False
 
+class RegisterRequest(BaseModel):
+    """用户注册请求"""
+    username: str
+    email: str
+    password: str
+    confirm_password: str
+
+class UpdateUserStatusRequest(BaseModel):
+    """更新用户状态请求"""
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
+    daily_quota: Optional[int] = None
+    concurrent_limit: Optional[int] = None
+
 async def get_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
     """获取当前用户信息"""
     logger.debug(f"🔐 认证检查开始")
@@ -112,6 +127,79 @@ async def get_current_user(authorization: Optional[str] = Header(default=None)) 
         "roles": ["admin"] if user.is_admin else ["user"],
         "preferences": user.preferences.model_dump() if user.preferences else {}
     }
+
+@router.post("/register")
+async def register(payload: RegisterRequest, request: Request):
+    """用户注册（公开接口）"""
+    start_time = time.time()
+    ip_address = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "")
+
+    logger.info(f"📝 注册请求 - 用户名: {payload.username}, IP: {ip_address}")
+
+    try:
+        # 验证输入
+        if not payload.username or not payload.password or not payload.email:
+            raise HTTPException(status_code=400, detail="用户名、邮箱和密码不能为空")
+
+        # 验证两次密码一致
+        if payload.password != payload.confirm_password:
+            raise HTTPException(status_code=400, detail="两次输入的密码不一致")
+
+        # 验证用户名长度
+        if len(payload.username) < 3 or len(payload.username) > 50:
+            raise HTTPException(status_code=400, detail="用户名长度必须在3-50个字符之间")
+
+        # 验证密码长度
+        if len(payload.password) < 6:
+            raise HTTPException(status_code=400, detail="密码长度不能少于6位")
+
+        # 验证邮箱格式
+        import re
+        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', payload.email):
+            raise HTTPException(status_code=400, detail="邮箱格式不正确")
+
+        # 创建用户
+        user_create = UserCreate(
+            username=payload.username,
+            email=payload.email,
+            password=payload.password
+        )
+
+        new_user = await user_service.create_user(user_create)
+
+        if not new_user:
+            raise HTTPException(status_code=400, detail="用户名或邮箱已存在")
+
+        # 记录注册日志
+        await log_operation(
+            user_id=str(new_user.id),
+            username=new_user.username,
+            action_type=ActionType.USER_LOGIN,
+            action="用户注册",
+            details={"register_method": "public"},
+            success=True,
+            duration_ms=int((time.time() - start_time) * 1000),
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        logger.info(f"✅ 用户注册成功: {payload.username}")
+
+        return {
+            "success": True,
+            "data": {
+                "id": str(new_user.id),
+                "username": new_user.username,
+                "email": new_user.email
+            },
+            "message": "注册成功，请登录"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 注册失败: {e}")
+        raise HTTPException(status_code=500, detail=f"注册过程中发生系统错误: {str(e)}")
 
 @router.post("/login")
 async def login(payload: LoginRequest, request: Request):
@@ -488,11 +576,11 @@ async def list_users(
             raise HTTPException(status_code=403, detail="权限不足")
 
         users = await user_service.list_users(skip=skip, limit=limit)
-        
+
         return {
             "success": True,
             "data": {
-                "users": [user.model_dump() for user in users],
+                "users": [u.model_dump() for u in users],
                 "total": len(users)
             },
             "message": "获取用户列表成功"
@@ -502,3 +590,115 @@ async def list_users(
     except Exception as e:
         logger.error(f"获取用户列表失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取用户列表失败: {str(e)}")
+
+@router.put("/users/{username}/status")
+async def update_user_status(
+    username: str,
+    payload: UpdateUserStatusRequest,
+    user: dict = Depends(get_current_user)
+):
+    """更新用户状态（管理员操作）- 激活/禁用、管理员权限、配额"""
+    try:
+        # 检查权限
+        if not user.get("is_admin", False):
+            raise HTTPException(status_code=403, detail="权限不足")
+
+        # 不允许管理员禁用自己
+        if username == user["username"]:
+            raise HTTPException(status_code=400, detail="不能修改自己的状态")
+
+        # 获取目标用户
+        target_user = await user_service.get_user_by_username(username)
+        if not target_user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        # 构建更新数据
+        update_fields = {}
+        if payload.is_active is not None:
+            update_fields["is_active"] = payload.is_active
+        if payload.is_admin is not None:
+            update_fields["is_admin"] = payload.is_admin
+        if payload.daily_quota is not None:
+            update_fields["daily_quota"] = payload.daily_quota
+        if payload.concurrent_limit is not None:
+            update_fields["concurrent_limit"] = payload.concurrent_limit
+
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="没有需要更新的字段")
+
+        update_fields["updated_at"] = datetime.utcnow()
+
+        # 直接更新数据库
+        from pymongo import MongoClient
+        from app.core.config import settings
+        client = MongoClient(settings.MONGO_URI)
+        db = client[settings.MONGO_DB]
+        result = db.users.update_one(
+            {"username": username},
+            {"$set": update_fields}
+        )
+        client.close()
+
+        if result.modified_count > 0:
+            logger.info(f"✅ 用户状态更新成功: {username}, 更新字段: {list(update_fields.keys())}")
+            return {
+                "success": True,
+                "data": {"username": username, **update_fields},
+                "message": f"用户 {username} 状态更新成功"
+            }
+        else:
+            raise HTTPException(status_code=400, detail="更新失败，可能没有变化")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新用户状态失败: {e}")
+        raise HTTPException(status_code=500, detail=f"更新用户状态失败: {str(e)}")
+
+@router.delete("/users/{username}")
+async def delete_user(
+    username: str,
+    user: dict = Depends(get_current_user)
+):
+    """删除用户（管理员操作）"""
+    try:
+        # 检查权限
+        if not user.get("is_admin", False):
+            raise HTTPException(status_code=403, detail="权限不足")
+
+        # 不允许管理员删除自己
+        if username == user["username"]:
+            raise HTTPException(status_code=400, detail="不能删除自己")
+
+        # 获取目标用户
+        target_user = await user_service.get_user_by_username(username)
+        if not target_user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        # 不允许删除其他管理员
+        if target_user.is_admin:
+            raise HTTPException(status_code=400, detail="不能删除管理员用户，请先取消其管理员权限")
+
+        # 删除用户
+        from pymongo import MongoClient
+        from app.core.config import settings
+        client = MongoClient(settings.MONGO_URI)
+        db = client[settings.MONGO_DB]
+        result = db.users.delete_one({"username": username})
+        client.close()
+
+        if result.deleted_count > 0:
+            logger.info(f"✅ 用户已删除: {username}")
+            return {
+                "success": True,
+                "data": {},
+                "message": f"用户 {username} 已删除"
+            }
+        else:
+            raise HTTPException(status_code=400, detail="删除失败")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除用户失败: {e}")
+        raise HTTPException(status_code=500, detail=f"删除用户失败: {str(e)}")

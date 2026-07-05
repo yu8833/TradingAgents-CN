@@ -381,6 +381,17 @@ const routes: RouteRecordRaw[] = [
           parentTitle: '设置',
           requiresAuth: true
         }
+      },
+      {
+        path: 'users',
+        name: 'UserManagement',
+        component: () => import('@/views/System/UserManagement.vue'),
+        meta: {
+          title: '用户管理',
+          parentTitle: '设置',
+          requiresAuth: true,
+          requiresAdmin: true
+        }
       }
     ]
   },
@@ -391,6 +402,16 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/Auth/Login.vue'),
     meta: {
       title: '登录',
+      hideInMenu: true,
+      transition: 'fade'
+    }
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: () => import('@/views/Auth/Register.vue'),
+    meta: {
+      title: '注册',
       hideInMenu: true,
       transition: 'fade'
     }
@@ -500,6 +521,18 @@ router.beforeEach(async (to, _from, next) => {
     // 保存原始路径，登录后跳转
     authStore.setRedirectPath(to.fullPath)
     next('/login')
+    return
+  }
+
+  // 检查是否需要管理员权限
+  if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    console.log('🚫 需要管理员权限但用户不是管理员:', {
+      path: to.fullPath,
+      username: authStore.user?.username,
+      is_admin: authStore.user?.is_admin
+    })
+    ElMessage.error('权限不足，需要管理员权限')
+    next('/dashboard')
     return
   }
 
