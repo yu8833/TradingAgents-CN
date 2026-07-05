@@ -213,149 +213,6 @@
       </el-row>
     </el-card>
 
-    <!-- 三买三卖策略模板 -->
-    <el-card class="templates-panel" shadow="never" style="margin-top: 16px;">
-      <template #header>
-        <div class="card-header">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <el-icon><TrendCharts /></el-icon>
-            <span>三买三卖策略</span>
-            <el-tag type="success" size="small" effect="plain">基于均线与BIAS的技术信号</el-tag>
-          </div>
-        </div>
-      </template>
-
-      <!-- 买点 B1 / B2 / B3 -->
-      <div class="signal-section-title buy-title">📈 买点信号</div>
-      <el-row :gutter="16">
-        <el-col :span="8">
-          <div class="strategy-card signal-card" :class="{ active: activeSignalTemplate === 'B1' }" @click="applySignalTemplate('B1')">
-            <div class="signal-card-inner">
-              <div class="strategy-icon buy b1">B1</div>
-              <div class="strategy-info">
-                <h3>左侧买点</h3>
-                <p>BIAS60 超卖区间，赌反弹</p>
-                <div class="strategy-tags">
-                  <el-tag size="small" type="warning">BIAS60:{{ signalParams.b1_bias_min }}%~{{ signalParams.b1_bias_max }}%</el-tag>
-                </div>
-              </div>
-              <el-tooltip effect="dark" placement="top" :show-after="200">
-                <template #content>
-                  <div class="tooltip-detail">{{ signalHelp.B1 }}</div>
-                </template>
-                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </div>
-          </div>
-        </el-col>
-        <el-col :span="8">
-          <div class="strategy-card signal-card" :class="{ active: activeSignalTemplate === 'B2' }" @click="applySignalTemplate('B2')">
-            <div class="signal-card-inner">
-              <div class="strategy-icon buy b2">B2</div>
-              <div class="strategy-info">
-                <h3>突破买点</h3>
-                <p>放量突破MA55/MA60 + 阳线</p>
-                <div class="strategy-tags">
-                  <el-tag size="small" type="primary">量比≥{{ signalParams.b2_volume_ratio }}</el-tag>
-                </div>
-              </div>
-              <el-tooltip effect="dark" placement="top" :show-after="200">
-                <template #content>
-                  <div class="tooltip-detail">{{ signalHelp.B2 }}</div>
-                </template>
-                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </div>
-          </div>
-        </el-col>
-        <el-col :span="8">
-          <div class="strategy-card signal-card" :class="{ active: activeSignalTemplate === 'B3' }" @click="applySignalTemplate('B3')">
-            <div class="signal-card-inner">
-              <div class="strategy-icon buy b3">B3</div>
-              <div class="strategy-info">
-                <h3>回踩买点</h3>
-                <p>MA13支撑 + 回踩确认</p>
-                <div class="strategy-tags">
-                  <el-tag size="small" type="success">BIAS60:{{ signalParams.b3_bias_min }}%~{{ signalParams.b3_bias_max }}%</el-tag>
-                </div>
-              </div>
-              <el-tooltip effect="dark" placement="top" :show-after="200">
-                <template #content>
-                  <div class="tooltip-detail">{{ signalHelp.B3 }}</div>
-                </template>
-                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </div>
-          </div>
-        </el-col>
-      </el-row>
-
-      <!-- 卖点 S1 / S2 / S3 -->
-      <div class="signal-section-title sell-title">📉 卖点信号</div>
-      <el-row :gutter="16">
-        <el-col :span="8">
-          <div class="strategy-card signal-card" :class="{ active: activeSignalTemplate === 'S1' }" @click="applySignalTemplate('S1')">
-            <div class="signal-card-inner">
-              <div class="strategy-icon sell s1">S1</div>
-              <div class="strategy-info">
-                <h3>加速卖点</h3>
-                <p>BIAS60 超买，减仓止盈</p>
-                <div class="strategy-tags">
-                  <el-tag size="small" type="danger">BIAS60≥{{ signalParams.s1_bias_min }}%</el-tag>
-                </div>
-              </div>
-              <el-tooltip effect="dark" placement="top" :show-after="200">
-                <template #content>
-                  <div class="tooltip-detail">{{ signalHelp.S1 }}</div>
-                </template>
-                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </div>
-          </div>
-        </el-col>
-        <el-col :span="8">
-          <div class="strategy-card signal-card" :class="{ active: activeSignalTemplate === 'S2' }" @click="applySignalTemplate('S2')">
-            <div class="signal-card-inner">
-              <div class="strategy-icon sell s2">S2</div>
-              <div class="strategy-info">
-                <h3>跌破卖点</h3>
-                <p>跌破短期均线(MA5/8/13)</p>
-                <div class="strategy-tags">
-                  <el-tag size="small" type="warning">连破短期均线</el-tag>
-                </div>
-              </div>
-              <el-tooltip effect="dark" placement="top" :show-after="200">
-                <template #content>
-                  <div class="tooltip-detail">{{ signalHelp.S2 }}</div>
-                </template>
-                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </div>
-          </div>
-        </el-col>
-        <el-col :span="8">
-          <div class="strategy-card signal-card" :class="{ active: activeSignalTemplate === 'S3' }" @click="applySignalTemplate('S3')">
-            <div class="signal-card-inner">
-              <div class="strategy-icon sell s3">S3</div>
-              <div class="strategy-info">
-                <h3>清仓卖点</h3>
-                <p>跌破MA55/60 + 趋势向下</p>
-                <div class="strategy-tags">
-                  <el-tag size="small" type="info">中期下降趋势</el-tag>
-                </div>
-              </div>
-              <el-tooltip effect="dark" placement="top" :show-after="200">
-                <template #content>
-                  <div class="tooltip-detail">{{ signalHelp.S3 }}</div>
-                </template>
-                <el-icon class="help-icon card-help"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </div>
-          </div>
-        </el-col>
-      </el-row>
-    </el-card>
-
     <!-- 筛选条件面板 -->
     <el-card class="filter-panel" shadow="never">
       <template #header>
@@ -985,294 +842,6 @@
           </el-row>
         </div>
 
-        <!-- 三买三卖信号参数调整（选中信号模板时显示） -->
-        <div v-if="currentSignalType" class="filter-section">
-          <div class="section-title">
-            <el-icon><TrendCharts /></el-icon>
-            <span>{{ currentSignalType }} 信号参数调整</span>
-            <el-tag type="success" size="small" style="margin-left: 8px;">实时生效，点击筛选查看结果</el-tag>
-          </div>
-
-          <!-- B1 信号参数 -->
-          <el-row v-if="currentSignalType === 'B1'" :gutter="24">
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    BIAS60 下限
-                    <el-tooltip placement="top" effect="dark">
-                      <template #content>
-                        <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
-                      </template>
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-input-number
-                  v-model="signalParams.b1_bias_min"
-                  :step="1"
-                  :precision="0"
-                  style="width: 100%"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    BIAS60 上限
-                    <el-tooltip placement="top" effect="dark">
-                      <template #content>
-                        <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
-                      </template>
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-input-number
-                  v-model="signalParams.b1_bias_max"
-                  :step="1"
-                  :precision="0"
-                  style="width: 100%"
-                />
-              </el-form-item>
-            </el-col>
-          </el-row>
-
-          <!-- B2 信号参数 -->
-          <el-row v-if="currentSignalType === 'B2'" :gutter="24">
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    放量倍数
-                    <el-tooltip placement="top" effect="dark">
-                      <template #content>
-                        <div class="tooltip-detail">{{ indicatorHelp.volume_ratio }}</div>
-                      </template>
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-input-number
-                  v-model="signalParams.b2_volume_ratio"
-                  :min="1.0"
-                  :step="0.1"
-                  :precision="2"
-                  style="width: 100%"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    阳线涨幅
-                    <el-tooltip placement="top" effect="dark">
-                      <template #content>
-                        <div class="tooltip-detail">{{ indicatorHelp.price_change }}</div>
-                      </template>
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-input-number
-                  v-model="signalParams.b2_price_change"
-                  :step="0.01"
-                  :precision="2"
-                  style="width: 100%"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    突破参考均线
-                    <el-tooltip placement="top" effect="dark">
-                      <template #content>
-                        <div class="tooltip-detail">{{ indicatorHelp.ma_cross }}</div>
-                      </template>
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-checkbox v-model="signalParams.b2_use_ma55">
-                  <el-tooltip placement="top" effect="dark">
-                    <template #content>
-                      <div class="tooltip-detail">{{ indicatorHelp.ma55_signal }}</div>
-                    </template>
-                    <span>MA55</span>
-                  </el-tooltip>
-                </el-checkbox>
-                <el-checkbox v-model="signalParams.b2_use_ma60" style="margin-left: 12px;">
-                  <el-tooltip placement="top" effect="dark">
-                    <template #content>
-                      <div class="tooltip-detail">{{ indicatorHelp.ma60_signal }}</div>
-                    </template>
-                    <span>MA60</span>
-                  </el-tooltip>
-                </el-checkbox>
-              </el-form-item>
-            </el-col>
-          </el-row>
-
-          <!-- B3 信号参数 -->
-          <el-row v-if="currentSignalType === 'B3'" :gutter="24">
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    BIAS60 下限
-                    <el-tooltip placement="top" effect="dark">
-                      <template #content>
-                        <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
-                      </template>
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-input-number v-model="signalParams.b3_bias_min" :step="1" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    BIAS60 上限
-                    <el-tooltip placement="top" effect="dark">
-                      <template #content>
-                        <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
-                      </template>
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-input-number v-model="signalParams.b3_bias_max" :step="1" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    MA13与MA55比值
-                    <el-tooltip placement="top" effect="dark">
-                      <template #content>
-                        <div class="tooltip-detail">{{ indicatorHelp.ma55_signal }}</div>
-                      </template>
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-input-number
-                  v-model="signalParams.b3_ma13_threshold"
-                  :step="0.01"
-                  :precision="2"
-                  style="width: 100%"
-                />
-              </el-form-item>
-            </el-col>
-          </el-row>
-
-          <!-- S1 信号参数 -->
-          <el-row v-if="currentSignalType === 'S1'" :gutter="24">
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    BIAS60 下限
-                    <el-tooltip placement="top" effect="dark">
-                      <template #content>
-                        <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
-                      </template>
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-input-number v-model="signalParams.s1_bias_min" :step="1" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-
-          <!-- S2 信号参数 -->
-          <el-row v-if="currentSignalType === 'S2'" :gutter="24">
-            <el-col :span="8">
-              <el-form-item label="跌破参考均线">
-                <el-checkbox v-model="signalParams.s2_use_ma5">
-                  <el-tooltip placement="top" effect="dark">
-                    <template #content>
-                      <div class="tooltip-detail">{{ indicatorHelp.ma5 }}</div>
-                    </template>
-                    <span>MA5</span>
-                  </el-tooltip>
-                </el-checkbox>
-                <el-checkbox v-model="signalParams.s2_use_ma8" style="margin-left: 8px;">
-                  <el-tooltip placement="top" effect="dark">
-                    <template #content>
-                      <div class="tooltip-detail">{{ indicatorHelp.ma8_signal }}</div>
-                    </template>
-                    <span>MA8</span>
-                  </el-tooltip>
-                </el-checkbox>
-                <el-checkbox v-model="signalParams.s2_use_ma13" style="margin-left: 8px;">
-                  <el-tooltip placement="top" effect="dark">
-                    <template #content>
-                      <div class="tooltip-detail">{{ indicatorHelp.ma13_signal }}</div>
-                    </template>
-                    <span>MA13</span>
-                  </el-tooltip>
-                </el-checkbox>
-              </el-form-item>
-            </el-col>
-          </el-row>
-
-          <!-- S3 信号参数 -->
-          <el-row v-if="currentSignalType === 'S3'" :gutter="24">
-            <el-col :span="8">
-              <el-form-item label="跌破参考均线">
-                <el-checkbox v-model="signalParams.s3_use_ma55">
-                  <el-tooltip placement="top" effect="dark">
-                    <template #content>
-                      <div class="tooltip-detail">{{ indicatorHelp.ma55_signal }}</div>
-                    </template>
-                    <span>MA55</span>
-                  </el-tooltip>
-                </el-checkbox>
-                <el-checkbox v-model="signalParams.s3_use_ma60" style="margin-left: 8px;">
-                  <el-tooltip placement="top" effect="dark">
-                    <template #content>
-                      <div class="tooltip-detail">{{ indicatorHelp.ma60_signal }}</div>
-                    </template>
-                    <span>MA60</span>
-                  </el-tooltip>
-                </el-checkbox>
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item>
-                <template #label>
-                  <span style="display: flex; align-items: center; gap: 4px;">
-                    趋势判断天数
-                    <el-tooltip placement="top" effect="dark">
-                      <template #content>
-                        <div class="tooltip-detail">{{ indicatorHelp.ma_trend }}</div>
-                      </template>
-                      <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </span>
-                </template>
-                <el-input-number
-                  v-model="signalParams.s3_trend_days"
-                  :min="3"
-                  :max="20"
-                  :step="1"
-                  style="width: 100%"
-                />
-              </el-form-item>
-            </el-col>
-          </el-row>
-        </div>
-
         <!-- 筛选按钮 -->
         <el-row>
           <el-col :span="24">
@@ -1357,131 +926,10 @@
           </template>
         </el-table-column>
 
-        <!-- 信号指标列（仅信号筛选时显示） -->
-        <el-table-column 
-          v-if="currentSignalType" 
-          prop="ma5" 
-          width="90" 
-          align="right"
-        >
-          <template #header>
-            <el-tooltip placement="top" effect="dark">
-              <template #content>
-                <div class="tooltip-detail">{{ indicatorHelp.ma5_signal }}</div>
-              </template>
-              <span style="display: inline-flex; align-items: center; gap: 4px;">
-                MA5 <el-icon><QuestionFilled /></el-icon>
-              </span>
-            </el-tooltip>
-          </template>
-          <template #default="{ row }">
-            <span v-if="row.ma5" class="price-text">{{ row.ma5?.toFixed(2) }}</span>
-            <span v-else class="text-gray-400">-</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column 
-          v-if="currentSignalType" 
-          prop="ma13" 
-          width="90" 
-          align="right"
-        >
-          <template #header>
-            <el-tooltip placement="top" effect="dark">
-              <template #content>
-                <div class="tooltip-detail">{{ indicatorHelp.ma13_signal }}</div>
-              </template>
-              <span style="display: inline-flex; align-items: center; gap: 4px;">
-                MA13 <el-icon><QuestionFilled /></el-icon>
-              </span>
-            </el-tooltip>
-          </template>
-          <template #default="{ row }">
-            <span v-if="row.ma13" class="price-text">{{ row.ma13?.toFixed(2) }}</span>
-            <span v-else class="text-gray-400">-</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column 
-          v-if="currentSignalType" 
-          prop="ma55" 
-          width="90" 
-          align="right"
-        >
-          <template #header>
-            <el-tooltip placement="top" effect="dark">
-              <template #content>
-                <div class="tooltip-detail">{{ indicatorHelp.ma55_signal }}</div>
-              </template>
-              <span style="display: inline-flex; align-items: center; gap: 4px;">
-                MA55 <el-icon><QuestionFilled /></el-icon>
-              </span>
-            </el-tooltip>
-          </template>
-          <template #default="{ row }">
-            <span v-if="row.ma55" class="price-text">{{ row.ma55?.toFixed(2) }}</span>
-            <span v-else class="text-gray-400">-</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column 
-          v-if="currentSignalType" 
-          prop="ma60" 
-          width="90" 
-          align="right"
-        >
-          <template #header>
-            <el-tooltip placement="top" effect="dark">
-              <template #content>
-                <div class="tooltip-detail">{{ indicatorHelp.ma60_signal }}</div>
-              </template>
-              <span style="display: inline-flex; align-items: center; gap: 4px;">
-                MA60 <el-icon><QuestionFilled /></el-icon>
-              </span>
-            </el-tooltip>
-          </template>
-          <template #default="{ row }">
-            <span v-if="row.ma60" class="price-text">{{ row.ma60?.toFixed(2) }}</span>
-            <span v-else class="text-gray-400">-</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column 
-          v-if="currentSignalType" 
-          prop="bias_60" 
-          width="100" 
-          align="right"
-          sortable
-        >
-          <template #header>
-            <el-tooltip placement="top" effect="dark">
-              <template #content>
-                <div class="tooltip-detail">{{ indicatorHelp.bias60 }}</div>
-              </template>
-              <span style="display: inline-flex; align-items: center; gap: 4px;">
-                BIAS60 <el-icon><QuestionFilled /></el-icon>
-              </span>
-            </el-tooltip>
-          </template>
-          <template #default="{ row }">
-            <span 
-              v-if="row.bias_60 !== null && row.bias_60 !== undefined"
-              :class="{
-                'text-green-600': row.bias_60 <= -10,
-                'text-red-600': row.bias_60 >= 25,
-                'text-gray-700': row.bias_60 > -10 && row.bias_60 < 25
-              }"
-            >
-              {{ row.bias_60 > 0 ? '+' : '' }}{{ row.bias_60?.toFixed(2) }}%
-            </span>
-            <span v-else class="text-gray-400">-</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column 
-          prop="pct_chg" 
-          label="涨跌幅" 
-          width="100" 
+        <el-table-column
+          prop="pct_chg"
+          label="涨跌幅"
+          width="100"
           align="right"
           sortable="custom"
         >
@@ -1610,10 +1058,6 @@ const screeningResults = ref<StockInfo[]>([])
 const selectedStocks = ref<StockInfo[]>([])
 const currentPage = ref(1)
 const pageSize = ref(20)
-
-// 三买三卖信号筛选
-const activeSignalTemplate = ref<string>('')
-const currentSignalType = ref<string>('')
 
 // 策略模板
 const activeTemplate = ref<string>('')
@@ -1866,33 +1310,6 @@ const filters = reactive({
   ma10Ma20Golden: '',      // MA10上穿MA20：是/否/空
 })
 
-// 三买三卖信号参数（可调）
-const signalParams = reactive({
-  // B1: 左侧买点 - BIAS60区间
-  b1_bias_min: -40,
-  b1_bias_max: -10,
-  // B2: 突破买点 - 放量突破
-  b2_volume_ratio: 1.2,
-  b2_price_change: 0.03,
-  b2_use_ma55: true,
-  b2_use_ma60: true,
-  // B3: 回踩买点
-  b3_bias_min: -10,
-  b3_bias_max: 10,
-  b3_ma13_threshold: 0.95,
-  b3_price_vs_ma60: 0.98,
-  // S1: 加速卖点 - BIAS60上限
-  s1_bias_min: 25,
-  // S2: 跌破卖点 - 跌破短期均线
-  s2_use_ma5: true,
-  s2_use_ma8: true,
-  s2_use_ma13: true,
-  // S3: 清仓卖点 - 跌破长期均线+趋势向下
-  s3_use_ma55: true,
-  s3_use_ma60: true,
-  s3_trend_days: 5,
-})
-
 // 技术指标 tooltip 解释（鼠标悬停显示详细信息）
 const indicatorHelp = {
   market: '市场类型（Market）\n\n目前仅支持A股市场（沪深交易所上市的股票）。\nA股包含：主板、创业板（300xxx）、科创板（688xxx）、北交所（8/4开头）。\n\n后续可扩展至港股、美股等其它市场。',
@@ -1929,16 +1346,6 @@ const indicatorHelp = {
   ma5_ma10_golden: 'MA5上穿MA10（短期金叉）\n\n含义：5日均线从下往上穿越10日均线。\n\n意义：\n• 短期趋势由跌转涨的信号\n• 最近5天的平均买入成本超过最近10天\n• 代表短期资金开始进场，情绪转暖\n\n特点：\n• 最灵敏的均线金叉信号，反应最快\n• 假信号也最多，在震荡市中频繁出现\n• 适合短线交易者使用\n\n实战用法：\n• MA5上穿MA10 + 成交量放大 = 信号可靠\n• MA5上穿MA10 + MA20向上 = 中期趋势支撑，胜率更高\n• 配合MACD金叉使用效果更好',
   ma10_ma20_golden: 'MA10上穿MA20（中期金叉）\n\n含义：10日均线从下往上穿越20日均线。\n\n意义：\n• 中期趋势由跌转涨的信号\n• 最近10天的平均买入成本超过最近20天\n• 代表中期资金开始进场，趋势反转更可靠\n\n特点：\n• 比MA5/MA10金叉更稳定，假信号更少\n• 是判断中期趋势拐点的经典信号\n• 适合中短线交易者使用\n\n实战用法：\n• MA10上穿MA20 + MA20开始走平上翘 = 强烈买入信号\n• MA10上穿MA20 + MACD金叉 = 双重确认，胜率很高\n• 金叉后回踩MA20不破 = 最佳加仓点',
   atr: 'ATR 波动率（Average True Range）\n\n计算公式：\nATR = N日真实波幅的移动平均（N默认为14）\n真实波幅 = max(最高价-最低价, |最高价-昨收|, |最低价-昨收|)\n\n含义：衡量股价的波动幅度，不反映方向，只反映波动大小。\n\n特点：\n• ATR值高 = 波动大，风险高，收益机会也大\n• ATR值低 = 波动小，风险低，可能处于盘整\n• ATR是绝对值，与股价高低有关\n\n实战用法：\n• 止损设置：通常用 1-2倍ATR 作为止损幅度\n• 波动率筛选：寻找ATR适中的股票，避免过度波动\n• 突破确认：ATR放大 + 价格突破 = 真突破概率高\n• 低ATR + 盘整 = 可能即将选择方向，提前布局',
-}
-
-// 信号卡片的 tooltip 解释
-const signalHelp = {
-  B1: 'B1 - 左侧买点\n条件：BIAS60 在 [-40%, -10%] 区间\n\n解读：\n价格已经大幅低于60日均线，进入超卖区域。\n这是左侧交易思路——"别人恐慌我贪婪"，赌股价反弹。\n\n风险：趋势可能继续下跌，需要严格控制仓位，建议1/3仓位。',
-  B2: 'B2 - 突破买点\n条件：放量（量比≥1.2）+ 突破MA55/MA60 + 阳线（涨幅≥3%）\n\n解读：\n放量突破中期均线，且有阳线确认，是典型的趋势反转信号。\n资金入场意愿明显，技术形态突破，可以标准建仓（2/3仓位）。',
-  B3: 'B3 - 回踩买点\n条件：MA13接近MA55 + BIAS60在[-10%, 10%] + 近期有过强势表现\n\n解读：\n股价回踩均线获得支撑，同时前期有过强势信号，蓄力后可能再次向上。\n这是确认后的加仓信号，可以加仓至满仓。',
-  S1: 'S1 - 加速卖点\n条件：BIAS60 ≥ 25%\n\n解读：\n价格严重偏离60日均线，进入超买区间。\n"加速上涨"之后往往伴随回调，建议减仓止盈，保留1/3仓位即可。',
-  S2: 'S2 - 跌破卖点\n条件：连续跌破MA5、MA8、MA13（短期均线全部失守）\n\n解读：\n短期趋势已经完全转向，均线支撑全部失效。\n这是明确的离场信号，应加大止盈力度，仅保留少量底仓。',
-  S3: 'S3 - 清仓卖点\n条件：跌破MA55 + 跌破MA60 + MA60趋势向下\n\n解读：\n中期趋势已经确认向下，长期均线还在持续下降。\n这是最强烈的卖出信号——清仓离场，保护本金。\n不要抱有幻想，趋势的力量会让左侧交易者付出代价。',
 }
 
 // 智能策略模板的 tooltip 详细说明
@@ -2122,66 +1529,6 @@ const performScreening = async () => {
   let loadingMessage: any = null
 
   try {
-    // 如果当前是信号筛选模式，调用专用的信号筛选 API
-    if (currentSignalType.value) {
-      // 三买三卖信号筛选需要从API实时获取K线数据并计算BIAS等技术指标，耗时较长
-      loadingMessage = ElMessage.warning({
-        message: `正在进行【${currentSignalType.value}】信号筛选，需要从API实时获取K线数据并计算指标，请耐心等待...`,
-        duration: 0,  // 不自动关闭，等待结果返回后手动关闭
-      })
-      
-      console.log(`🔍 [信号筛选] 调用 ${currentSignalType.value} 信号筛选 API，参数:`, signalParams)
-      
-      const res = await ApiClient.post(
-        '/api/three-buy-three-sell/screen/signal',
-        { signal_type: currentSignalType.value, params: signalParams },
-        { timeout: 120000 }
-      )
-      
-      console.log(`🔍 [信号筛选] API原始响应:`, res)
-      
-      // ApiClient 返回响应体本身（response.data），结构为 { success, data, total, message }
-      // data 字段就是股票数组
-      let items: any[] = []
-      if (Array.isArray(res)) {
-        items = res
-      } else if (res && typeof res === 'object') {
-        if (Array.isArray((res as any).data)) {
-          items = (res as any).data
-        } else if (Array.isArray((res as any).items)) {
-          items = (res as any).items
-        } else if ((res as any).data && Array.isArray((res as any).data?.data)) {
-          items = (res as any).data.data
-        }
-      }
-      
-      console.log(`🔍 [信号筛选] 返回 ${items.length} 只股票`)
-      if (items.length > 0) {
-        console.log(`🔍 [信号筛选] 首条数据示例:`, items[0])
-      }
-      
-      screeningResults.value = items.map((it: any) => ({
-        symbol: it.code || it.symbol || '',
-        code: it.code || it.symbol || '',
-        name: it.name || it.code || '',
-        close: it.close,
-        ma5: it.ma_5,
-        ma13: it.ma_13,
-        ma55: it.ma_55,
-        ma60: it.ma_60,
-        bias_60: it.bias_60,
-        pct_chg: it.pct_chg || null,
-        total_mv: it.total_mv || null,
-      }))
-      
-      // 关闭正在进行的提示
-      if (loadingMessage && loadingMessage.close) {
-        loadingMessage.close()
-      }
-      ElMessage.success(`筛选完成，找到 ${screeningResults.value.length} 只 ${currentSignalType.value} 信号股票`)
-      return
-    }
-
     // 基于用户真实选择构建 conditions（只拼选中的项，不注入默认技术条件）
     const children: any[] = []
 
@@ -2467,9 +1814,6 @@ const applyTemplate = (templateKey: string) => {
   if (!template) return
 
   activeTemplate.value = templateKey
-  // 清除信号筛选状态
-  activeSignalTemplate.value = ''
-  currentSignalType.value = ''
 
   // 将嵌套对象格式转换为顶层属性格式
   const convertedConditions = convertConditions(template.conditions)
@@ -2481,19 +1825,8 @@ const applyTemplate = (templateKey: string) => {
   ElMessage.info(`已应用【${template.name}】策略模板，请点击"开始筛选"查看结果`)
 }
 
-const applySignalTemplate = (signalType: string) => {
-  activeSignalTemplate.value = signalType
-  currentSignalType.value = signalType
-  // 清除通用模板状态
-  activeTemplate.value = ''
-
-  ElMessage.info(`已应用【${signalType}】信号模板，请点击"开始筛选"查看结果（可调整上方参数）`)
-}
-
 const resetFilters = () => {
   activeTemplate.value = ''
-  activeSignalTemplate.value = ''
-  currentSignalType.value = ''
   Object.assign(filters, {
     market: 'A股',
     marketCapRange: '',
@@ -2831,29 +2164,6 @@ onMounted(() => {
       padding: 20px;
     }
 
-    /* 信号区域标题 */
-    .signal-section-title {
-      font-size: 13px;
-      font-weight: 600;
-
-      &.buy-title {
-        margin-bottom: 12px;
-        color: var(--el-color-success);
-      }
-      &.sell-title {
-        margin: 16px 0 12px 0;
-        color: var(--el-color-danger);
-      }
-    }
-
-    /* 信号卡片内部布局 */
-    .signal-card-inner {
-      display: flex;
-      align-items: start;
-      gap: 12px;
-      width: 100%;
-    }
-
     /* 通用策略卡片 */
     .strategy-card {
       display: flex;
@@ -2882,7 +2192,7 @@ onMounted(() => {
         );
       }
 
-      /* 右上角问号图标：智能策略模板 + 三买三卖统一使用 */
+      /* 右上角问号图标 */
       .help-icon.card-help {
         position: absolute;
         top: 12px;
@@ -2908,7 +2218,6 @@ onMounted(() => {
         color: var(--el-color-white);
         flex-shrink: 0;
 
-        /* 第一行：常规策略模板 */
         &.breakout {
           background: linear-gradient(
             135deg,
@@ -2972,31 +2281,6 @@ onMounted(() => {
             var(--el-text-color-secondary) 100%
           );
         }
-
-        /* 第二行：三买三卖信号 */
-        &.buy, &.sell {
-          width: 48px;
-          height: 48px;
-          border-radius: 10px;
-          font-size: 22px;
-          font-weight: 700;
-        }
-
-        &.b1, &.b2, &.b3 {
-          background: linear-gradient(
-            135deg,
-            var(--el-color-success) 0%,
-            var(--el-color-success-dark-2) 100%
-          );
-        }
-
-        &.s1, &.s2, &.s3 {
-          background: linear-gradient(
-            135deg,
-            var(--el-color-danger) 0%,
-            var(--el-color-danger-dark-2) 100%
-          );
-        }
       }
 
       .strategy-info {
@@ -3024,41 +2308,6 @@ onMounted(() => {
           align-items: center;
           min-height: 24px;
           box-sizing: border-box;
-        }
-      }
-
-      /* 信号卡片的 buy/sell 激活样式 */
-      &.signal-card {
-        align-items: start;
-
-        &:has(.strategy-icon.buy) {
-          border-color: transparent;
-        }
-        &:has(.strategy-icon.buy):hover {
-          border-color: var(--el-color-success);
-        }
-        &:has(.strategy-icon.buy).active {
-          background: linear-gradient(
-            135deg,
-            var(--el-color-success-light-9) 0%,
-            var(--el-color-success-light-8) 100%
-          );
-          border-color: var(--el-color-success);
-        }
-
-        &:has(.strategy-icon.sell) {
-          border-color: transparent;
-        }
-        &:has(.strategy-icon.sell):hover {
-          border-color: var(--el-color-danger);
-        }
-        &:has(.strategy-icon.sell).active {
-          background: linear-gradient(
-            135deg,
-            var(--el-color-danger-light-9) 0%,
-            var(--el-color-danger-light-8) 100%
-          );
-          border-color: var(--el-color-danger);
         }
       }
     }

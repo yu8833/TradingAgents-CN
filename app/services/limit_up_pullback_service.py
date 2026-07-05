@@ -555,6 +555,8 @@ class LimitUpPullbackService:
         ground_day_date = kline_data[min_volume_idx_in_pullback]["trade_date"] if is_ground_volume else None
         # 底部观察起始日：地量日（地量出现即进入观察期）
         bottom_watch_start_date = ground_day_date if is_ground_volume else None
+        # 底部观察结束日：当前日（观察期持续到出现买点或当前）
+        bottom_watch_end_date = dates[current_idx] if bottom_watch_start_date else None
         # 左侧潜伏买点日期：地量日当天或次日（满足左侧条件时）
         left_buy_date = None
         if has_ground_signal:
@@ -597,6 +599,7 @@ class LimitUpPullbackService:
             "pullback_start_date": pullback_start_date,
             "pullback_end_date": pullback_end_date,
             "bottom_watch_start_date": bottom_watch_start_date,
+            "bottom_watch_end_date": bottom_watch_end_date,
             "left_buy_date": left_buy_date,
             "right_buy_date": right_buy_date,
             "ground_day_date": ground_day_date
@@ -743,6 +746,7 @@ class LimitUpPullbackService:
         if params is None:
             params = {}
 
+        # 精简参数：只暴露4个核心参数，其余内部固定
         default_params = {
             "max_lookback_days": 15,
             "min_pullback_days": 2,
@@ -752,10 +756,13 @@ class LimitUpPullbackService:
             "above_ma10": True,
             "ground_volume_ratio": 0.35,
             "lower_shadow_ratio": 0.015,
-            "breakout_ma5": False,
+            "breakout_ma5": True,
             "breakout_volume_ratio": 1.5,
             "min_score": 40,
-            "limit": 50
+            "limit": 50,
+            "initial_capital": 1000000,
+            "top_n": 10,
+            "hold_days": 20
         }
         default_params.update(params)
         params = default_params
@@ -1260,6 +1267,7 @@ class LimitUpPullbackService:
             "pullback_start_date": indicators["dates"][limit_up_idx + 1] if limit_up_idx + 1 < indicators["n"] else None,
             "pullback_end_date": indicators["dates"][current_idx],
             "bottom_watch_start_date": indicators["dates"][min_vol_idx_in_pullback] if is_ground_volume else None,
+            "bottom_watch_end_date": indicators["dates"][current_idx] if is_ground_volume else None,
             "left_buy_date": indicators["dates"][min_vol_idx_in_pullback] if has_ground_signal else None,
             "right_buy_date": indicators["dates"][current_idx] if ma5_breakout else None,
             "ground_day_date": indicators["dates"][min_vol_idx_in_pullback] if is_ground_volume else None
@@ -1360,6 +1368,106 @@ class LimitUpPullbackService:
         sell_idx = min(buy_idx + max_hold_days, n - 1)
         return sell_idx, "到期卖出"
 
+    def _check_daily_sell_signal(
+        self,
+        indicators: Dict[str, Any],
+        check_idx: int,
+        pos_state: Dict[str, Any],
+        buy_price: float,
+        limit_up_close: float,
+        limit_up_idx: int,
+        max_hold_days: int = 20
+    ) -> Optional[Dict[str, Any]]:
+        """逐日检查卖出信号（用于逐日盯市回测）
+
+        检查并更新持仓状态，如触发卖出则返回卖出信息。
+
+        Args:
+            indicators: 预计算指标
+            check_idx: 当前检查的K线索引
+            pos_state: 持仓状态字典（会被更新）
+            buy_price: 买入价
+            limit_up_close: 涨停收盘价
+            limit_up_idx: 涨停K线索引
+            max_hold_days: 最大持有天数
+
+        Returns:
+            如触发卖出，返回 {"sell_reason": "..."}，否则返回 None
+        """
+        n = indicators["n"]
+        closes = indicators["closes"]
+        volumes = indicators["volumes"]
+        highs = indicators["highs"]
+        opens = indicators["opens"]
+        ma5 = indicators["ma5"]
+        ma10 = indicators["ma10"]
+        atr14 = indicators["atr14"]
+
+        if check_idx >= n or check_idx <= 0:
+            return None
+
+        current_close = closes[check_idx]
+        current_high = highs[check_idx]
+        current_vol = volumes[check_idx]
+
+        # 更新涨停以来最高价
+        if current_high > pos_state["max_high_since_limit_up"]:
+            pos_state["max_high_since_limit_up"] = current_high
+        if current_high >= limit_up_close:
+            pos_state["has_exceeded_limit_up"] = True
+
+        # 更新移动止盈价（盈利>3%开启）
+        if buy_price > 0 and current_close > buy_price * 1.03:
+            pos_state["trailing_stop_active"] = True
+            ma5_stop = ma5[check_idx] if not np.isnan(ma5[check_idx]) else 0
+            atr_trailing_stop = pos_state["max_high_since_limit_up"] - 1.0 * atr14[check_idx] \
+                if (not np.isnan(atr14[check_idx]) and atr14[check_idx] > 0) else 0
+            new_stop_price = max(ma5_stop, atr_trailing_stop)
+            if new_stop_price > pos_state["trailing_stop_price"]:
+                pos_state["trailing_stop_price"] = new_stop_price
+
+        days_since_limit_up = check_idx - limit_up_idx
+        days_held = check_idx - pos_state["buy_idx"]
+
+        # 卖点1：ATR止损（优先）
+        if not np.isnan(atr14[check_idx]) and atr14[check_idx] > 0:
+            atr_stop_price = buy_price - 0.4 * atr14[check_idx]
+            if current_close < atr_stop_price:
+                return {"sell_reason": "ATR止损"}
+
+        # 卖点2：10日线止损（兜底）
+        if not np.isnan(ma10[check_idx]) and current_close < ma10[check_idx] * 0.98:
+            return {"sell_reason": "10日止损"}
+
+        # 卖点3：时间止盈 - 第8天未突破涨停价
+        if days_since_limit_up == 8 and not pos_state["has_exceeded_limit_up"]:
+            return {"sell_reason": "8日时间止盈"}
+
+        # 卖点4：高位止盈 - 放量滞涨
+        if check_idx >= 5:
+            avg_vol_5 = float(np.mean(volumes[max(0, check_idx - 5):check_idx]))
+            if avg_vol_5 > 0:
+                vol_ratio = current_vol / avg_vol_5
+                body_pct = abs(current_close - opens[check_idx]) / opens[check_idx] if opens[check_idx] > 0 else 0
+                upper_shadow = highs[check_idx] - max(opens[check_idx], current_close)
+                upper_shadow_pct = upper_shadow / opens[check_idx] if opens[check_idx] > 0 else 0
+                if vol_ratio >= 1.5 and (body_pct < 0.02 or upper_shadow_pct > 0.03):
+                    return {"sell_reason": "高位止盈"}
+
+        # 卖点5：移动止盈
+        if pos_state["trailing_stop_active"] and pos_state["trailing_stop_price"] > 0:
+            if current_close < pos_state["trailing_stop_price"]:
+                if not np.isnan(ma5[check_idx]) and current_close < ma5[check_idx]:
+                    return {"sell_reason": "5日线止盈"}
+                else:
+                    return {"sell_reason": "ATR止盈"}
+
+        # 到期卖出
+        if days_held >= max_hold_days:
+            return {"sell_reason": "到期卖出"}
+
+        return None
+
     async def backtest(
         self,
         params: Dict[str, Any] = None
@@ -1393,12 +1501,16 @@ class LimitUpPullbackService:
         if params is None:
             params = {}
 
+        # 精简参数：只暴露4个核心参数，其余内部固定
         default_params = {
             "start_date": None,
             "end_date": None,
-            "hold_days": 15,
+            "hold_days": 20,
             "top_n": 10,
-            "min_score": 50,
+            "min_score": 40,
+            "initial_capital": 1000000,
+            "max_position_pct": 0.1,
+            # 以下为内部固定参数
             "max_lookback_days": 15,
             "min_pullback_days": 2,
             "max_pullback_days": 8,
@@ -1409,6 +1521,8 @@ class LimitUpPullbackService:
             "lower_shadow_ratio": 0.015,
             "breakout_ma5": True,
             "breakout_volume_ratio": 1.5,
+            "slippage_pct": 0.003,
+            "max_holdings": 30
         }
         default_params.update(params)
         params = default_params
@@ -1555,321 +1669,375 @@ class LimitUpPullbackService:
         precompute_elapsed = time.time() - precompute_start
         logger.info(f"📊 预计算完成: {processed_stocks} 只股票, 耗时 {precompute_elapsed:.1f}s")
 
-        INITIAL_CAPITAL = 1000000
-        MAX_POSITION_SIZE = 0.1
-        SIGNAL_COOLDOWN_DAYS = 5
+        initial_capital = params.get("initial_capital", 1000000)
+        max_position_pct = params.get("max_position_pct", 0.1)
+        signal_cooldown_days = params.get("signal_cooldown_days", 5)
+        slippage_pct = params.get("slippage_pct", 0.003)
+        fee_rate = 0.001  # 单边手续费0.1%
+        max_holdings = params.get("max_holdings", 30)
 
-        # ===== 第二步：计算收益（T+1交易规则）=====
+        # ===== 第二步：逐日盯市回测（T+1交易规则）=====
         daily_results = []
         all_trades = []
-        total_daily_returns = []
+        capital_history = []
 
         holdings: Dict[str, dict] = {}
         recent_buys: Dict[str, str] = {}
-        capital = INITIAL_CAPITAL
-        daily_capital = INITIAL_CAPITAL
+        capital = float(initial_capital)
+        peak_capital = float(initial_capital)
+        max_drawdown = 0.0
 
-        for date_idx, current_date in enumerate(sorted(backtest_dates)):
-            # 卖出到期/止损的股票
+        sorted_dates = sorted(backtest_dates)
+
+        for date_idx, current_date in enumerate(sorted_dates):
+            # ========== 1. 处理卖出 ==========
             codes_to_sell = []
             for code, pos in holdings.items():
-                if pos["sell_date"] == current_date:
-                    indicators = indicators_cache.get(code)
-                    if indicators:
-                        sell_idx = indicators["date_to_idx"].get(current_date, -1)
-                        if sell_idx >= 0:
-                            prev_close = indicators["closes"][sell_idx - 1] if sell_idx > 0 else indicators["closes"][sell_idx]
-                            sell_price = float(indicators["closes"][sell_idx])
-                            
-                            if not self._can_sell(indicators["closes"][sell_idx], indicators["opens"][sell_idx], prev_close):
-                                continue
-                            
-                            shares = pos["shares"]
-                            revenue = sell_price * shares
-                            profit = revenue - pos["cost"]
-                            stock_return = profit / pos["cost"] * 100
-                            
-                            capital += revenue
-                            
-                            stock_returns.append({
-                                "code": code,
-                                "name": pos["name"],
-                                "buy_date": pos["buy_date"],
-                                "sell_date": current_date,
-                                "buy_price": round(pos["buy_price"], 2),
-                                "sell_price": round(sell_price, 2),
-                                "return_pct": round(stock_return, 2),
-                                "score": pos["score"],
-                                "signal_type": pos["signal_type"],
-                                "sell_reason": pos["sell_reason"],
-                                "limit_up_date": pos.get("limit_up_date"),
-                                "pullback_start_date": pos.get("pullback_start_date"),
-                                "pullback_end_date": pos.get("pullback_end_date"),
-                                "bottom_watch_start_date": pos.get("bottom_watch_start_date"),
-                                "left_buy_date": pos.get("left_buy_date"),
-                                "right_buy_date": pos.get("right_buy_date"),
-                                "ground_day_date": pos.get("ground_day_date"),
-                                "stop_loss_date": current_date if pos["sell_reason"] == "10日止损" else None,
-                                "time_stop_date": current_date if pos["sell_reason"] == "8日时间止盈" else None,
-                                "high_stop_date": current_date if pos["sell_reason"] == "高位止盈" else None,
-                                "ma5_stop_date": current_date if pos["sell_reason"] == "5日线止盈" else None
-                            })
-                            all_trades.append(stock_returns[-1])
+                indicators = indicators_cache.get(code)
+                if not indicators:
+                    continue
+
+                idx = indicators["date_to_idx"].get(current_date, -1)
+                if idx < 0 or idx <= pos["buy_idx"]:
+                    continue
+
+                close = indicators["closes"][idx]
+                prev_close = indicators["closes"][idx - 1] if idx > 0 else close
+                open_p = indicators["opens"][idx]
+
+                # 跌停无法卖出，跳过
+                if not self._can_sell(close, open_p, prev_close):
+                    continue
+
+                # 检查卖出信号
+                sell_signal = self._check_daily_sell_signal(
+                    indicators, idx, pos["state"],
+                    pos["buy_price"], pos["limit_up_close"],
+                    pos["limit_up_idx"], max_hold_days=hold_days
+                )
+
+                if sell_signal:
+                    sell_reason = sell_signal["sell_reason"]
+                    # 卖出滑点
+                    sell_price = close * (1 - slippage_pct)
+                    proceeds = pos["remaining_shares"] * sell_price * (1 - fee_rate)
+                    capital += proceeds
+                    total_proceeds = pos["cumulative_proceeds"] + proceeds
+                    return_pct = (total_proceeds - pos["cost"]) / pos["cost"] * 100
+                    avg_sell = total_proceeds / pos["total_shares"] / (1 - fee_rate)
+
+                    all_trades.append({
+                        "code": code,
+                        "name": pos["name"],
+                        "buy_date": pos["buy_date"],
+                        "sell_date": current_date,
+                        "buy_price": round(pos["buy_price"], 2),
+                        "sell_price": round(avg_sell, 2),
+                        "return_pct": round(return_pct, 2),
+                        "score": pos["score"],
+                        "signal_type": pos["signal_type"],
+                        "sell_reason": sell_reason,
+                        "limit_up_date": pos.get("limit_up_date"),
+                        "pullback_start_date": pos.get("pullback_start_date"),
+                        "pullback_end_date": pos.get("pullback_end_date"),
+                        "left_buy_date": pos.get("left_buy_date"),
+                        "right_buy_date": pos.get("right_buy_date"),
+                        "ground_day_date": pos.get("ground_day_date"),
+                        "shares": pos["total_shares"],
+                        "profit": round(total_proceeds - pos["cost"], 2)
+                    })
                     codes_to_sell.append(code)
 
             for code in codes_to_sell:
                 del holdings[code]
 
-            selected_stocks = daily_signals.get(current_date, [])
-            
+            # ========== 2. 处理买入 ==========
             rise_ratio = market_rise_ratio.get(current_date, 0.5)
+            selected_stocks = daily_signals.get(current_date, [])
+
+            # 极端熊市（上涨比例<20%）不交易
+            market_skip = False
             if rise_ratio < 0.2:
-                daily_results.append({
-                    "date": current_date,
-                    "market_rise_ratio": round(rise_ratio * 100, 1),
-                    "stocks": [],
-                    "portfolio_return": 0.0,
-                    "skip_reason": "极端熊市（上涨比例<20%）"
-                })
-                total_daily_returns.append(0.0)
-                daily_capital = capital
-                continue
+                market_skip = True
 
-            available_slots = top_n - len(holdings)
-            if available_slots <= 0:
-                daily_results.append({
-                    "date": current_date,
-                    "market_rise_ratio": round(rise_ratio * 100, 1),
-                    "stocks": [],
-                    "portfolio_return": 0.0,
-                    "skip_reason": "持仓已满"
-                })
-                total_daily_returns.append(0.0)
-                daily_capital = capital
-                continue
+            if not market_skip and len(holdings) < max_holdings:
+                selected_stocks.sort(key=lambda x: x["score"], reverse=True)
 
-            selected_stocks.sort(key=lambda x: x["score"], reverse=True)
-            
-            if rise_ratio < 0.4:
-                selected_stocks = selected_stocks[:int(len(selected_stocks) * 0.5)]
+                # 弱势环境减半
+                if rise_ratio < 0.4:
+                    selected_stocks = selected_stocks[:max(1, int(len(selected_stocks) * 0.5))]
 
-            stock_returns = []
-            portfolio_return = 0.0
-            valid_count = 0
+                available_slots = min(max_holdings - len(holdings), top_n)
 
-            for stock in selected_stocks[:available_slots]:
-                code = stock["code"]
-                
-                last_buy = recent_buys.get(code)
-                if last_buy:
-                    last_date = datetime.strptime(last_buy, "%Y-%m-%d")
-                    curr_date = datetime.strptime(current_date, "%Y-%m-%d")
-                    if (curr_date - last_date).days < SIGNAL_COOLDOWN_DAYS:
+                for stock in selected_stocks[:available_slots]:
+                    code = stock["code"]
+                    if code in holdings:
                         continue
 
-                indicators = indicators_cache.get(code)
-                if indicators is None:
-                    continue
+                    # 冷却期检查
+                    last_buy = recent_buys.get(code)
+                    if last_buy:
+                        try:
+                            last_dt = datetime.strptime(last_buy, "%Y-%m-%d")
+                            curr_dt = datetime.strptime(current_date, "%Y-%m-%d")
+                            if (curr_dt - last_dt).days < signal_cooldown_days:
+                                continue
+                        except ValueError:
+                            pass
 
-                date_to_idx = indicators["date_to_idx"]
-                signal_idx = date_to_idx.get(current_date, -1)
-                if signal_idx < 0:
-                    continue
-
-                limit_up_idx = stock.get("limit_up_idx", 0)
-                limit_up_close = stock.get("limit_up_close", 0)
-
-                # T+1买入：取次日开盘价
-                buy_idx = signal_idx + 1
-                if buy_idx >= indicators["n"]:
-                    continue
-
-                buy_price = float(indicators["opens"][buy_idx])
-                if buy_price <= 0:
-                    continue
-
-                prev_close = float(indicators["closes"][signal_idx])
-                if not self._can_buy(buy_price, prev_close):
-                    continue
-
-                sell_idx, sell_reason = self._sell_point_fast(
-                    indicators, buy_idx, limit_up_close, limit_up_idx, max_hold_days=hold_days, buy_price=buy_price
-                )
-                if sell_idx <= buy_idx:
-                    continue
-
-                # 检查卖出日是否跌停
-                while sell_idx < indicators["n"]:
-                    sell_prev_close = indicators["closes"][sell_idx - 1] if sell_idx > 0 else indicators["closes"][sell_idx]
-                    if self._can_sell(indicators["closes"][sell_idx], indicators["opens"][sell_idx], sell_prev_close):
-                        break
-                    sell_idx += 1
-                    if sell_idx >= indicators["n"]:
-                        sell_idx = indicators["n"] - 1
-                        break
-
-                sell_price = float(indicators["closes"][sell_idx])
-
-                position_size = capital * MAX_POSITION_SIZE / available_slots
-                shares = int(position_size / buy_price / 100) * 100
-                
-                if shares <= 0:
-                    continue
-
-                cost = buy_price * shares
-                if cost > capital:
-                    shares = int(capital / buy_price / 100) * 100
-                    cost = buy_price * shares
-                    if shares <= 0:
+                    indicators = indicators_cache.get(code)
+                    if not indicators:
                         continue
 
-                capital -= cost
+                    signal_idx = indicators["date_to_idx"].get(current_date, -1)
+                    if signal_idx < 0:
+                        continue
 
-                holdings[code] = {
-                    "name": stock["name"],
-                    "buy_date": indicators["dates"][buy_idx],
-                    "sell_date": indicators["dates"][sell_idx],
-                    "buy_price": buy_price,
-                    "sell_price": sell_price,
-                    "shares": shares,
-                    "cost": cost,
-                    "score": stock["score"],
-                    "signal_type": stock["signal_type"],
-                    "sell_reason": sell_reason,
-                    "limit_up_date": stock.get("limit_up_date"),
-                    "pullback_start_date": stock.get("pullback_start_date"),
-                    "pullback_end_date": stock.get("pullback_end_date"),
-                    "bottom_watch_start_date": stock.get("bottom_watch_start_date"),
-                    "left_buy_date": stock.get("left_buy_date"),
-                    "right_buy_date": stock.get("right_buy_date"),
-                    "ground_day_date": stock.get("ground_day_date")
-                }
-                recent_buys[code] = indicators["dates"][buy_idx]
+                    # T+1买入：次日开盘价
+                    buy_idx = signal_idx + 1
+                    if buy_idx >= indicators["n"]:
+                        continue
 
-                stock_return = (sell_price - buy_price) / buy_price * 100
-                stock_returns.append({
-                    "code": code,
-                    "name": stock["name"],
-                    "buy_date": indicators["dates"][buy_idx],
-                    "sell_date": indicators["dates"][sell_idx],
-                    "buy_price": round(buy_price, 2),
-                    "sell_price": round(sell_price, 2),
-                    "return_pct": round(stock_return, 2),
-                    "score": stock["score"],
-                    "signal_type": stock["signal_type"],
-                    "sell_reason": sell_reason,
-                    "limit_up_date": stock.get("limit_up_date"),
-                    "pullback_start_date": stock.get("pullback_start_date"),
-                    "pullback_end_date": stock.get("pullback_end_date"),
-                    "bottom_watch_start_date": stock.get("bottom_watch_start_date"),
-                    "left_buy_date": stock.get("left_buy_date"),
-                    "right_buy_date": stock.get("right_buy_date"),
-                    "ground_day_date": stock.get("ground_day_date"),
-                    "stop_loss_date": indicators["dates"][sell_idx] if sell_reason == "10日止损" else None,
-                    "time_stop_date": indicators["dates"][sell_idx] if sell_reason == "8日时间止盈" else None,
-                    "high_stop_date": indicators["dates"][sell_idx] if sell_reason == "高位止盈" else None,
-                    "ma5_stop_date": indicators["dates"][sell_idx] if sell_reason == "5日线止盈" else None
-                })
+                    buy_price_raw = float(indicators["opens"][buy_idx])
+                    if buy_price_raw <= 0:
+                        continue
 
-                portfolio_return += stock_return
-                valid_count += 1
+                    prev_close = float(indicators["closes"][signal_idx])
+                    if not self._can_buy(buy_price_raw, prev_close):
+                        continue
 
-            if valid_count > 0:
-                avg_return = portfolio_return / valid_count
-            else:
-                avg_return = 0.0
+                    # 买入滑点
+                    buy_price = buy_price_raw * (1 + slippage_pct)
 
-            total_daily_returns.append(avg_return)
+                    # 仓位计算
+                    pos_size = min(max_position_pct, 1.0 / max(1, len(holdings) + top_n))
+                    amount = capital * pos_size
+                    shares = int(amount / buy_price / 100) * 100
+                    if shares < 100:
+                        continue
+
+                    cost = shares * buy_price * (1 + fee_rate)
+                    if cost > capital * 0.95:
+                        continue
+
+                    limit_up_idx = stock.get("limit_up_idx", 0)
+                    limit_up_close = stock.get("limit_up_close", 0)
+
+                    # 初始状态
+                    initial_high = float(np.max(indicators["highs"][limit_up_idx:buy_idx + 1])) \
+                        if buy_idx > limit_up_idx else indicators["highs"][limit_up_idx]
+
+                    holdings[code] = {
+                        "name": stock["name"],
+                        "buy_date": indicators["dates"][buy_idx],
+                        "buy_idx": buy_idx,
+                        "buy_price": buy_price,
+                        "total_shares": shares,
+                        "remaining_shares": shares,
+                        "cost": cost,
+                        "cumulative_proceeds": 0.0,
+                        "score": stock["score"],
+                        "signal_type": stock["signal_type"],
+                        "limit_up_close": limit_up_close,
+                        "limit_up_idx": limit_up_idx,
+                        "limit_up_date": stock.get("limit_up_date"),
+                        "pullback_start_date": stock.get("pullback_start_date"),
+                        "pullback_end_date": stock.get("pullback_end_date"),
+                        "left_buy_date": stock.get("left_buy_date"),
+                        "right_buy_date": stock.get("right_buy_date"),
+                        "ground_day_date": stock.get("ground_day_date"),
+                        "last_valid_idx": buy_idx,
+                        "state": {
+                            "buy_idx": buy_idx,
+                            "max_high_since_limit_up": initial_high,
+                            "has_exceeded_limit_up": initial_high >= limit_up_close,
+                            "trailing_stop_active": False,
+                            "trailing_stop_price": buy_price * 0.95
+                        }
+                    }
+                    capital -= cost
+                    recent_buys[code] = indicators["dates"][buy_idx]
+
+            # ========== 3. 计算当日总资产 ==========
+            total_value = capital
+            for code, pos in holdings.items():
+                indicators = pos.get("ind") or indicators_cache.get(code)
+                if not indicators:
+                    continue
+                idx = indicators["date_to_idx"].get(current_date, -1)
+                if idx < 0:
+                    idx = pos.get("last_valid_idx", pos["buy_idx"])
+                else:
+                    pos["last_valid_idx"] = idx
+                if idx >= 0 and idx < indicators["n"]:
+                    total_value += pos["remaining_shares"] * indicators["closes"][idx]
+
+            capital_history.append(total_value)
+            peak_capital = max(peak_capital, total_value)
+            dd = (peak_capital - total_value) / peak_capital * 100 if peak_capital > 0 else 0
+            max_drawdown = max(max_drawdown, dd)
+
+            total_position_value = total_value - capital
+            position_pct = (total_position_value / total_value * 100) if total_value > 0 else 0
+
             daily_results.append({
                 "date": current_date,
-                "market_rise_ratio": round(rise_ratio * 100, 1),
-                "selected_count": len(selected_stocks),
-                "valid_count": valid_count,
-                "holding_count": len(holdings),
-                "capital": round(capital, 2),
-                "avg_return": round(avg_return, 2),
-                "stocks": stock_returns
+                "total_value": round(total_value, 2),
+                "position_count": len(holdings),
+                "position_pct": round(position_pct, 2),
+                "cash": round(capital, 2),
+                "position_value": round(total_position_value, 2),
+                "return_pct": round((total_value - initial_capital) / initial_capital * 100, 2),
+                "drawdown": round(dd, 2),
+                "market_rise_ratio": round(rise_ratio * 100, 1)
             })
 
-            if (date_idx + 1) % 20 == 0:
-                logger.info(f"📊 回测收益计算进度: {date_idx + 1}/{len(backtest_dates)}, 已交易 {len(all_trades)} 笔, 持仓 {len(holdings)} 只")
+        # ========== 4. 期末清算 ==========
+        final_value = capital
+        last_date = sorted_dates[-1] if sorted_dates else ""
+        for code, pos in holdings.items():
+            indicators = indicators_cache.get(code)
+            if not indicators:
+                continue
+            idx = indicators["date_to_idx"].get(last_date, indicators["n"] - 1)
+            if idx < 0:
+                idx = indicators["n"] - 1
+            sell_price = indicators["closes"][idx] * (1 - slippage_pct)
+            proceeds = pos["remaining_shares"] * sell_price * (1 - fee_rate)
+            final_value += proceeds
+            total_proceeds = pos["cumulative_proceeds"] + proceeds
+            return_pct = (total_proceeds - pos["cost"]) / pos["cost"] * 100
+            avg_sell = total_proceeds / pos["total_shares"] / (1 - fee_rate)
+            all_trades.append({
+                "code": code,
+                "name": pos["name"],
+                "buy_date": pos["buy_date"],
+                "sell_date": last_date,
+                "buy_price": round(pos["buy_price"], 2),
+                "sell_price": round(avg_sell, 2),
+                "return_pct": round(return_pct, 2),
+                "score": pos["score"],
+                "signal_type": pos["signal_type"],
+                "sell_reason": "回测期末",
+                "limit_up_date": pos.get("limit_up_date"),
+                "shares": pos["total_shares"],
+                "profit": round(total_proceeds - pos["cost"], 2)
+            })
 
-        win_trades = [t for t in all_trades if t["return_pct"] > 0]
-        loss_trades = [t for t in all_trades if t["return_pct"] <= 0]
-        win_rate = len(win_trades) / len(all_trades) * 100 if all_trades else 0
-        avg_return = sum(t["return_pct"] for t in all_trades) / len(all_trades) if all_trades else 0
-        avg_win = sum(t["return_pct"] for t in win_trades) / len(win_trades) if win_trades else 0
-        avg_loss = sum(t["return_pct"] for t in loss_trades) / len(loss_trades) if loss_trades else 0
+        # ========== 5. 统计指标 ==========
+        total_trades = len(all_trades)
+        if total_trades > 0:
+            wins = [t for t in all_trades if t["return_pct"] > 0]
+            losses = [t for t in all_trades if t["return_pct"] <= 0]
+            win_rate = len(wins) / total_trades * 100
+            avg_return = float(np.mean([t["return_pct"] for t in all_trades]))
+            avg_win = float(np.mean([t["return_pct"] for t in wins])) if wins else 0
+            avg_loss = float(np.mean([t["return_pct"] for t in losses])) if losses else 0
+            profit_loss_ratio = abs(avg_win / avg_loss) if avg_loss != 0 else 0
 
-        total_return = (capital - INITIAL_CAPITAL) / INITIAL_CAPITAL * 100
+            max_consecutive_losses = 0
+            current_streak = 0
+            for t in all_trades:
+                if t["return_pct"] <= 0:
+                    current_streak += 1
+                    max_consecutive_losses = max(max_consecutive_losses, current_streak)
+                else:
+                    current_streak = 0
+        else:
+            win_rate = 0
+            avg_return = 0
+            avg_win = 0
+            avg_loss = 0
+            profit_loss_ratio = 0
+            max_consecutive_losses = 0
 
-        daily_capital_history = []
-        for dr in daily_results:
-            daily_capital_history.append(dr.get("capital", INITIAL_CAPITAL))
+        total_return = (final_value - initial_capital) / initial_capital * 100
 
-        max_capital = INITIAL_CAPITAL
-        max_drawdown = 0.0
-        for cap in daily_capital_history:
-            if cap > max_capital:
-                max_capital = cap
-            if max_capital > 0:
-                drawdown = (max_capital - cap) / max_capital * 100
-            else:
-                drawdown = 0.0
-            if drawdown > max_drawdown:
-                max_drawdown = drawdown
+        # 日收益率 & 夏普比率
+        daily_returns = []
+        for i in range(1, len(capital_history)):
+            if capital_history[i - 1] > 0:
+                daily_returns.append((capital_history[i] - capital_history[i - 1]) / capital_history[i - 1])
 
-        signal_stats = defaultdict(lambda: {"count": 0, "win_count": 0, "avg_return": 0.0})
+        if daily_returns:
+            avg_daily_return = float(np.mean(daily_returns))
+            std_daily_return = float(np.std(daily_returns))
+            risk_free_daily = 0.03 / 252
+            sharpe_ratio = (avg_daily_return - risk_free_daily) / std_daily_return * np.sqrt(252) \
+                if std_daily_return > 0 else 0
+        else:
+            sharpe_ratio = 0
+
+        # 卡玛比率
+        days_count = len(sorted_dates) if sorted_dates else 1
+        annualized_return = (1 + total_return / 100) ** (252 / days_count) - 1 if days_count > 0 else 0
+        calmar_ratio = annualized_return / (max_drawdown / 100) if max_drawdown > 0 else 0
+
+        # 手续费估算
+        total_fees = 0.0
         for t in all_trades:
-            sig = t["signal_type"]
-            signal_stats[sig]["count"] += 1
-            signal_stats[sig]["avg_return"] += t["return_pct"]
+            cost_basis = t["buy_price"] * t["shares"]
+            total_fees += cost_basis * (fee_rate * 2 + slippage_pct * 2)
+
+        # 按信号类型统计
+        signal_stats: Dict[str, Dict[str, Any]] = {}
+        for t in all_trades:
+            st = t["signal_type"]
+            if st not in signal_stats:
+                signal_stats[st] = {"count": 0, "wins": 0, "returns": []}
+            signal_stats[st]["count"] += 1
             if t["return_pct"] > 0:
-                signal_stats[sig]["win_count"] += 1
+                signal_stats[st]["wins"] += 1
+            signal_stats[st]["returns"].append(t["return_pct"])
 
         signal_summary = {}
-        for sig, stats in signal_stats.items():
-            win_r = stats["win_count"] / stats["count"] * 100 if stats["count"] > 0 else 0
-            avg_r = stats["avg_return"] / stats["count"] if stats["count"] > 0 else 0
-            signal_summary[sig] = {
-                "count": stats["count"],
-                "win_rate": round(win_r, 2),
-                "avg_return": round(avg_r, 2)
+        for st, s in signal_stats.items():
+            signal_summary[st] = {
+                "count": s["count"],
+                "win_rate": round(s["wins"] / s["count"] * 100, 2) if s["count"] > 0 else 0,
+                "avg_return": round(float(np.mean(s["returns"])), 2) if s["returns"] else 0
             }
 
-        sell_reason_stats = defaultdict(lambda: {"count": 0, "win_count": 0, "avg_return": 0.0})
+        # 按卖出原因统计
+        sell_stats: Dict[str, Dict[str, Any]] = {}
         for t in all_trades:
-            reason = t.get("sell_reason", "未知")
-            sell_reason_stats[reason]["count"] += 1
-            sell_reason_stats[reason]["avg_return"] += t["return_pct"]
+            sr = t["sell_reason"]
+            if sr not in sell_stats:
+                sell_stats[sr] = {"count": 0, "wins": 0, "returns": []}
+            sell_stats[sr]["count"] += 1
             if t["return_pct"] > 0:
-                sell_reason_stats[reason]["win_count"] += 1
+                sell_stats[sr]["wins"] += 1
+            sell_stats[sr]["returns"].append(t["return_pct"])
 
         sell_reason_summary = {}
-        for reason, stats in sell_reason_stats.items():
-            win_r = stats["win_count"] / stats["count"] * 100 if stats["count"] > 0 else 0
-            avg_r = stats["avg_return"] / stats["count"] if stats["count"] > 0 else 0
-            sell_reason_summary[reason] = {
-                "count": stats["count"],
-                "win_rate": round(win_r, 2),
-                "avg_return": round(avg_r, 2)
+        for sr, s in sell_stats.items():
+            sell_reason_summary[sr] = {
+                "count": s["count"],
+                "win_rate": round(s["wins"] / s["count"] * 100, 2) if s["count"] > 0 else 0,
+                "avg_return": round(float(np.mean(s["returns"])), 2) if s["returns"] else 0
             }
 
         took_ms = int((time.time() - start_time) * 1000)
 
-        logger.info(f"✅ 回测完成: {len(all_trades)} 笔交易, 胜率 {win_rate:.1f}%, 平均收益 {avg_return:.2f}%, 耗时 {took_ms}ms")
+        logger.info(f"✅ 回测完成: {total_trades} 笔交易, 胜率 {win_rate:.1f}%, 平均收益 {avg_return:.2f}%, 耗时 {took_ms}ms")
 
         return {
-            "total_trades": len(all_trades),
+            "total_trades": total_trades,
             "win_rate": round(win_rate, 2),
             "avg_return": round(avg_return, 2),
             "avg_win": round(avg_win, 2),
             "avg_loss": round(avg_loss, 2),
+            "profit_loss_ratio": round(profit_loss_ratio, 2),
             "max_drawdown": round(max_drawdown, 2),
+            "sharpe_ratio": round(sharpe_ratio, 2),
+            "calmar_ratio": round(calmar_ratio, 2),
+            "annualized_return": round(annualized_return * 100, 2),
+            "max_consecutive_losses": max_consecutive_losses,
+            "total_fees_est": round(total_fees, 2),
             "total_return": round(total_return, 2),
-            "final_capital": round(capital, 2),
-            "initial_capital": INITIAL_CAPITAL,
-            "backtest_days": len(backtest_dates),
+            "final_capital": round(final_value, 2),
+            "initial_capital": initial_capital,
+            "backtest_days": len(sorted_dates),
             "signal_stats": signal_summary,
             "sell_reason_stats": sell_reason_summary,
             "daily_results": daily_results[:50],

@@ -17,7 +17,7 @@
         <div class="card-header">
           <div style="display: flex; align-items: center; gap: 12px;">
             <el-icon><InfoFilled /></el-icon>
-            <span>策略原理</span>
+            <span class="panel-title">策略原理</span>
             <el-tag type="warning" size="small" effect="plain">龙回头/N字反包</el-tag>
           </div>
         </div>
@@ -87,397 +87,104 @@
           </el-col>
         </el-row>
 
-        <div class="signal-types" style="margin-top: 16px;">
-          <el-divider content-position="left">信号演化路径（按时间顺序）</el-divider>
-          <div class="signal-flow">
-            <div class="signal-watch">
-              <el-tag type="primary" effect="plain">缩量回调中</el-tag>
-              <p class="signal-desc">缩量达标但未现止跌信号</p>
+        <!-- 信号演化路径 - 垂直时间轴布局，与三买三卖统一 -->
+        <div class="evolution-panel" style="margin-top: 16px;">
+          <div class="card-header" style="margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <el-icon :size="20"><TrendCharts /></el-icon>
+              <span class="panel-title">信号演化路径（按时间顺序）</span>
             </div>
-            <el-icon class="flow-arrow"><ArrowRight /></el-icon>
-            <div class="signal-watch">
-              <el-tag type="info" effect="plain">底部观察</el-tag>
-              <p class="signal-desc">地量出现，接近底部区域</p>
-            </div>
-            <el-icon class="flow-arrow"><ArrowRight /></el-icon>
-            <div class="signal-buy-point">
-              <el-tag type="warning" effect="dark">买点1</el-tag>
-              <el-tag type="warning" effect="plain" style="margin-left: 4px;">左侧潜伏</el-tag>
-              <p class="signal-desc">地量+长下影线（实体比≥2倍），地量日在第3-5天</p>
-            </div>
-            <el-icon class="flow-arrow"><ArrowRight /></el-icon>
-            <div class="signal-buy-point">
-              <el-tag type="success" effect="dark">买点2</el-tag>
-              <el-tag type="success" effect="plain" style="margin-left: 4px;">右侧确认</el-tag>
-              <p class="signal-desc">放量突破5日线+回调前高，5日线上穿10日线</p>
-            </div>
-            <el-icon class="flow-arrow"><ArrowRight /></el-icon>
-            <div class="signal-sell-point">
-              <el-tag type="danger" effect="dark">ATR止损</el-tag>
-              <el-tag type="danger" effect="plain" style="margin-left: 4px;">优先</el-tag>
-              <p class="signal-desc">买入价下方0.4倍ATR，动态止损适应波动率</p>
-            </div>
+            <el-tag type="info" size="small" effect="plain">从涨停到止盈止损的完整交易周期</el-tag>
           </div>
-          <div class="signal-flow" style="margin-top: 12px;">
-            <div class="signal-sell-point">
-              <el-tag type="danger" effect="dark">10日止损</el-tag>
-              <el-tag type="danger" effect="plain" style="margin-left: 4px;">备选</el-tag>
-              <p class="signal-desc">收盘跌破10日线，趋势破坏止损</p>
+
+          <div class="evolution-timeline">
+            <div v-for="(step, idx) in evolutionSteps" :key="idx" class="evolution-step">
+              <div class="step-marker">
+                <div class="step-dot" :class="'phase-' + (idx + 1)">{{ idx + 1 }}</div>
+                <div v-if="idx < evolutionSteps.length - 1" class="step-line"></div>
+              </div>
+              <div class="step-content">
+                <div class="step-phase-row">
+                  <span class="step-phase">{{ step.phase }}</span>
+                  <div class="step-signals">
+                    <el-tag
+                      v-for="sig in step.signals"
+                      :key="sig"
+                      :type="getEvolutionSignalTag(sig) as any"
+                      size="small"
+                      effect="dark"
+                      class="step-signal-tag"
+                    >
+                      {{ sig }}
+                    </el-tag>
+                  </div>
+                </div>
+                <div class="step-desc">{{ step.desc }}</div>
+                <div class="step-action">
+                  <el-icon size="14" color="#409eff"><Position /></el-icon>
+                  <span class="step-action-text"><strong>操作指南：</strong>{{ step.action }}</span>
+                </div>
+                <div class="step-meta">
+                  <el-tag size="small" type="warning" effect="plain" class="step-meta-tag">{{ step.risk }}</el-tag>
+                  <el-tag size="small" type="primary" effect="plain" class="step-meta-tag">{{ step.position }}</el-tag>
+                </div>
+              </div>
             </div>
-            <el-icon class="flow-arrow"><ArrowRight /></el-icon>
-            <div class="signal-sell-point">
-              <el-tag type="warning" effect="dark">时间止盈</el-tag>
-              <el-tag type="warning" effect="plain" style="margin-left: 4px;">8天不过高</el-tag>
-              <p class="signal-desc">涨停后8天未突破涨停价，上攻乏力</p>
-            </div>
-            <el-icon class="flow-arrow"><ArrowRight /></el-icon>
-            <div class="signal-sell-point">
-              <el-tag type="success" effect="dark">高位止盈</el-tag>
-              <el-tag type="success" effect="plain" style="margin-left: 4px;">放量滞涨</el-tag>
-              <p class="signal-desc">拉升途中天量滞涨，主力对敲出货</p>
-            </div>
-            <el-icon class="flow-arrow"><ArrowRight /></el-icon>
-            <div class="signal-sell-point">
-              <el-tag type="success" effect="dark">移动止盈</el-tag>
-              <el-tag type="success" effect="plain" style="margin-left: 4px;">5日线/ATR取高</el-tag>
-              <p class="signal-desc">盈利>3%开启，5日线与高点下方1倍ATR取较高者，让利润奔跑</p>
-            </div>
-          </div>
-          <div class="signal-tip">
-            <el-icon><InfoFilled /></el-icon>
-            <span>战法六大核心：涨停建仓→缩量洗盘→地量止跌→放量突破→动态止盈止损→大盘过滤。两个买点：左侧潜伏（试探轻仓）和右侧确认（重仓）。卖点按优先级：ATR止损→10日线止损→8日时间止盈→高位止盈→移动止盈。大盘上涨比例&lt;30%时空仓回避。</span>
           </div>
         </div>
       </div>
     </el-card>
 
-    <!-- 参数调整面板 -->
+    <!-- 参数配置 -->
     <el-card class="params-panel" shadow="never" style="margin-top: 16px;">
       <template #header>
         <div class="card-header">
           <div style="display: flex; align-items: center; gap: 12px;">
-            <el-icon><Setting /></el-icon>
-            <span>策略参数</span>
-          </div>
-          <div class="header-actions">
-            <el-button type="text" @click="resetParams">
-              <el-icon><Refresh /></el-icon>
-              重置
-            </el-button>
+            <el-icon><Search /></el-icon>
+            <span class="panel-title">参数配置</span>
           </div>
         </div>
       </template>
 
-      <el-form :model="params" label-width="140px" class="params-form">
-        <el-row :gutter="24">
-          <el-col :span="6">
+      <el-form :model="params" label-position="top" size="default" class="params-form">
+        <el-row :gutter="32">
+          <el-col :span="8">
             <el-form-item>
               <template #label>
-                <span>涨停回溯天数</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">从当前日往前搜索涨停板的最大天数范围。注意：这是找涨停板的范围，与持仓天数无关。持仓时间由卖点规则（10日止损、8日时间止盈、高位止盈、5日线移动止盈）决定，通常持有3-15天。涨停阈值自动识别：主板10%，创业板/科创板20%，ST股5%，北交所30%</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
+                <span style="display: flex; align-items: center; gap: 4px;">
+                  最低评分(100分制)
+                  <el-tooltip effect="dark" placement="top">
+                    <template #content>
+                      <div class="tooltip-detail">
+                        <p><strong>评分说明：</strong>综合评分采用100分制，从涨停强度、缩量程度、支撑有效性、量价配合、技术形态等多维度评估股票质量。</p>
+                        <p style="margin-top: 6px;"><strong>分数含义：</strong></p>
+                        <p>• 80-100分：优质标的，各项指标优秀，强烈推荐</p>
+                        <p>• 60-79分：良好标的，形态标准，值得关注</p>
+                        <p>• 40-59分：一般标的，存在一定瑕疵，谨慎参与</p>
+                        <p>• 0-39分：较差标的，形态不标准，不建议参与</p>
+                        <p style="margin-top: 6px;"><strong>设置建议：</strong>建议设置为40分，筛选中等以上质量的股票。追求稳健可设为60-70分，追求高收益可降低至20-30分。</p>
+                      </div>
+                    </template>
+                    <el-icon class="help-icon"><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
               </template>
-              <el-input-number
-                v-model="params.max_lookback_days"
-                :min="5"
-                :max="30"
-                :step="1"
-                style="width: 100%"
-              />
+              <el-slider v-model="params.min_score" :min="0" :max="100" :step="5" show-stops />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>最少回调天数</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">涨停后至少需要回调多少天才入选。太少则洗盘不充分，建议2-3天</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-input-number
-                v-model="params.min_pullback_days"
-                :min="1"
-                :max="10"
-                :step="1"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>最多回调天数</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">涨停后最多回调多少天仍在关注范围。超过则可能趋势走弱，建议8天（战法要求超8天未收复则出局）</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-input-number
-                v-model="params.max_pullback_days"
-                :min="3"
-                :max="20"
-                :step="1"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>最低评分阈值</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">综合评分满分100分，包含：缩量20分、回调幅度15分、地量15分、下影线15分、空间位置10分、10日线10分、小阴小阳5分、突破5日线10分</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-input-number
-                v-model="params.min_score"
-                :min="0"
-                :max="100"
-                :step="5"
-                style="width: 100%"
-              />
+          <el-col :span="8">
+            <el-form-item label="返回数量限制">
+              <el-input-number v-model="params.limit" :min="10" :max="200" :step="10" style="width: 100%;" />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-row :gutter="24">
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>缩量比例阈值</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">回调期均量相对于涨停日量的比例。0.5表示均量≤涨停日一半才算缩量达标。越小越严格，建议0.3-0.5</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-input-number
-                v-model="params.shrink_volume_ratio"
-                :min="0.1"
-                :max="1"
-                :step="0.05"
-                :precision="2"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>最少缩量天数</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">回调期间至少有多少天的成交量达到缩量标准。建议2天以上确认洗盘有效</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-input-number
-                v-model="params.min_shrink_days"
-                :min="1"
-                :max="10"
-                :step="1"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>地量比例阈值</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">地量日成交量相对于涨停日的比例。0.35表示≤涨停日35%为地量。实际判断还包含"近20日最低量"标准</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-input-number
-                v-model="params.ground_volume_ratio"
-                :min="0.1"
-                :max="1"
-                :step="0.05"
-                :precision="2"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>下影线比例阈值</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">下影线占最低价的比例，备用判断标准。实际主要用"下影线/实体≥1.5倍"判断，十字星时实体为0视为满足</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-input-number
-                v-model="params.lower_shadow_ratio"
-                :min="0.001"
-                :max="0.1"
-                :step="0.005"
-                :precision="3"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row :gutter="24">
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>站上10日线</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">10日线是洗盘生命线。开启后要求回调期间收盘价始终在10日线上方（允许1天跌破作为盘中洗盘）。跌破则趋势可能逆转</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-switch v-model="params.above_ma10" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>突破5日线</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">右侧确认买点：开启后要求收盘站上5日线+5日线走平或上翘+放量≥指定倍数+无假突破（上影线&lt;3%）</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-switch v-model="params.breakout_ma5" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item v-if="params.breakout_ma5">
-              <template #label>
-                <span>突破放量倍数</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">突破当天成交量需达到近5日均量的多少倍才算有效突破。建议1.5倍以上表明主力主动攻击</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-input-number
-                v-model="params.breakout_volume_ratio"
-                :min="1"
-                :max="5"
-                :step="0.1"
-                :precision="1"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>返回数量</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">扫描结果最多返回多少只股票，按综合评分从高到低排序</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-input-number
-                v-model="params.limit"
-                :min="10"
-                :max="200"
-                :step="10"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row :gutter="24" v-show="activeTab === 'backtest'">
-          <el-col :span="6">
-            <el-form-item label="回测开始日期">
-              <el-date-picker
-                v-model="backtestParams.start_date"
-                type="date"
-                format="YYYY-MM-DD"
-                value-format="YYYY-MM-DD"
-                placeholder="选择开始日期"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="回测结束日期">
-              <el-date-picker
-                v-model="backtestParams.end_date"
-                type="date"
-                format="YYYY-MM-DD"
-                value-format="YYYY-MM-DD"
-                placeholder="选择结束日期"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item>
-              <template #label>
-                <span>最大持有天数</span>
-                <el-tooltip effect="dark" placement="top">
-                  <template #content>
-                    <div class="tooltip-detail">安全阀：实际卖出按三条卖点规则（10日止损、8天时间止盈、高位止盈），此参数为最晚卖出天数</div>
-                  </template>
-                  <el-icon class="help-icon"><QuestionFilled /></el-icon>
-                </el-tooltip>
-              </template>
-              <el-input-number
-                v-model="backtestParams.hold_days"
-                :min="1"
-                :max="60"
-                :step="1"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="每次选股数">
-              <el-input-number
-                v-model="backtestParams.top_n"
-                :min="1"
-                :max="50"
-                :step="1"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <div style="text-align: center; margin-top: 8px;">
+        <div class="form-actions">
           <el-button type="primary" :loading="loading" @click="doScan" size="large">
             <el-icon><Search /></el-icon>
             开始扫描
           </el-button>
-          <el-button type="success" :loading="backtestLoading" @click="doBacktest" size="large" style="margin-left: 12px;">
-            <el-icon><DataLine /></el-icon>
-            开始回测
-          </el-button>
-          <el-button :loading="loading" @click="resetParams" size="large" style="margin-left: 12px;">
+          <el-button :loading="loading" @click="resetParams" size="large">
             <el-icon><Refresh /></el-icon>
             重置参数
           </el-button>
@@ -494,7 +201,7 @@
             <div class="card-header">
               <div style="display: flex; align-items: center; gap: 12px;">
                 <el-icon><List /></el-icon>
-                <span>扫描结果</span>
+                <span class="panel-title">扫描结果</span>
                 <el-tag v-if="results.length > 0" type="success" size="small" effect="plain">
                   找到 {{ results.length }} 只符合条件的股票
                 </el-tag>
@@ -559,9 +266,9 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="bottom_watch_start_date" label="底部观察日" width="110">
+            <el-table-column label="底部观察日" width="140">
               <template #default="{ row }">
-                <span v-if="row.bottom_watch_start_date" class="date-tag info">{{ row.bottom_watch_start_date }}</span>
+                <span v-if="row.bottom_watch_start_date" class="date-tag info">{{ row.bottom_watch_start_date }}~{{ row.bottom_watch_end_date }}</span>
                 <span v-else class="empty-tag">-</span>
               </template>
             </el-table-column>
@@ -598,12 +305,32 @@
             </el-table-column>
             <el-table-column prop="score" label="综合评分" width="100" sortable fixed="right">
               <template #default="{ row }">
-                <el-progress
-                  :percentage="row.score"
-                  :color="getScoreColor(row.score)"
-                  :show-text="true"
-                  :stroke-width="12"
-                />
+                <el-tooltip effect="dark" placement="top">
+                  <template #content>
+                    <div class="tooltip-detail">
+                      <p><strong>评分说明：</strong>综合评分采用100分制，从以下维度评估信号质量：</p>
+                      <p style="margin-top: 6px;">• 缩量评分（20分）：缩量越明显分数越高</p>
+                      <p>• 回调幅度（15分）：回调5-15%最佳</p>
+                      <p>• 地量评分（15分）：地量出现且为20日最低量得高分</p>
+                      <p>• 下影线评分（15分）：下影线越长，支撑越强</p>
+                      <p>• 空间位置（10分）：未破涨停实体一半得满分</p>
+                      <p>• 站上10日线（10分）：价格站上10日线得满分</p>
+                      <p>• 小阴小阳（5分）：K线实体小说明抛压轻</p>
+                      <p>• 突破5日线（25分）：放量突破5日线确认右侧</p>
+                      <p style="margin-top: 6px;"><strong>当前评分：</strong>{{ row.score }}分</p>
+                      <div v-if="row.score_details?.length" style="margin-top: 6px; font-size: 12px; color: #666;">
+                        <p style="margin-bottom: 4px;"><strong>评分明细：</strong></p>
+                        <p v-for="(detail, idx) in row.score_details" :key="idx">{{ detail }}</p>
+                      </div>
+                    </div>
+                  </template>
+                  <el-progress
+                    :percentage="row.score"
+                    :color="getScoreColor(row.score)"
+                    :show-text="true"
+                    :stroke-width="12"
+                  />
+                </el-tooltip>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="140" fixed="right">
@@ -618,6 +345,54 @@
 
       <!-- 回测分析Tab -->
       <el-tab-pane label="回测分析" name="backtest">
+        <!-- 回测参数配置 -->
+        <el-card shadow="never" style="margin-bottom: 16px;">
+          <template #header>
+            <div class="card-header">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <el-icon><DataLine /></el-icon>
+                <span class="panel-title">回测参数配置</span>
+              </div>
+            </div>
+          </template>
+
+          <el-form :model="backtestParams" label-position="top" size="default" class="params-form">
+            <el-row :gutter="32">
+              <el-col :span="6">
+                <el-form-item label="开始日期">
+                  <el-date-picker v-model="backtestParams.start_date" type="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" placeholder="选择开始日期" style="width: 100%;" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="结束日期">
+                  <el-date-picker v-model="backtestParams.end_date" type="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" placeholder="选择结束日期" style="width: 100%;" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="最大持有天数">
+                  <el-input-number v-model="backtestParams.hold_days" :min="1" :max="60" :step="1" style="width: 100%;" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="每次选前N只">
+                  <el-input-number v-model="backtestParams.top_n" :min="1" :max="50" :step="1" style="width: 100%;" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <div class="form-actions">
+              <el-button type="success" :loading="backtestLoading" @click="doBacktest" size="large">
+                <el-icon><DataLine /></el-icon>
+                开始回测
+              </el-button>
+              <el-button :loading="backtestLoading" @click="resetBacktestParams" size="large">
+                <el-icon><Refresh /></el-icon>
+                重置参数
+              </el-button>
+            </div>
+          </el-form>
+        </el-card>
+
         <!-- 回测空状态 -->
         <el-card v-if="!backtestResult && !backtestLoading" shadow="never">
           <el-empty description="配置回测参数后点击开始回测，回测可能耗时2-5分钟">
@@ -734,67 +509,178 @@
             </el-col>
           </el-row>
 
-          <!-- 信号类型统计 -->
-          <el-card shadow="never" style="margin-top: 16px;">
-            <template #header>
-              <div class="card-header">
-                <span>信号类型统计</span>
-              </div>
-            </template>
-            <el-table :data="signalStatsList" stripe style="width: 100%">
-              <el-table-column prop="signal_type" label="信号类型" width="150">
-                <template #default="{ row }">
-                  <el-tag :type="getSignalTypeTag(row.signal_type)" size="small">
-                    {{ row.signal_type }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="count" label="交易次数" width="120" />
-              <el-table-column prop="win_rate" label="胜率" width="120">
-                <template #default="{ row }">
-                  <span :class="['pct', row.win_rate >= 50 ? 'up' : 'down']">{{ row.win_rate.toFixed(2) }}%</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="avg_return" label="平均收益">
-                <template #default="{ row }">
-                  <span :class="['pct', row.avg_return >= 0 ? 'up' : 'down']">
-                    {{ row.avg_return >= 0 ? '+' : '' }}{{ row.avg_return.toFixed(2) }}%
-                  </span>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-card>
+          <!-- 风险收益指标 -->
+          <el-row :gutter="16" style="margin-top: 16px;">
+            <el-col :span="6">
+              <el-card shadow="never" class="metric-card">
+                <el-tooltip effect="dark" placement="top">
+                  <template #content>
+                    <div class="tooltip-detail">平均盈利 ÷ 平均亏损的绝对值。反映盈亏不对称性。>1表示赚的时候比亏的时候多，配合胜率评估策略质量。</div>
+                  </template>
+                  <div class="metric-label">盈亏比</div>
+                </el-tooltip>
+                <div class="metric-value" :class="backtestResult.profit_loss_ratio >= 1 ? 'up' : 'down'">
+                  {{ backtestResult.profit_loss_ratio.toFixed(2) }}
+                </div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card shadow="never" class="metric-card">
+                <el-tooltip effect="dark" placement="top">
+                  <template #content>
+                    <div class="tooltip-detail">年化超额收益 ÷ 年化波动率。衡量风险调整后收益。>1良好，>2优秀，>3卓越。</div>
+                  </template>
+                  <div class="metric-label">夏普比率</div>
+                </el-tooltip>
+                <div class="metric-value" :class="backtestResult.sharpe_ratio >= 1 ? 'up' : 'down'">
+                  {{ backtestResult.sharpe_ratio.toFixed(2) }}
+                </div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card shadow="never" class="metric-card">
+                <el-tooltip effect="dark" placement="top">
+                  <template #content>
+                    <div class="tooltip-detail">年化收益 ÷ 最大回撤。衡量每承担1单位回撤能获得多少收益。>1良好，>3优秀。</div>
+                  </template>
+                  <div class="metric-label">卡玛比率</div>
+                </el-tooltip>
+                <div class="metric-value" :class="backtestResult.calmar_ratio >= 1 ? 'up' : 'down'">
+                  {{ backtestResult.calmar_ratio.toFixed(2) }}
+                </div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card shadow="never" class="metric-card">
+                <el-tooltip effect="dark" placement="top">
+                  <template #content>
+                    <div class="tooltip-detail">按252个交易日年化后的收益率。便于不同周期的策略横向对比。</div>
+                  </template>
+                  <div class="metric-label">年化收益</div>
+                </el-tooltip>
+                <div class="metric-value" :class="backtestResult.annualized_return >= 0 ? 'up' : 'down'">
+                  {{ backtestResult.annualized_return >= 0 ? '+' : '' }}{{ backtestResult.annualized_return.toFixed(2) }}%
+                </div>
+              </el-card>
+            </el-col>
+          </el-row>
 
-          <!-- 卖出原因统计 -->
-          <el-card shadow="never" style="margin-top: 16px;">
-            <template #header>
-              <div class="card-header">
-                <span>卖出原因统计</span>
-              </div>
-            </template>
-            <el-table :data="sellReasonStatsList" stripe style="width: 100%">
-              <el-table-column prop="sell_reason" label="卖出原因" width="150">
-                <template #default="{ row }">
-                  <el-tag :type="getSellReasonTag(row.sell_reason)" size="small">
-                    {{ row.sell_reason }}
-                  </el-tag>
+          <!-- 资金统计 -->
+          <el-row :gutter="16" style="margin-top: 16px;">
+            <el-col :span="6">
+              <el-card shadow="never" class="metric-card">
+                <el-tooltip effect="dark" placement="top">
+                  <template #content>
+                    <div class="tooltip-detail">连续亏损交易的最大次数。反映策略的心理承受压力，连续亏损太多容易让人放弃。</div>
+                  </template>
+                  <div class="metric-label">最大连续亏损</div>
+                </el-tooltip>
+                <div class="metric-value down">{{ backtestResult.max_consecutive_losses }} 次</div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card shadow="never" class="metric-card">
+                <el-tooltip effect="dark" placement="top">
+                  <template #content>
+                    <div class="tooltip-detail">回测期间所有交易的手续费和滑点估算。双边手续费0.1%+滑点0.3%。</div>
+                  </template>
+                  <div class="metric-label">手续费估算</div>
+                </el-tooltip>
+                <div class="metric-value down">¥{{ backtestResult.total_fees_est.toLocaleString() }}</div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card shadow="never" class="metric-card">
+                <el-tooltip effect="dark" placement="top">
+                  <template #content>
+                    <div class="tooltip-detail">回测结束时的总资产（现金 + 持仓市值清算后）。</div>
+                  </template>
+                  <div class="metric-label">最终资金</div>
+                </el-tooltip>
+                <div class="metric-value" :class="backtestResult.final_capital >= backtestResult.initial_capital ? 'up' : 'down'">
+                  ¥{{ backtestResult.final_capital.toLocaleString() }}
+                </div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card shadow="never" class="metric-card">
+                <el-tooltip effect="dark" placement="top">
+                  <template #content>
+                    <div class="tooltip-detail">回测开始时的初始资金。</div>
+                  </template>
+                  <div class="metric-label">初始资金</div>
+                </el-tooltip>
+                <div class="metric-value">¥{{ backtestResult.initial_capital.toLocaleString() }}</div>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <!-- 信号类型统计 + 卖出原因统计 -->
+          <el-row :gutter="16" style="margin-top: 16px;">
+            <el-col :span="12">
+              <el-card shadow="never">
+                <template #header>
+                  <div class="card-header">
+                    <span>信号类型统计</span>
+                  </div>
                 </template>
-              </el-table-column>
-              <el-table-column prop="count" label="交易次数" width="120" />
-              <el-table-column prop="win_rate" label="胜率" width="120">
-                <template #default="{ row }">
-                  <span :class="['pct', row.win_rate >= 50 ? 'up' : 'down']">{{ row.win_rate.toFixed(2) }}%</span>
+                <el-table :data="signalStatsList" stripe style="width: 100%">
+                  <el-table-column prop="signal_type" label="信号类型" width="150">
+                    <template #default="{ row }">
+                      <el-tag :type="getSignalTypeTag(row.signal_type)" size="small">
+                        {{ row.signal_type }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="count" label="交易次数" width="120" />
+                  <el-table-column prop="win_rate" label="胜率" width="120">
+                    <template #default="{ row }">
+                      <span :class="['pct', row.win_rate >= 50 ? 'up' : 'down']">{{ row.win_rate.toFixed(2) }}%</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="avg_return" label="平均收益">
+                    <template #default="{ row }">
+                      <span :class="['pct', row.avg_return >= 0 ? 'up' : 'down']">
+                        {{ row.avg_return >= 0 ? '+' : '' }}{{ row.avg_return.toFixed(2) }}%
+                      </span>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-card>
+            </el-col>
+
+            <el-col :span="12">
+              <el-card shadow="never">
+                <template #header>
+                  <div class="card-header">
+                    <span>卖出原因统计</span>
+                  </div>
                 </template>
-              </el-table-column>
-              <el-table-column prop="avg_return" label="平均收益">
-                <template #default="{ row }">
-                  <span :class="['pct', row.avg_return >= 0 ? 'up' : 'down']">
-                    {{ row.avg_return >= 0 ? '+' : '' }}{{ row.avg_return.toFixed(2) }}%
-                  </span>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-card>
+                <el-table :data="sellReasonStatsList" stripe style="width: 100%">
+                  <el-table-column prop="sell_reason" label="卖出原因" width="150">
+                    <template #default="{ row }">
+                      <el-tag :type="getSellReasonTag(row.sell_reason)" size="small">
+                        {{ row.sell_reason }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="count" label="交易次数" width="120" />
+                  <el-table-column prop="win_rate" label="胜率" width="120">
+                    <template #default="{ row }">
+                      <span :class="['pct', row.win_rate >= 50 ? 'up' : 'down']">{{ row.win_rate.toFixed(2) }}%</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="avg_return" label="平均收益">
+                    <template #default="{ row }">
+                      <span :class="['pct', row.avg_return >= 0 ? 'up' : 'down']">
+                        {{ row.avg_return >= 0 ? '+' : '' }}{{ row.avg_return.toFixed(2) }}%
+                      </span>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-card>
+            </el-col>
+          </el-row>
 
           <!-- 盈利最多交易 -->
           <el-card shadow="never" style="margin-top: 16px;">
@@ -958,13 +844,12 @@ import { ElMessage } from 'element-plus'
 import {
   TrendCharts,
   InfoFilled,
-  Setting,
   Refresh,
   Search,
   List,
   DataLine,
   QuestionFilled,
-  ArrowRight
+  Position
 } from '@element-plus/icons-vue'
 import {
   screeningApi,
@@ -977,12 +862,152 @@ import { favoritesApi } from '@/api/favorites'
 
 const router = useRouter()
 
+const STORAGE_KEY = 'limit_up_pullback_scan_result'
+const BACKTEST_STORAGE_KEY = 'limit_up_pullback_backtest_result'
+
 const activeTab = ref<'scan' | 'backtest'>('scan')
 
 const loading = ref(false)
 const results = ref<LimitUpPullbackItem[]>([])
 const tookMs = ref(0)
 const hasSearched = ref(false)
+
+function saveScanResult() {
+  const data = {
+    results: results.value,
+    tookMs: tookMs.value,
+    scanParams: { ...params },
+    timestamp: Date.now()
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+  } catch (e) {
+    console.warn('Failed to save scan result to localStorage', e)
+  }
+}
+
+function loadScanResult() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const data = JSON.parse(stored)
+      if (data.results && data.results.length > 0) {
+        results.value = data.results
+        tookMs.value = data.tookMs || 0
+        if (data.scanParams) {
+          Object.assign(params, defaultParams, data.scanParams)
+        }
+        hasSearched.value = true
+        return true
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load scan result from localStorage', e)
+  }
+  return false
+}
+
+function clearScanResult() {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch (e) {
+    console.warn('Failed to clear scan result from localStorage', e)
+  }
+}
+
+function saveBacktestResult() {
+  if (!backtestResult.value) return
+  const data = {
+    backtestResult: backtestResult.value,
+    backtestParams: { ...backtestParams },
+    timestamp: Date.now()
+  }
+  try {
+    localStorage.setItem(BACKTEST_STORAGE_KEY, JSON.stringify(data))
+  } catch (e) {
+    console.warn('Failed to save backtest result to localStorage', e)
+  }
+}
+
+function loadBacktestResult() {
+  try {
+    const stored = localStorage.getItem(BACKTEST_STORAGE_KEY)
+    if (stored) {
+      const data = JSON.parse(stored)
+      if (data.backtestResult) {
+        backtestResult.value = data.backtestResult
+        if (data.backtestParams) {
+          Object.assign(backtestParams, defaultBacktestParams, data.backtestParams)
+        }
+        return true
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load backtest result from localStorage', e)
+  }
+  return false
+}
+
+function clearBacktestResult() {
+  try {
+    localStorage.removeItem(BACKTEST_STORAGE_KEY)
+  } catch (e) {
+    console.warn('Failed to clear backtest result from localStorage', e)
+  }
+}
+
+const evolutionSteps = [
+  {
+    phase: '阶段一：涨停建仓 · 强势启动',
+    signals: ['涨停板信号'],
+    desc: '主力用涨停板快速建仓或拉升，标志着股票进入强势状态。涨停板是市场地位和资金关注度的直接体现。筛选标准：近20日内有涨停板，且涨停当日放量（≥2倍均量），收盘价在10日线以上。操作建议：将涨停股纳入自选观察池，等待回调机会，不追高。',
+    risk: '观察期：只跟踪不买入，避免追高被套',
+    position: '空仓观察，纳入自选池',
+    action: '操作：发现涨停后加入自选，标记涨停日和涨停价，等待后续缩量回调机会'
+  },
+  {
+    phase: '阶段二：缩量洗盘 · 观察等待',
+    signals: ['缩量回调中', '底部观察'],
+    desc: '涨停后3-8天缩量回调，成交量逐步萎缩至涨停日的1/3以下，说明主力锁仓不动，散户恐慌抛售。回调期间收盘价基本在10日线上方，不有效跌破涨停启动位。操作建议：每日观察成交量变化和10日线支撑，地量出现时进入重点关注列表。',
+    risk: '低风险：仅观察，不建仓，等待明确信号',
+    position: '空仓观望，耐心等待洗盘结束信号',
+    action: '操作：成交量萎缩到涨停日1/3以下时进入底部观察，地量出现后准备好资金，随时准备介入'
+  },
+  {
+    phase: '阶段三：地量止跌 · 左侧潜伏',
+    signals: ['买点1：左侧潜伏'],
+    desc: '洗盘末端第3-5天出现地量（近20日最低量且≤涨停日1/3）+长下影线（实体比≥2倍），说明抛压衰竭，卖盘已出尽。这是左侧潜伏买点，博弈洗盘结束后的反弹。操作建议：地量日尾盘轻仓试探（20%-30%仓位），止损设在长下影线最低点下方，跌破则止损。',
+    risk: '中等风险：可能还有最后一跌，需严格止损',
+    position: '轻仓试探（20%-30%），左侧潜伏',
+    action: '买入：地量+长下影线当日尾盘买入20%；止损：跌破下影线最低点或亏损5%立即止损'
+  },
+  {
+    phase: '阶段四：放量突破 · 右侧加仓',
+    signals: ['买点2：右侧确认'],
+    desc: '放量（≥1.5倍均量）站上5日线和回调前高，5日线走平上翘且上穿10日线，上影线≤2.5%，确认洗盘结束、主升浪启动。这是最安全、性价比最高的买点，成功率远高于左侧。操作建议：确认突破后果断加仓至60%-80%仓位，这是主力拉升阶段，收益最快。',
+    risk: '低风险：趋势确认，顺势而为，成功率高',
+    position: '重仓参与（60%-80%），主升浪行情',
+    action: '买入：放量突破5日线和回调前高当日加仓至60%以上；止损：跌破10日线止损'
+  },
+  {
+    phase: '阶段五：动态止盈 · 止损离场',
+    signals: ['ATR止损', '10日止损', '时间止盈', '高位止盈', '移动止盈'],
+    desc: '买入后严格执行止损止盈纪律。止损优先级：ATR止损（买入价下方0.4倍ATR）优先，其次是10日线止损。止盈策略：8天时间止盈（8天不过高）、高位放量滞涨止盈、移动止盈（盈利>3%开启，5日线与高点下方1倍ATR取较高者）。操作建议：到止损位无条件卖出，到止盈位分批卖出，让利润奔跑。',
+    risk: '执行纪律：严格止损，保住本金；让利润奔跑，不提前下车',
+    position: '动态调整，盈利上移止盈位，亏损立即止损',
+    action: '止损：跌破ATR或10日线立即卖出；止盈：8天不过高减仓1/2，高位放量滞涨清仓，移动止盈跟随'
+  }
+]
+
+function getEvolutionSignalTag(type: string): string {
+  if (type.includes('涨停')) return 'danger'
+  if (type.includes('缩量') || type.includes('底部')) return 'info'
+  if (type.includes('买点1') || type.includes('左侧')) return 'warning'
+  if (type.includes('买点2') || type.includes('右侧')) return 'success'
+  if (type.includes('止损')) return 'danger'
+  if (type.includes('止盈')) return 'success'
+  return 'info'
+}
 
 // 回测相关状态
 const backtestLoading = ref(false)
@@ -991,8 +1016,10 @@ const backtestResult = ref<LimitUpPullbackBacktestResp | null>(null)
 const defaultBacktestParams = {
   start_date: '',
   end_date: '',
-  hold_days: 15,
-  top_n: 10
+  hold_days: 20,
+  top_n: 10,
+  min_score: 40,
+  limit: 50
 }
 
 const backtestParams = reactive<LimitUpPullbackBacktestReq>({ ...defaultBacktestParams })
@@ -1020,16 +1047,6 @@ const sellReasonStatsList = computed(() => {
 })
 
 const defaultParams = {
-  max_lookback_days: 15,
-  min_pullback_days: 2,
-  max_pullback_days: 8,
-  shrink_volume_ratio: 0.5,
-  min_shrink_days: 2,
-  above_ma10: true,
-  ground_volume_ratio: 0.35,
-  lower_shadow_ratio: 0.015,
-  breakout_ma5: true,
-  breakout_volume_ratio: 1.5,
   min_score: 40,
   limit: 50
 }
@@ -1038,6 +1055,12 @@ const params = reactive<LimitUpPullbackScanReq>({ ...defaultParams })
 
 const resetParams = () => {
   Object.assign(params, defaultParams)
+  ElMessage.info('参数已重置')
+}
+
+const resetBacktestParams = () => {
+  Object.assign(backtestParams, defaultBacktestParams)
+  ElMessage.info('回测参数已重置')
 }
 
 const doScan = async () => {
@@ -1050,6 +1073,7 @@ const doScan = async () => {
     const resp = await screeningApi.scanLimitUpPullback(params)
     results.value = resp.items
     tookMs.value = resp.took_ms || 0
+    saveScanResult()
 
     if (resp.items.length > 0) {
       ElMessage.success(`找到 ${resp.items.length} 只符合条件的股票`)
@@ -1092,6 +1116,7 @@ const doBacktest = async () => {
 
   backtestLoading.value = true
   backtestResult.value = null
+  clearBacktestResult()
   activeTab.value = 'backtest'
 
   try {
@@ -1099,20 +1124,12 @@ const doBacktest = async () => {
     const payload: LimitUpPullbackBacktestReq = {
       ...backtestParams,
       min_score: params.min_score,
-      max_lookback_days: params.max_lookback_days,
-      min_pullback_days: params.min_pullback_days,
-      max_pullback_days: params.max_pullback_days,
-      shrink_volume_ratio: params.shrink_volume_ratio,
-      min_shrink_days: params.min_shrink_days,
-      above_ma10: params.above_ma10,
-      ground_volume_ratio: params.ground_volume_ratio,
-      lower_shadow_ratio: params.lower_shadow_ratio,
-      breakout_ma5: params.breakout_ma5,
-      breakout_volume_ratio: params.breakout_volume_ratio
+      limit: params.limit
     }
 
     const resp = await screeningApi.backtestLimitUpPullback(payload, { timeout: 600000 })
     backtestResult.value = resp
+    saveBacktestResult()
 
     if (resp.total_trades > 0) {
       ElMessage.success(`回测完成，共 ${resp.total_trades} 笔交易，胜率 ${resp.win_rate.toFixed(2)}%`)
@@ -1158,14 +1175,14 @@ const getScoreColor = (score: number) => {
 }
 
 onMounted(() => {
-  // 页面加载时自动扫描一次
-  doScan()
+  loadScanResult()
+  loadBacktestResult()
 })
 </script>
 
 <style lang="scss" scoped>
 .limit-up-pullback {
-  padding: 20px;
+  padding: 16px;
 }
 
 .page-header {
@@ -1178,20 +1195,27 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 10px;
-    color: #303133;
+    color: var(--el-text-color-primary);
   }
 
   .page-description {
     margin: 0;
-    color: #909399;
+    color: var(--el-text-color-secondary);
     font-size: 14px;
   }
+}
+
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
 
   .header-actions {
     display: flex;
@@ -1208,7 +1232,7 @@ onMounted(() => {
     transition: all 0.2s;
 
     &:hover {
-      background-color: #f5f7fa;
+      background-color: var(--el-fill-color-light);
     }
 
     .step-number {
@@ -1229,33 +1253,176 @@ onMounted(() => {
       h4 {
         margin: 0 0 4px 0;
         font-size: 14px;
-        color: #303133;
+        color: var(--el-text-color-primary);
       }
 
       p {
         margin: 0;
         font-size: 12px;
-        color: #909399;
+        color: var(--el-text-color-secondary);
         line-height: 1.5;
       }
     }
   }
 }
 
-.params-form {
-  :deep(.el-form-item) {
-    margin-bottom: 16px;
+/* 信号演化路径 - 垂直时间轴 */
+.evolution-panel {
+  border-radius: 8px;
+}
+
+.evolution-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 0;
+}
+
+.evolution-step {
+  display: flex;
+  gap: 16px;
+  padding: 12px 0;
+  position: relative;
+}
+
+.step-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 40px;
+}
+
+.step-dot {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 15px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  z-index: 1;
+
+  &.phase-1 { background: linear-gradient(135deg, #f56c6c, #e6a23c); }
+  &.phase-2 { background: linear-gradient(135deg, #e6a23c, #f0c78a); }
+  &.phase-3 { background: linear-gradient(135deg, #67c23a, #85ce61); }
+  &.phase-4 { background: linear-gradient(135deg, #409eff, #66b1ff); }
+  &.phase-5 { background: linear-gradient(135deg, #909399, #a6a9ad); }
+}
+
+.step-line {
+  width: 2px;
+  flex: 1;
+  min-height: 30px;
+  background: linear-gradient(to bottom, var(--el-border-color-light), var(--el-border-color-lighter));
+}
+
+.step-content {
+  flex: 1;
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.step-phase-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.step-phase {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+
+.step-signals {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.step-signal-tag {
+  margin: 0;
+}
+
+.step-desc {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.7;
+  margin-bottom: 10px;
+}
+
+.step-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: var(--el-color-primary-light-9);
+  border-radius: 6px;
+  border-left: 3px solid var(--el-color-primary);
+
+  .step-action-text {
+    font-size: 12px;
+    color: var(--el-text-color-regular);
+    line-height: 1.6;
   }
 }
 
+.step-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.step-meta-tag {
+  margin: 0;
+}
+
+.params-form {
+  :deep(.el-form-item) {
+    margin-bottom: 18px;
+  }
+
+  :deep(.el-form-item__label) {
+    font-weight: 500;
+    color: var(--el-text-color-regular);
+  }
+}
+
+.params-panel {
+  border-radius: 8px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
 .result-panel {
+  border-radius: 8px;
+
   .empty-state {
     padding: 40px 0;
   }
 
   .stock-code, .stock-name {
     cursor: pointer;
-    color: #409eff;
+    color: var(--el-color-primary);
+    text-decoration: none;
+    font-size: 13px;
 
     &:hover {
       text-decoration: underline;
@@ -1263,25 +1430,27 @@ onMounted(() => {
   }
 
   .price {
+    font-family: 'Monaco', 'Consolas', monospace;
     font-weight: 500;
   }
 
   .pct {
+    font-family: 'Monaco', 'Consolas', monospace;
     font-weight: 500;
 
     &.up {
-      color: #f56c6c;
+      color: var(--el-color-danger);
     }
 
     &.down {
-      color: #67c23a;
+      color: var(--el-color-success);
     }
   }
 }
 
 .param-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   line-height: 1.4;
   margin-top: 2px;
 }
@@ -1289,7 +1458,7 @@ onMounted(() => {
 .strategy-detail {
   .strategy-overview {
     font-size: 14px;
-    color: #606266;
+    color: var(--el-text-color-regular);
     line-height: 1.6;
     margin-bottom: 0;
   }
@@ -1298,7 +1467,7 @@ onMounted(() => {
 .signal-types {
   .signal-desc {
     font-size: 11px;
-    color: #909399;
+    color: var(--el-text-color-secondary);
     line-height: 1.4;
     margin-top: 4px;
   }
@@ -1320,46 +1489,46 @@ onMounted(() => {
 
   .flow-arrow {
     font-size: 20px;
-    color: #c0c4cc;
+    color: var(--el-text-color-placeholder);
     flex-shrink: 0;
   }
 
   .signal-buy-point {
     padding: 8px 10px;
-    border: 1px dashed #e6a23c;
+    border: 1px dashed var(--el-color-warning);
     border-radius: 6px;
-    background: #fdf6ec;
+    background: var(--el-color-warning-light-9);
 
     .signal-desc {
-      color: #b88230;
+      color: var(--el-color-warning-dark-2);
     }
   }
 
   .signal-sell-point {
     padding: 8px 10px;
-    border: 1px dashed #f56c6c;
+    border: 1px dashed var(--el-color-danger);
     border-radius: 6px;
-    background: #fef0f0;
+    background: var(--el-color-danger-light-9);
 
     .signal-desc {
-      color: #c45656;
+      color: var(--el-color-danger-dark-2);
     }
   }
 
   .signal-watch {
     padding: 8px 10px;
-    border: 1px solid #ebeef5;
+    border: 1px solid var(--el-border-color-light);
     border-radius: 6px;
-    background: #fafafa;
+    background: var(--el-fill-color-lighter);
   }
 
   .signal-tip {
     margin-top: 12px;
     padding: 8px 12px;
-    background: #ecf5ff;
+    background: var(--el-color-primary-light-9);
     border-radius: 4px;
     font-size: 12px;
-    color: #409eff;
+    color: var(--el-color-primary);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1367,12 +1536,14 @@ onMounted(() => {
 }
 
 .table-link {
-  color: #409eff;
+  color: var(--el-color-primary);
   text-decoration: none;
   cursor: pointer;
+  margin-right: 8px;
+  font-size: 13px;
 
   &:hover {
-    color: #66b1ff;
+    color: var(--el-color-primary-light-3);
     text-decoration: underline;
   }
 }
@@ -1383,7 +1554,7 @@ onMounted(() => {
   justify-content: center;
   gap: 4px;
   font-size: 12px;
-  color: #606266;
+  color: var(--el-text-color-primary);
 }
 
 .date-item {
@@ -1391,7 +1562,7 @@ onMounted(() => {
 }
 
 .date-arrow {
-  color: #909399;
+  color: var(--el-text-color-placeholder);
   flex-shrink: 0;
 }
 
@@ -1403,32 +1574,32 @@ onMounted(() => {
   line-height: 1.4;
 
   &.warning {
-    background: #fdf6ec;
-    color: #e6a23c;
-    border: 1px solid #f5dab1;
+    background: var(--el-color-warning-light-9);
+    color: var(--el-color-warning);
+    border: 1px solid var(--el-color-warning-light-5);
   }
 
   &.success {
-    background: #f0f9eb;
-    color: #67c23a;
-    border: 1px solid #c2e7b0;
+    background: var(--el-color-success-light-9);
+    color: var(--el-color-success);
+    border: 1px solid var(--el-color-success-light-5);
   }
 
   &.danger {
-    background: #fef0f0;
-    color: #f56c6c;
-    border: 1px solid #fbc4c4;
+    background: var(--el-color-danger-light-9);
+    color: var(--el-color-danger);
+    border: 1px solid var(--el-color-danger-light-5);
   }
 
   &.info {
-    background: #f4f4f5;
-    color: #909399;
-    border: 1px solid #d3d4d6;
+    background: var(--el-color-info-light-9);
+    color: var(--el-color-info);
+    border: 1px solid var(--el-color-info-light-5);
   }
 }
 
 .empty-tag {
-  color: #c0c4cc;
+  color: var(--el-text-color-placeholder);
   font-size: 12px;
 }
 
@@ -1441,36 +1612,43 @@ onMounted(() => {
 .help-icon {
   margin-left: 4px;
   font-size: 14px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   cursor: help;
   vertical-align: middle;
-  
+
   &:hover {
-    color: #409eff;
+    color: var(--el-color-primary);
   }
 }
 
 .metric-card {
   text-align: center;
+  border-radius: 8px;
+
+  :deep(.el-card__body) {
+    padding: 16px 12px;
+  }
 
   .metric-label {
     font-size: 13px;
-    color: #909399;
-    margin-bottom: 8px;
+    color: var(--el-text-color-secondary);
+    margin-bottom: 10px;
   }
 
   .metric-value {
     font-size: 24px;
-    font-weight: 600;
-    color: #303133;
+    font-weight: 700;
+    font-family: 'Monaco', 'Consolas', monospace;
+    color: var(--el-text-color-primary);
     line-height: 1.2;
+    letter-spacing: -0.5px;
 
     &.up {
-      color: #f56c6c;
+      color: var(--el-color-danger);
     }
 
     &.down {
-      color: #67c23a;
+      color: var(--el-color-success);
     }
   }
 }

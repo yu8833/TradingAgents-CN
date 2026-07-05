@@ -56,18 +56,16 @@ export interface IndustriesResponse {
 }
 
 export interface LimitUpPullbackScanReq {
-  max_lookback_days?: number
-  min_pullback_days?: number
-  max_pullback_days?: number
-  shrink_volume_ratio?: number
-  min_shrink_days?: number
-  above_ma10?: boolean
-  ground_volume_ratio?: number
-  lower_shadow_ratio?: number
-  breakout_ma5?: boolean
-  breakout_volume_ratio?: number
   min_score?: number
+  top_n?: number
+  hold_days?: number
+  initial_capital?: number
   limit?: number
+}
+
+export interface LimitUpPullbackBacktestReq extends LimitUpPullbackScanReq {
+  start_date?: string
+  end_date?: string
 }
 
 export interface LimitUpPullbackItem {
@@ -115,24 +113,6 @@ export interface LimitUpPullbackScanResp {
   params?: Record<string, any>
 }
 
-export interface LimitUpPullbackBacktestReq {
-  start_date?: string
-  end_date?: string
-  hold_days?: number
-  top_n?: number
-  min_score?: number
-  max_lookback_days?: number
-  min_pullback_days?: number
-  max_pullback_days?: number
-  shrink_volume_ratio?: number
-  min_shrink_days?: number
-  above_ma10?: boolean
-  ground_volume_ratio?: number
-  lower_shadow_ratio?: number
-  breakout_ma5?: boolean
-  breakout_volume_ratio?: number
-}
-
 export interface BacktestTrade {
   code: string
   name: string
@@ -165,20 +145,147 @@ export interface LimitUpPullbackBacktestResp {
   avg_return: number
   avg_win: number
   avg_loss: number
+  profit_loss_ratio: number
   max_drawdown: number
+  sharpe_ratio: number
+  calmar_ratio: number
+  annualized_return: number
+  max_consecutive_losses: number
+  total_fees_est: number
   total_return: number
+  final_capital: number
+  initial_capital: number
   backtest_days: number
   signal_stats: Record<string, { count: number; win_rate: number; avg_return: number }>
   sell_reason_stats: Record<string, { count: number; win_rate: number; avg_return: number }>
   daily_results: Array<{
     date: string
-    selected_count: number
-    valid_count: number
-    avg_return: number
-    stocks: BacktestTrade[]
+    total_value: number
+    position_count: number
+    position_pct: number
+    cash: number
+    position_value: number
+    return_pct: number
+    drawdown: number
+    market_rise_ratio: number
   }>
   top_trades: BacktestTrade[]
   worst_trades: BacktestTrade[]
+  params?: Record<string, any>
+  took_ms?: number
+}
+
+// ===== 三买三卖策略 =====
+
+export interface ThreeBuysThreeSellsScanReq {
+  min_score?: number
+  top_n?: number
+  hold_days?: number
+  initial_capital?: number
+  max_position_pct?: number
+  limit?: number
+}
+
+export interface ThreeBuysThreeSellsItem {
+  code: string
+  name: string
+  industry: string
+  market_cap: number
+  close: number
+  pct_chg: number
+  bias60: number
+  ma60: number
+  ma60_direction: string
+  ma60_slope: number
+  stock_type: string
+  stock_type_label: string
+  signals: Array<{
+    type: string
+    type_label: string
+    trigger_price: number
+    position_pct?: number
+  }>
+  primary_signal_type: string
+  primary_signal_label: string
+  bottom_pickup: boolean
+  macd_divergence: string
+  volume_price_divergence: boolean
+  score: number
+  score_details: string[]
+  s1_threshold: number
+  stop_price: number
+  volume_ratio: number
+  atr14: number
+  dif: number
+  dea: number
+  macd_hist: number
+  dg_quadrant: string
+  dg_available: boolean
+  dg_g?: number
+  dg_dg?: number
+  market_trend: string
+  trigger_date: string
+}
+
+export interface ThreeBuysThreeSellsScanResp {
+  total: number
+  items: ThreeBuysThreeSellsItem[]
+  took_ms?: number
+  scanned_count?: number
+  params?: Record<string, any>
+  market_trend?: string
+}
+
+export interface ThreeBuysThreeSellsBacktestReq extends ThreeBuysThreeSellsScanReq {
+  start_date?: string
+  end_date?: string
+}
+
+export interface ThreeBuysThreeSellsTrade {
+  code: string
+  name: string
+  buy_date: string
+  sell_date: string
+  buy_price: number
+  sell_price: number
+  return_pct: number
+  score: number
+  signal_type: string
+  sell_reason: string
+  profit: number
+}
+
+export interface ThreeBuysThreeSellsBacktestResp {
+  total_trades: number
+  win_rate: number
+  avg_return: number
+  avg_win: number
+  avg_loss: number
+  profit_loss_ratio: number
+  max_drawdown: number
+  sharpe_ratio: number
+  calmar_ratio: number
+  annualized_return: number
+  max_consecutive_losses: number
+  total_fees_est: number
+  total_return: number
+  final_capital: number
+  initial_capital: number
+  backtest_days: number
+  signal_stats: Record<string, { count: number; win_rate: number; avg_return: number }>
+  sell_reason_stats: Record<string, { count: number; win_rate: number; avg_return: number }>
+  daily_results: Array<{
+    date: string
+    total_value: number
+    position_count: number
+    position_pct: number
+    cash: number
+    position_value: number
+    return_pct: number
+    drawdown: number
+  }>
+  top_trades: ThreeBuysThreeSellsTrade[]
+  worst_trades: ThreeBuysThreeSellsTrade[]
   params?: Record<string, any>
   took_ms?: number
 }
@@ -191,6 +298,10 @@ export const screeningApi = {
   scanLimitUpPullback: (payload: LimitUpPullbackScanReq, options?: { timeout?: number }) =>
     ApiClient.post<LimitUpPullbackScanResp>('/api/screening/limit-up-pullback/scan', payload, { timeout: options?.timeout ?? 180000 }),
   backtestLimitUpPullback: (payload: LimitUpPullbackBacktestReq, options?: { timeout?: number }) =>
-    ApiClient.post<LimitUpPullbackBacktestResp>('/api/screening/limit-up-pullback/backtest', payload, { timeout: options?.timeout ?? 300000 })
+    ApiClient.post<LimitUpPullbackBacktestResp>('/api/screening/limit-up-pullback/backtest', payload, { timeout: options?.timeout ?? 300000 }),
+  scanThreeBuysThreeSells: (payload: ThreeBuysThreeSellsScanReq, options?: { timeout?: number }) =>
+    ApiClient.post<ThreeBuysThreeSellsScanResp>('/api/screening/three-buys-three-sells/scan', payload, { timeout: options?.timeout ?? 180000 }),
+  backtestThreeBuysThreeSells: (payload: ThreeBuysThreeSellsBacktestReq, options?: { timeout?: number }) =>
+    ApiClient.post<ThreeBuysThreeSellsBacktestResp>('/api/screening/three-buys-three-sells/backtest', payload, { timeout: options?.timeout ?? 600000 })
 }
 

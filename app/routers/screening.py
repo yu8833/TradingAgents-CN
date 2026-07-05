@@ -343,19 +343,12 @@ async def get_industries(user: dict = Depends(get_current_user)):
 # ========== 涨停回调策略 ==========
 
 class LimitUpPullbackRequest(BaseModel):
-    """涨停回调策略请求参数"""
-    max_lookback_days: int = Field(15, ge=5, le=30, description="最多往前找多少天的涨停")
-    min_pullback_days: int = Field(2, ge=1, le=10, description="最少回调天数")
-    max_pullback_days: int = Field(8, ge=3, le=20, description="最多回调天数")
-    shrink_volume_ratio: float = Field(0.5, ge=0.1, le=1.0, description="缩量比例阈值")
-    min_shrink_days: int = Field(2, ge=1, le=10, description="最少缩量天数")
-    above_ma10: bool = Field(True, description="是否要求站上10日线")
-    ground_volume_ratio: float = Field(0.35, ge=0.1, le=1.0, description="地量比例阈值")
-    lower_shadow_ratio: float = Field(0.015, ge=0.001, le=0.1, description="下影线比例阈值")
-    breakout_ma5: bool = Field(False, description="是否要求突破5日线（右侧买点）")
-    breakout_volume_ratio: float = Field(1.5, ge=1.0, le=5.0, description="突破放量倍数")
+    """涨停回调策略请求参数（精简版：4个核心参数）"""
     min_score: int = Field(40, ge=0, le=100, description="最低评分阈值")
-    limit: int = Field(50, ge=1, le=200, description="返回数量限制")
+    top_n: int = Field(10, ge=1, le=50, description="回测时每次最多选股数")
+    hold_days: int = Field(20, ge=5, le=30, description="最大持有天数")
+    initial_capital: float = Field(1000000, ge=100000, description="初始资金")
+    limit: int = Field(50, ge=1, le=200, description="扫描返回数量限制")
 
 
 class LimitUpPullbackResponse(BaseModel):
@@ -408,23 +401,10 @@ async def scan_limit_up_pullback(
         raise HTTPException(status_code=500, detail=f"涨停回调扫描失败: {str(e)}")
 
 
-class LimitUpPullbackBacktestRequest(BaseModel):
+class LimitUpPullbackBacktestRequest(LimitUpPullbackRequest):
     """涨停回调策略回测请求参数"""
     start_date: Optional[str] = Field(None, description="回测开始日期 YYYY-MM-DD")
     end_date: Optional[str] = Field(None, description="回测结束日期 YYYY-MM-DD")
-    hold_days: int = Field(15, ge=3, le=30, description="最大持有天数（安全阀，实际按卖点规则卖出）")
-    top_n: int = Field(10, ge=1, le=100, description="每次选前N只股票")
-    min_score: int = Field(50, ge=0, le=100, description="最低评分阈值")
-    max_lookback_days: int = Field(15, ge=5, le=30, description="最多往前找多少天的涨停")
-    min_pullback_days: int = Field(2, ge=1, le=10, description="最少回调天数")
-    max_pullback_days: int = Field(8, ge=3, le=20, description="最多回调天数")
-    shrink_volume_ratio: float = Field(0.5, ge=0.1, le=1.0, description="缩量比例阈值")
-    min_shrink_days: int = Field(2, ge=1, le=10, description="最少缩量天数")
-    above_ma10: bool = Field(True, description="是否要求站上10日线")
-    ground_volume_ratio: float = Field(0.35, ge=0.1, le=1.0, description="地量比例阈值")
-    lower_shadow_ratio: float = Field(0.015, ge=0.001, le=0.1, description="下影线比例阈值")
-    breakout_ma5: bool = Field(True, description="是否要求突破5日线（右侧买点）")
-    breakout_volume_ratio: float = Field(1.5, ge=1.0, le=5.0, description="突破放量倍数")
 
 
 class LimitUpPullbackBacktestResponse(BaseModel):
@@ -434,8 +414,16 @@ class LimitUpPullbackBacktestResponse(BaseModel):
     avg_return: float = Field(..., description="平均收益(%)")
     avg_win: float = Field(..., description="平均盈利(%)")
     avg_loss: float = Field(..., description="平均亏损(%)")
+    profit_loss_ratio: float = Field(0.0, description="盈亏比")
     max_drawdown: float = Field(..., description="最大回撤(%)")
+    sharpe_ratio: float = Field(0.0, description="夏普比率")
+    calmar_ratio: float = Field(0.0, description="卡玛比率")
+    annualized_return: float = Field(0.0, description="年化收益率(%)")
+    max_consecutive_losses: int = Field(0, description="最大连续亏损次数")
+    total_fees_est: float = Field(0.0, description="估算总手续费")
     total_return: float = Field(..., description="总收益(%)")
+    final_capital: float = Field(..., description="最终资金")
+    initial_capital: float = Field(..., description="初始资金")
     backtest_days: int = Field(..., description="回测天数")
     signal_stats: dict = Field(default_factory=dict, description="按信号类型统计")
     sell_reason_stats: dict = Field(default_factory=dict, description="按卖出原因统计")
@@ -473,3 +461,134 @@ async def backtest_limit_up_pullback(
     except Exception as e:
         logger.error(f"[limit_up_pullback_backtest] 回测失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"涨停回调回测失败: {str(e)}")
+
+
+# ========== 三买三卖策略 ==========
+
+class ThreeBuysThreeSellsRequest(BaseModel):
+    """三买三卖策略请求参数（精简版：5个核心参数）"""
+    min_score: int = Field(50, ge=0, le=100, description="最低信号评分(100分制)")
+    top_n: int = Field(10, ge=1, le=50, description="回测时每次最多选股数")
+    hold_days: int = Field(60, ge=5, le=120, description="最大持有天数")
+    initial_capital: float = Field(1000000, ge=100000, description="初始资金")
+    max_position_pct: float = Field(0.15, ge=0.01, le=0.5, description="单股最大仓位比例")
+    limit: int = Field(50, ge=1, le=200, description="扫描返回数量限制")
+
+
+class ThreeBuysThreeSellsResponse(BaseModel):
+    """三买三卖策略响应"""
+    total: int = Field(..., description="符合条件的股票总数")
+    items: List[dict] = Field(..., description="股票列表")
+    took_ms: Optional[int] = Field(None, description="耗时(毫秒)")
+    scanned_count: Optional[int] = Field(None, description="扫描的股票总数")
+    params: Optional[dict] = Field(None, description="使用的参数")
+    market_trend: Optional[str] = Field(None, description="大盘趋势")
+
+
+@router.post("/three-buys-three-sells/scan", response_model=ThreeBuysThreeSellsResponse)
+async def scan_three_buys_three_sells(
+    req: ThreeBuysThreeSellsRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    三买三卖交易策略扫描
+
+    三类买点：
+    - B1 左侧买点: BIAS(60) ∈ [-30%, -20%]
+    - B2 突破买点: 放量 + 中阳 + 站上MA55&MA60
+    - B3 回踩买点: 回调至MA60附近 + 放量中阳支撑
+
+    三类卖点：
+    - S1 减仓预警: BIAS超阈值 或 GMMA慢组压缩>30%
+    - S2 主减仓: 连续2日跌破短期均线组
+    - S3 清仓卖出: 跌破MA55&MA60且MA60拐头向下
+
+    安全网: 单日跌幅 > ATR×3 → 强制减仓
+    """
+    try:
+        from app.services.three_buys_three_sells_service import get_three_buys_three_sells_service
+
+        service = get_three_buys_three_sells_service()
+        params = req.model_dump()
+
+        logger.info(f"[three_buys_three_sells] 扫描请求: {params}")
+
+        result = await service.scan_three_buys_three_sells(params)
+
+        logger.info(f"[three_buys_three_sells] 扫描完成: 找到 {result['total']} 只股票, "
+                   f"耗时 {result.get('took_ms')}ms")
+
+        return ThreeBuysThreeSellsResponse(
+            total=result["total"],
+            items=result["items"],
+            took_ms=result.get("took_ms"),
+            scanned_count=result.get("scanned_count"),
+            params=result.get("params"),
+            market_trend=result.get("market_trend")
+        )
+
+    except Exception as e:
+        logger.error(f"[three_buys_three_sells] 扫描失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"三买三卖扫描失败: {str(e)}")
+
+
+class ThreeBuysThreeSellsBacktestRequest(ThreeBuysThreeSellsRequest):
+    """三买三卖策略回测请求参数"""
+    start_date: Optional[str] = Field(None, description="回测开始日期 YYYY-MM-DD")
+    end_date: Optional[str] = Field(None, description="回测结束日期 YYYY-MM-DD")
+
+
+class ThreeBuysThreeSellsBacktestResponse(BaseModel):
+    """三买三卖策略回测响应"""
+    total_trades: int = Field(..., description="总交易次数")
+    win_rate: float = Field(..., description="胜率(%)")
+    avg_return: float = Field(..., description="平均收益(%)")
+    avg_win: float = Field(..., description="平均盈利(%)")
+    avg_loss: float = Field(..., description="平均亏损(%)")
+    profit_loss_ratio: float = Field(0.0, description="盈亏比")
+    max_drawdown: float = Field(..., description="最大回撤(%)")
+    sharpe_ratio: float = Field(0.0, description="夏普比率")
+    calmar_ratio: float = Field(0.0, description="卡玛比率")
+    annualized_return: float = Field(0.0, description="年化收益率(%)")
+    max_consecutive_losses: int = Field(0, description="最大连续亏损次数")
+    total_fees_est: float = Field(0.0, description="估算总手续费")
+    total_return: float = Field(..., description="总收益(%)")
+    final_capital: float = Field(..., description="最终资金")
+    initial_capital: float = Field(..., description="初始资金")
+    backtest_days: int = Field(..., description="回测天数")
+    signal_stats: dict = Field(default_factory=dict, description="按信号类型统计")
+    sell_reason_stats: dict = Field(default_factory=dict, description="按卖出原因统计")
+    daily_results: List[dict] = Field(default_factory=list, description="每日结果(前50天)")
+    top_trades: List[dict] = Field(default_factory=list, description="盈利最多的20笔")
+    worst_trades: List[dict] = Field(default_factory=list, description="亏损最多的20笔")
+    params: Optional[dict] = Field(None, description="使用的参数")
+    took_ms: Optional[int] = Field(None, description="耗时(毫秒)")
+
+
+@router.post("/three-buys-three-sells/backtest", response_model=ThreeBuysThreeSellsBacktestResponse)
+async def backtest_three_buys_three_sells(
+    req: ThreeBuysThreeSellsBacktestRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    三买三卖策略回测
+    """
+    try:
+        from app.services.three_buys_three_sells_service import get_three_buys_three_sells_service
+
+        service = get_three_buys_three_sells_service()
+        params = req.model_dump()
+
+        logger.info(f"[three_buys_three_sells_backtest] 回测请求: {params}")
+
+        result = await service.backtest(params)
+
+        logger.info(f"[three_buys_three_sells_backtest] 回测完成: {result['total_trades']} 笔交易, "
+                   f"胜率 {result['win_rate']}%, 平均收益 {result['avg_return']}%, "
+                   f"耗时 {result.get('took_ms')}ms")
+
+        return ThreeBuysThreeSellsBacktestResponse(**result)
+
+    except Exception as e:
+        logger.error(f"[three_buys_three_sells_backtest] 回测失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"三买三卖回测失败: {str(e)}")

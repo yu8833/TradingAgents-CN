@@ -114,6 +114,16 @@ const routes: RouteRecordRaw[] = [
           parentTitle: '选股',
           requiresAuth: true
         }
+      },
+      {
+        path: 'three-buys-three-sells',
+        name: 'ThreeBuysThreeSells',
+        component: () => import('@/views/Screening/ThreeBuysThreeSells.vue'),
+        meta: {
+          title: '三买三卖',
+          parentTitle: '选股',
+          requiresAuth: true
+        }
       }
     ]
   },

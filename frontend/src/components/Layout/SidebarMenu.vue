@@ -38,6 +38,7 @@
       </template>
       <el-menu-item index="/screening/common">常用策略</el-menu-item>
       <el-menu-item index="/screening/limit-up-pullback">涨停回调</el-menu-item>
+      <el-menu-item index="/screening/three-buys-three-sells">三买三卖</el-menu-item>
     </el-sub-menu>
 
     <el-menu-item index="/favorites">
