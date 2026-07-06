@@ -150,6 +150,111 @@ const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/vibe',
+    name: 'VibeResearch',
+    component: () => import('@/layouts/BasicLayout.vue'),
+    redirect: '/vibe/review/overview',
+    meta: {
+      title: '复盘',
+      icon: 'DataAnalysis',
+      requiresAuth: true,
+      transition: 'slide-up'
+    },
+    children: [
+      {
+        path: 'review/overview',
+        name: 'ReviewOverview',
+        component: () => import('@/views/Vibe/Review/Overview.vue'),
+        meta: {
+          title: '大盘看板',
+          parentTitle: '复盘',
+          requiresAuth: true
+        }
+      },
+      {
+        path: 'review/fundflow',
+        name: 'ReviewFundFlow',
+        component: () => import('@/views/Vibe/Review/FundFlow.vue'),
+        meta: {
+          title: '资金流向',
+          parentTitle: '复盘',
+          requiresAuth: true
+        }
+      },
+      {
+        path: 'review/emotion',
+        name: 'ReviewEmotion',
+        component: () => import('@/views/Vibe/Review/Emotion.vue'),
+        meta: {
+          title: '短线情绪',
+          parentTitle: '复盘',
+          requiresAuth: true
+        }
+      },
+      {
+        path: 'intel/radar',
+        name: 'IntelRadar',
+        component: () => import('@/views/Vibe/Intel/Radar.vue'),
+        meta: {
+          title: '赛道资讯',
+          parentTitle: '资讯',
+          requiresAuth: true
+        }
+      },
+      {
+        path: 'intel/filings',
+        name: 'IntelFilings',
+        component: () => import('@/views/Vibe/Intel/Filings.vue'),
+        meta: {
+          title: '个股公告',
+          parentTitle: '资讯',
+          requiresAuth: true
+        }
+      },
+      {
+        path: 'intel/news',
+        name: 'IntelNews',
+        component: () => import('@/views/Vibe/Intel/News.vue'),
+        meta: {
+          title: '个股新闻',
+          parentTitle: '资讯',
+          requiresAuth: true
+        }
+      },
+      {
+        path: 'sectors',
+        name: 'Sectors',
+        component: () => import('@/views/Vibe/Sectors/index.vue'),
+        meta: {
+          title: '全部板块',
+          parentTitle: '板块',
+          requiresAuth: true
+        }
+      },
+      {
+        path: 'sectors/:key',
+        name: 'SectorDetail',
+        component: () => import('@/views/Vibe/Sectors/Detail.vue'),
+        meta: {
+          title: '板块详情',
+          parentTitle: '板块',
+          hideInMenu: true,
+          requiresAuth: true
+        }
+      },
+      {
+        path: 'notes',
+        name: 'Notes',
+        component: () => import('@/views/Vibe/Notes/index.vue'),
+        meta: {
+          title: '研究记录',
+          parentTitle: '记录',
+          requiresAuth: true
+        }
+      }
+    ]
+  },
+  {
     path: '/learning',
     name: 'Learning',
     component: () => import('@/layouts/BasicLayout.vue'),
