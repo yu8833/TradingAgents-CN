@@ -69,15 +69,15 @@
       <a
         v-for="(item, idx) in newsList"
         :key="idx"
-        :href="item.新闻链接"
+        :href="item.url"
         target="_blank"
         rel="noopener noreferrer"
         class="news-item"
       >
-        <span class="news-time">{{ item.发布时间 }}</span>
+        <span class="news-time">{{ item.publish_time }}</span>
         <span class="news-stock">{{ item.stockName }}</span>
-        <span class="news-title">{{ item.新闻标题 }}</span>
-        <span class="news-source">{{ item.新闻来源 }}</span>
+        <span class="news-title">{{ item.title }}</span>
+        <span class="news-source">{{ item.source }}</span>
       </a>
     </div>
   </div>
@@ -159,7 +159,7 @@ const loadNews = async () => {
     const items = res.data || []
     newsList.value = items.map(it => ({
       ...it,
-      stockName: trackedStocks.value.find(s => s.code === it.stock_code)?.name || it.stock_code
+      stockName: trackedStocks.value.find(s => it.stock_codes?.includes(s.code))?.name || (it.stock_codes?.[0] || '')
     }))
   } finally {
     loading.value = false

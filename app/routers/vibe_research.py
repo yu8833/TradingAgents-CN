@@ -5,11 +5,12 @@ Vibe-Research 融合模块 API 路由
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import logging
 import json
 import os
 import asyncio
+from datetime import datetime, timedelta
 
 from app.core.response import ok
 from app.services.newsradar import get_radar_cached, fetch_radar
@@ -17,6 +18,7 @@ from app.services.market_overview import (
     get_overview, get_short_term_emotion, get_turnover_top, get_global_indices
 )
 from app.services import vibe_astock as astock
+from app.services.news_data_service import get_news_data_service, NewsQueryParams
 
 router = APIRouter(prefix="/api/vibe", tags=["Vibe-Research"])
 logger = logging.getLogger("webapi")
@@ -83,13 +85,15 @@ async def market_turnover_top():
 
 @router.get("/quotes")
 async def quotes(codes: str):
-    """批量个股实时行情（逗号分隔代码）"""
+    """批量个股实时行情（逗号分隔代码）- 统一行情服务"""
     try:
         code_list = [c.strip() for c in codes.split(",") if c.strip()]
         if not code_list:
             return ok([])
-        data = astock.tencent_quote(code_list)
-        # 转为前端友好的数组格式
+
+        from app.services.unified_quotes import get_unified_quotes
+        data = get_unified_quotes(code_list)
+
         out = []
         for code, q in data.items():
             item = {
@@ -106,11 +110,9 @@ async def quotes(codes: str):
                 "amount_wan": q.get("amount_wan"),
                 "turnover_pct": q.get("turnover_pct"),
             }
-            # 将数据校验结果返回给前端
             validation = q.get("_validation")
             if validation:
                 item["_validation"] = validation
-            # ST股票强制风险提示
             if q.get("is_st"):
                 if not validation:
                     item["_validation"] = {"passed": True, "errors": [], "warnings": []}
@@ -125,6 +127,124 @@ async def quotes(codes: str):
 # ---------------------------------------------------------------------------
 # 资讯模块
 # ---------------------------------------------------------------------------
+
+# ==================== 新闻数据统一服务辅助函数 ====================
+
+def _convert_vibe_news_to_standard(vibe_news: Dict[str, Any], symbol: str) -> Dict[str, Any]:
+    """将Vibe格式（中文键名）的新闻转换为标准格式（英文键名）"""
+    title = vibe_news.get("新闻标题", "")
+    url = vibe_news.get("新闻链接", "")
+    publish_time_str = vibe_news.get("发布时间", "")
+    source = vibe_news.get("文章来源", "") or vibe_news.get("新闻来源", "")
+
+    publish_time = None
+    if publish_time_str:
+        for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
+            try:
+                publish_time = datetime.strptime(publish_time_str, fmt)
+                break
+            except ValueError:
+                continue
+
+    title_lower = title.lower()
+    positive_words = ["增长", "上涨", "利好", "盈利", "成功", "突破", "创新", "优秀"]
+    negative_words = ["下跌", "亏损", "风险", "问题", "困难", "下滑", "减少", "警告"]
+    positive_count = sum(1 for w in positive_words if w in title_lower)
+    negative_count = sum(1 for w in negative_words if w in title_lower)
+    if positive_count > negative_count:
+        sentiment = "positive"
+    elif negative_count > positive_count:
+        sentiment = "negative"
+    else:
+        sentiment = "neutral"
+
+    high_importance_words = ["重大", "紧急", "突发", "年报", "业绩", "重组", "收购"]
+    medium_importance_words = ["公告", "通知", "变更", "调整", "计划"]
+    if any(w in title_lower for w in high_importance_words):
+        importance = "high"
+    elif any(w in title_lower for w in medium_importance_words):
+        importance = "medium"
+    else:
+        importance = "low"
+
+    category_keywords = {
+        "company_announcement": ["年报", "季报", "业绩", "财报", "公告"],
+        "policy_news": ["政策", "央行", "监管", "法规"],
+        "market_news": ["市场", "行情", "指数", "板块"],
+        "research_report": ["研报", "分析", "评级", "推荐"],
+    }
+    category = "general"
+    for cat, keywords in category_keywords.items():
+        if any(kw in title_lower for kw in keywords):
+            category = cat
+            break
+
+    return {
+        "symbol": symbol,
+        "title": title,
+        "content": "",
+        "summary": "",
+        "url": url,
+        "source": source,
+        "author": "",
+        "publish_time": publish_time,
+        "category": category,
+        "sentiment": sentiment,
+        "importance": importance,
+        "keywords": [],
+        "data_source": "eastmoney"
+    }
+
+
+def _convert_standard_news_to_vibe(standard_news: Dict[str, Any]) -> Dict[str, Any]:
+    """将标准格式（英文键名）的新闻转换为前端统一格式（英文键名）"""
+    publish_time = standard_news.get("publish_time")
+    if isinstance(publish_time, datetime):
+        publish_time_str = publish_time.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        publish_time_str = str(publish_time) if publish_time else ""
+
+    return {
+        "title": standard_news.get("title", ""),
+        "url": standard_news.get("url", ""),
+        "publish_time": publish_time_str,
+        "source": standard_news.get("source", ""),
+        "content": standard_news.get("summary", "") or (standard_news.get("content", "")[:200] if standard_news.get("content") else ""),
+        "symbol": standard_news.get("symbol", ""),
+        "stock_codes": [standard_news.get("symbol", "")] if standard_news.get("symbol") else [],
+    }
+
+
+async def _fetch_and_save_stock_news(code: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """从东财获取股票新闻并保存到数据库，返回统一格式的新闻列表"""
+    try:
+        vibe_news_list = astock.stock_news(code, limit)
+        if not vibe_news_list:
+            return []
+
+        standard_news_list = []
+        for vibe_news in vibe_news_list:
+            standard = _convert_vibe_news_to_standard(vibe_news, code)
+            if standard["title"] and standard["url"]:
+                standard_news_list.append(standard)
+
+        if standard_news_list:
+            try:
+                service = await get_news_data_service()
+                saved_count = await service.save_news_data(
+                    standard_news_list,
+                    data_source="eastmoney",
+                    market="CN"
+                )
+                logger.info(f"💾 股票 {code} 新闻保存到数据库: {saved_count}条")
+            except Exception as e:
+                logger.warning(f"⚠️ 保存新闻到数据库失败: {e}")
+
+        return [_convert_standard_news_to_vibe(n) for n in standard_news_list]
+    except Exception as e:
+        logger.error(f"❌ 获取并保存股票新闻失败 {code}: {e}")
+        return []
+
 
 @router.get("/radar")
 async def radar():
@@ -182,12 +302,40 @@ async def announcements_batch(codes: str, limit: int = 10):
 
 @router.get("/news")
 async def stock_news(code: str, limit: int = 20, since: str = ""):
-    """个股新闻（东财），支持 since 参数增量更新"""
+    """个股新闻（优先数据库，无数据时从东财实时获取并存入数据库），支持 since 参数增量更新"""
     try:
-        data = astock.stock_news(code, limit)
+        service = await get_news_data_service()
+
+        since_time = None
         if since:
-            data = [item for item in data if item.get("发布时间", "") > since]
-        return ok(data)
+            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
+                try:
+                    since_time = datetime.strptime(since, fmt)
+                    break
+                except ValueError:
+                    continue
+
+        params = NewsQueryParams(
+            symbol=code,
+            start_time=since_time,
+            limit=limit,
+            sort_by="publish_time",
+            sort_order=-1
+        )
+        db_news = await service.query_news(params)
+
+        if len(db_news) >= limit:
+            vibe_news = [_convert_standard_news_to_vibe(n) for n in db_news[:limit]]
+            logger.info(f"📰 股票 {code} 新闻从数据库获取: {len(vibe_news)}条")
+            return ok(vibe_news)
+
+        logger.info(f"📰 数据库新闻不足，从东财实时获取: {code}")
+        fresh_news = await _fetch_and_save_stock_news(code, max(limit, 30))
+
+        if since:
+            fresh_news = [item for item in fresh_news if item.get("publish_time", "") > since]
+
+        return ok(fresh_news[:limit])
     except Exception as e:
         logger.error(f"个股新闻异常: {e}")
         return ok([])
@@ -195,38 +343,83 @@ async def stock_news(code: str, limit: int = 20, since: str = ""):
 
 @router.get("/news/batch")
 async def news_batch(codes: str, limit: int = 10, since: str = ""):
-    """批量获取多只股票新闻（逗号分隔代码），自动去重，支持 since 增量更新"""
+    """批量获取多只股票新闻（优先数据库，无数据时实时获取），自动去重，支持 since 增量更新"""
     code_list = [c.strip() for c in codes.split(",") if c.strip()]
     if not code_list:
         return ok([])
 
-    # 使用标题去重，同一新闻关联多只股票时合并股票代码
-    seen = {}
-    for code in code_list[:20]:
-        try:
-            news = astock.stock_news(code, limit)
-            for item in news:
-                # since 过滤：只保留发布时间 > since 的新闻
-                if since and item.get("发布时间", "") <= since:
-                    continue
-                title = item.get("新闻标题", "").strip()
-                if not title:
-                    continue
-                if title not in seen:
-                    item["stock_codes"] = [code]
-                    seen[title] = item
-                else:
-                    if code not in seen[title]["stock_codes"]:
-                        seen[title]["stock_codes"].append(code)
-                    # 保留更早的发布时间
-                    if item.get("发布时间", "") < seen[title].get("发布时间", ""):
-                        seen[title]["发布时间"] = item["发布时间"]
-        except Exception as e:
-            logger.warning(f"获取股票 {code} 新闻失败: {e}")
+    try:
+        service = await get_news_data_service()
 
-    results = list(seen.values())
-    results.sort(key=lambda x: x.get("发布时间", ""), reverse=True)
-    return ok(results[:limit * 3])
+        since_time = None
+        if since:
+            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
+                try:
+                    since_time = datetime.strptime(since, fmt)
+                    break
+                except ValueError:
+                    continue
+
+        all_db_news = []
+        missing_codes = []
+
+        for code in code_list[:20]:
+            try:
+                params = NewsQueryParams(
+                    symbol=code,
+                    start_time=since_time,
+                    limit=limit,
+                    sort_by="publish_time",
+                    sort_order=-1
+                )
+                db_news = await service.query_news(params)
+                if len(db_news) >= limit:
+                    all_db_news.extend(db_news[:limit])
+                else:
+                    missing_codes.append(code)
+            except Exception as e:
+                logger.warning(f"从数据库获取股票 {code} 新闻失败: {e}")
+                missing_codes.append(code)
+
+        if missing_codes:
+            logger.info(f"📰 {len(missing_codes)}只股票新闻数据不足，从东财实时获取")
+            for code in missing_codes:
+                try:
+                    fresh_news = await _fetch_and_save_stock_news(code, max(limit, 20))
+                    if since:
+                        fresh_news = [item for item in fresh_news if item.get("publish_time", "") > since]
+                    all_db_news.extend([_convert_vibe_news_to_standard(n, code) for n in fresh_news])
+                except Exception as e:
+                    logger.warning(f"获取股票 {code} 新闻失败: {e}")
+
+        seen = {}
+        for news_item in all_db_news:
+            title = news_item.get("title", "").strip()
+            if not title:
+                continue
+            symbol = news_item.get("symbol", "")
+            if title not in seen:
+                vibe_item = _convert_standard_news_to_vibe(news_item)
+                vibe_item["stock_codes"] = [symbol] if symbol else []
+                seen[title] = vibe_item
+            else:
+                if symbol and symbol not in seen[title]["stock_codes"]:
+                    seen[title]["stock_codes"].append(symbol)
+                publish_time = news_item.get("publish_time")
+                if publish_time:
+                    if isinstance(publish_time, datetime):
+                        pt_str = publish_time.strftime("%Y-%m-%d %H:%M:%S")
+                    else:
+                        pt_str = str(publish_time)
+                    if pt_str < seen[title].get("publish_time", ""):
+                        seen[title]["publish_time"] = pt_str
+
+        results = list(seen.values())
+        results.sort(key=lambda x: x.get("publish_time", ""), reverse=True)
+        return ok(results[:limit * 3])
+    except Exception as e:
+        logger.error(f"批量新闻异常: {e}")
+        return ok([])
 
 
 # ---------------------------------------------------------------------------
@@ -383,3 +576,125 @@ async def chat(req: ChatRequest):
             yield json.dumps({"type": "error", "message": f"对话失败：{e}"}, ensure_ascii=False) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
+
+
+# ---------------------------------------------------------------------------
+# 用户数据模块（研究笔记 + 关注股票）
+# ---------------------------------------------------------------------------
+
+def _get_vibe_user_id(user_id: Optional[str] = None) -> str:
+    """获取Vibe模块用户ID，默认guest用户"""
+    return user_id or "guest"
+
+
+@router.get("/notes")
+async def get_notes(user_id: Optional[str] = None, kind: Optional[str] = None):
+    """获取研究笔记列表"""
+    try:
+        from app.services.research_notes_service import research_notes_service
+        uid = _get_vibe_user_id(user_id)
+        notes = await research_notes_service.get_user_notes(uid, kind)
+        return ok(notes)
+    except Exception as e:
+        logger.error(f"获取研究笔记异常: {e}")
+        return ok([])
+
+
+class AddNoteRequest(BaseModel):
+    kind: str
+    title: str
+    content: str
+    user_id: Optional[str] = None
+
+
+@router.post("/notes")
+async def add_note(req: AddNoteRequest):
+    """添加研究笔记"""
+    try:
+        from app.services.research_notes_service import research_notes_service
+        uid = _get_vibe_user_id(req.user_id)
+        note = await research_notes_service.add_note(uid, req.kind, req.title, req.content)
+        if note:
+            return ok(note)
+        else:
+            return ok(None)
+    except Exception as e:
+        logger.error(f"添加研究笔记异常: {e}")
+        return ok(None)
+
+
+@router.delete("/notes/{note_id}")
+async def delete_note(note_id: str, user_id: Optional[str] = None):
+    """删除研究笔记"""
+    try:
+        from app.services.research_notes_service import research_notes_service
+        uid = _get_vibe_user_id(user_id)
+        success = await research_notes_service.delete_note(uid, note_id)
+        return ok({"success": success})
+    except Exception as e:
+        logger.error(f"删除研究笔记异常: {e}")
+        return ok({"success": False})
+
+
+@router.delete("/notes")
+async def clear_notes(user_id: Optional[str] = None):
+    """清空研究笔记"""
+    try:
+        from app.services.research_notes_service import research_notes_service
+        uid = _get_vibe_user_id(user_id)
+        success = await research_notes_service.clear_notes(uid)
+        return ok({"success": success})
+    except Exception as e:
+        logger.error(f"清空研究笔记异常: {e}")
+        return ok({"success": False})
+
+
+@router.get("/watchlist")
+async def get_watchlist(user_id: Optional[str] = None):
+    """获取关注股票列表（简化版：仅返回股票代码列表，使用FavoritesService）"""
+    try:
+        from app.services.favorites_service import favorites_service
+        uid = _get_vibe_user_id(user_id)
+        favorites = await favorites_service.get_user_favorites(uid)
+        codes = [fav.get("stock_code", "") for fav in favorites if fav.get("stock_code")]
+        return ok(codes)
+    except Exception as e:
+        logger.error(f"获取关注股票异常: {e}")
+        return ok([])
+
+
+class WatchlistRequest(BaseModel):
+    code: str
+    name: Optional[str] = ""
+    user_id: Optional[str] = None
+
+
+@router.post("/watchlist")
+async def add_to_watchlist(req: WatchlistRequest):
+    """添加股票到关注列表"""
+    try:
+        from app.services.favorites_service import favorites_service
+        uid = _get_vibe_user_id(req.user_id)
+        success = await favorites_service.add_favorite(
+            user_id=uid,
+            stock_code=req.code,
+            stock_name=req.name or req.code,
+            market="A股"
+        )
+        return ok({"success": success})
+    except Exception as e:
+        logger.error(f"添加关注股票异常: {e}")
+        return ok({"success": False})
+
+
+@router.delete("/watchlist/{code}")
+async def remove_from_watchlist(code: str, user_id: Optional[str] = None):
+    """从关注列表移除股票"""
+    try:
+        from app.services.favorites_service import favorites_service
+        uid = _get_vibe_user_id(user_id)
+        success = await favorites_service.remove_favorite(uid, code)
+        return ok({"success": success})
+    except Exception as e:
+        logger.error(f"移除关注股票异常: {e}")
+        return ok({"success": False})

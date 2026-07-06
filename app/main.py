@@ -531,42 +531,56 @@ async def lifespan(app: FastAPI):
         # 新闻数据同步任务配置
         logger.info("🔄 配置新闻数据同步任务...")
 
-        from app.worker.akshare_sync_service import get_akshare_sync_service
         from app.worker.news_data_sync_service import get_news_data_sync_service
 
         async def run_news_sync():
-            """运行新闻同步任务 - 同步自选股新闻和市场新闻"""
+            """运行新闻同步任务 - 同步自选股新闻和市场新闻（统一使用NewsDataSyncService）"""
             try:
                 logger.info("📰 开始新闻数据同步（自选股 + 市场新闻）...")
                 
-                # 1. 同步自选股新闻
-                service = await get_akshare_sync_service()
-                result = await service.sync_news_data(
-                    symbols=None,
-                    max_news_per_stock=settings.NEWS_SYNC_MAX_PER_SOURCE,
-                    favorites_only=True
-                )
-                logger.info(
-                    f"✅ 自选股新闻同步完成: "
-                    f"处理{result['total_processed']}只, "
-                    f"成功{result['success_count']}只, "
-                    f"失败{result['error_count']}只, "
-                    f"新闻总数{result['news_count']}条"
-                )
-                
-                # 2. 同步市场新闻
                 sync_service = await get_news_data_sync_service()
-                market_result = await sync_service.sync_market_news(
-                    data_sources=["akshare", "tushare", "realtime"],
-                    hours_back=24,
-                    max_news_per_source=settings.NEWS_SYNC_MAX_PER_SOURCE
-                )
-                logger.info(
-                    f"✅ 市场新闻同步完成: "
-                    f"成功保存{market_result.successful_saves}条, "
-                    f"失败{market_result.failed_saves}条, "
-                    f"去重跳过{market_result.duplicate_skipped}条"
-                )
+                
+                # 1. 同步自选股新闻（多数据源）
+                try:
+                    from app.services.favorites_service import favorites_service
+                    favorites = await favorites_service.get_user_favorites("guest")
+                    favorite_codes = [fav.get("stock_code", "") for fav in favorites if fav.get("stock_code")]
+                    
+                    if favorite_codes:
+                        logger.info(f"📋 开始同步 {len(favorite_codes)} 只自选股新闻...")
+                        total_saved = 0
+                        for code in favorite_codes:
+                            try:
+                                result = await sync_service.sync_stock_news(
+                                    symbol=code,
+                                    data_sources=["akshare", "tushare", "realtime"],
+                                    hours_back=24,
+                                    max_news_per_source=settings.NEWS_SYNC_MAX_PER_SOURCE
+                                )
+                                total_saved += result.successful_saves
+                            except Exception as e:
+                                logger.warning(f"⚠️ 自选股 {code} 新闻同步失败: {e}")
+                        logger.info(f"✅ 自选股新闻同步完成: 共保存{total_saved}条")
+                    else:
+                        logger.info("ℹ️  没有自选股，跳过自选股新闻同步")
+                except Exception as e:
+                    logger.error(f"❌ 自选股新闻同步异常: {e}")
+                
+                # 2. 同步市场新闻（多数据源）
+                try:
+                    market_result = await sync_service.sync_market_news(
+                        data_sources=["akshare", "tushare", "realtime"],
+                        hours_back=24,
+                        max_news_per_source=settings.NEWS_SYNC_MAX_PER_SOURCE
+                    )
+                    logger.info(
+                        f"✅ 市场新闻同步完成: "
+                        f"成功保存{market_result.successful_saves}条, "
+                        f"失败{market_result.failed_saves}条, "
+                        f"去重跳过{market_result.duplicate_skipped}条"
+                    )
+                except Exception as e:
+                    logger.error(f"❌ 市场新闻同步异常: {e}")
                 
             except Exception as e:
                 logger.error(f"❌ 新闻同步失败: {e}", exc_info=True)
@@ -685,11 +699,11 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={
-            "error": {
-                "code": "INTERNAL_SERVER_ERROR",
-                "message": "Internal server error occurred",
-                "request_id": getattr(request.state, "request_id", None)
-            }
+            "success": False,
+            "data": None,
+            "message": "服务器内部错误，请稍后重试",
+            "code": 500,
+            "request_id": getattr(request.state, "request_id", None)
         }
     )
 

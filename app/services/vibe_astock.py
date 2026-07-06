@@ -103,6 +103,11 @@ def _validate_quote(code: str, q: dict) -> dict:
             if ratio > 2 or ratio < 0.5:
                 warnings.append(f"成交额与价格成交量不一致: 计算={expected_amount_wan:.2f}万, 实际={amount_wan:.2f}万")
 
+    # 6. 换手率合理性 (0~100%)
+    turnover = q.get("turnover_pct", 0)
+    if turnover < 0 or turnover > 100:
+        warnings.append(f"换手率异常: {turnover}%")
+
     # 5.3 换手率与流通盘的合理性
     if turnover > 0:
         float_shares = q.get("float_shares", 0)
@@ -110,11 +115,6 @@ def _validate_quote(code: str, q: dict) -> dict:
             calc_turnover = (volume / float_shares) * 100
             if abs(calc_turnover - turnover) > 5:
                 warnings.append(f"换手率与流通盘不一致: 计算={calc_turnover:.2f}%, 接口={turnover}%")
-
-    # 6. 换手率合理性 (0~100%)
-    turnover = q.get("turnover_pct", 0)
-    if turnover < 0 or turnover > 100:
-        warnings.append(f"换手率异常: {turnover}%")
 
     # 7. PE/PB 极值检测
     pe = q.get("pe_ttm", 0)

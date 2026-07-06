@@ -21,7 +21,8 @@ function getCacheKey(url: string, params?: Record<string, any>): string {
 async function cachedGet<T>(
   url: string,
   params?: Record<string, any>,
-  ttl: number = 60000
+  ttl: number = 60000,
+  config?: Record<string, any>
 ): Promise<T> {
   const key = getCacheKey(url, params)
   const hit = apiCache.get(key)
@@ -31,8 +32,8 @@ async function cachedGet<T>(
   }
   
   const result = params
-    ? await ApiClient.get<T>(url, params)
-    : await ApiClient.get<T>(url)
+    ? await ApiClient.get<T>(url, params, config)
+    : await ApiClient.get<T>(url, undefined, config)
   
   apiCache.set(key, { data: result, expire: Date.now() + ttl })
   
@@ -219,10 +220,13 @@ export interface Announcement {
 }
 
 export interface NewsItem {
-  新闻标题: string
-  新闻链接: string
-  发布时间: string
-  新闻来源: string
+  title: string
+  url: string
+  publish_time: string
+  source: string
+  content?: string
+  symbol?: string
+  stock_codes?: string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -250,15 +254,15 @@ export const vibeApi = {
   },
 
   async getMarketOverview() {
-    return cachedGet<MarketOverview>('/api/vibe/market/overview', undefined, 180000)
+    return cachedGet<MarketOverview>('/api/vibe/market/overview', undefined, 180000, { timeout: 15000 })
   },
 
   async getEmotion() {
-    return cachedGet<ShortTermEmotion>('/api/vibe/market/emotion', undefined, 180000)
+    return cachedGet<ShortTermEmotion>('/api/vibe/market/emotion', undefined, 180000, { timeout: 15000 })
   },
 
   async getTurnoverTop() {
-    return cachedGet<TurnoverTop>('/api/vibe/market/turnover-top', undefined, 180000)
+    return cachedGet<TurnoverTop>('/api/vibe/market/turnover-top', undefined, 180000, { timeout: 15000 })
   },
 
   // 资讯模块
@@ -283,11 +287,10 @@ export const vibeApi = {
     if (codes.length === 0) return { success: true, data: [] as (NewsItem & { stock_codes: string[] })[], message: '' }
     const key = getCacheKey('/api/vibe/news/batch', { codes: codes.join(','), limit })
     const cached = apiCache.get(key)
-    // 如果有缓存，使用 since 参数增量更新
     let since = ''
     if (cached && cached.data?.data?.length > 0) {
       const items = cached.data.data as (NewsItem & { stock_codes: string[] })[]
-      since = items[0]?.发布时间 || ''
+      since = items[0]?.publish_time || ''
     }
     const result = since
       ? await ApiClient.get<(NewsItem & { stock_codes: string[] })[]>(
@@ -296,20 +299,18 @@ export const vibeApi = {
       : await ApiClient.get<(NewsItem & { stock_codes: string[] })[]>(
           `/api/vibe/news/batch?codes=${codes.join(',')}&limit=${limit}`
         )
-    // 合并增量数据到缓存
     if (cached && result.data && result.data.length > 0) {
       const existing = cached.data.data as (NewsItem & { stock_codes: string[] })[]
       const merged = [...result.data, ...existing]
-      // 去重
       const seen = new Map<string, NewsItem & { stock_codes: string[] }>()
       for (const item of merged) {
-        const title = item['新闻标题']
+        const title = item.title
         if (!seen.has(title)) {
           seen.set(title, item)
         }
       }
       const deduped = Array.from(seen.values())
-      deduped.sort((a, b) => (b.发布时间 || '').localeCompare(a.发布时间 || ''))
+      deduped.sort((a, b) => (b.publish_time || '').localeCompare(a.publish_time || ''))
       cached.data.data = deduped
       cached.expire = Date.now() + 300000
       return cached.data
