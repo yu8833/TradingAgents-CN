@@ -20,6 +20,32 @@ from app.core.database import get_mongo_db
 logger = logging.getLogger(__name__)
 
 
+def _validate_limit_up_score(dimensions: Dict[str, float], actual_score: float,
+                               service_name: str = "limit_up_pullback") -> Dict[str, Any]:
+    """
+    涨停回调评分维度校验。
+    记录各维度得分，校验实际得分在[0,100]之间。
+    """
+    total_max = sum(dimensions.values())
+    result = {
+        "passed": True,
+        "errors": [],
+        "warnings": [],
+        "dimensions": dimensions,
+        "total_max": total_max,
+        "actual_score": round(actual_score, 1),
+    }
+    # 涨停回调各维度满分可能超过100（突破5日线是额外加分项），只警告不报错
+    if total_max > 100:
+        result["warnings"].append(f"维度满分总和超过100: {total_max}，突破5日线为额外加分")
+    if actual_score < 0 or actual_score > 100:
+        result["passed"] = False
+        result["errors"].append(f"实际得分越界: {actual_score:.1f} (应为0~100)")
+    if not result["passed"]:
+        logger.warning(f"[{service_name}] 评分校验失败: {result['errors']}")
+    return result
+
+
 class LimitUpPullbackService:
     """涨停回调选股策略服务"""
 
@@ -473,59 +499,76 @@ class LimitUpPullbackService:
         # ========== 综合评分（调整后） ==========
         score = 0.0
         score_details = []
+        dimensions: Dict[str, float] = {}
 
         # 缩量评分（20分）
         shrink_score = max(0, 20 * (1 - volume_shrink_ratio))
         score += shrink_score
+        dimensions["缩量"] = shrink_score
         score_details.append(f"缩量: {volume_shrink_ratio:.2%} → {shrink_score:.1f}分")
 
         # 回调幅度适中评分（15分）：回调5-15%最佳
+        depth_score = 0.0
         if 3 <= pullback_depth <= 20:
             depth_score = 15 - abs(pullback_depth - 10) * 1.5
             depth_score = max(0, depth_score)
             score += depth_score
-            score_details.append(f"回调幅度: {pullback_depth:.1f}% → {depth_score:.1f}分")
+        dimensions["回调幅度"] = depth_score
+        score_details.append(f"回调幅度: {pullback_depth:.1f}% → {depth_score:.1f}分")
 
         # 地量评分（15分）：满足涨停日比例或20日最低量
         if is_ground_volume:
-            ground_score = 15
+            ground_score = 15.0
             if is_20day_ground and ground_volume_ratio_val > ground_volume_ratio:
-                ground_score = 13  # 仅满足20日最低量，略低
+                ground_score = 13.0  # 仅满足20日最低量，略低
         else:
             ground_score = max(0, 15 * (1 - (ground_volume_ratio_val - ground_volume_ratio) / 0.5))
         score += ground_score
+        dimensions["地量"] = ground_score
         score_details.append(f"地量: {ground_volume_ratio_val:.2%} {'(20日最低)' if is_20day_ground else ''} → {ground_score:.1f}分")
 
         # 下影线评分（15分）：按实体比评分
+        shadow_score = 0.0
         if has_lower_shadow:
             shadow_score = min(15, 8 + shadow_to_body_ratio * 2)
             score += shadow_score
-            score_details.append(f"下影线: 实体比{shadow_to_body_ratio:.1f}倍 → {shadow_score:.1f}分")
+        dimensions["下影线"] = shadow_score
+        score_details.append(f"下影线: 实体比{shadow_to_body_ratio:.1f}倍 → {shadow_score:.1f}分")
 
         # 空间位置评分（10分）：地量日最低价在涨停板实体一半以上
+        space_score = 0.0
         if space_position_ok:
-            space_score = 10
+            space_score = 10.0
             score += space_score
-            score_details.append(f"空间位置: 未破涨停实体一半 → {space_score:.1f}分")
+        dimensions["空间位置"] = space_score
+        score_details.append(f"空间位置: 未破涨停实体一半 → {space_score:.1f}分")
 
         # 站上10日线评分（10分）
+        above_score = 0.0
         if above_ma10 and ma10[current_idx] is not None and current_close >= ma10[current_idx]:
-            above_score = 10
+            above_score = 10.0
             score += above_score
-            score_details.append(f"站上10日线 → {above_score:.1f}分")
+        dimensions["站上10日线"] = above_score
+        score_details.append(f"站上10日线 → {above_score:.1f}分")
 
         # 小阴小阳评分（5分）
         small_body_score = small_body_ratio * 5
         score += small_body_score
+        dimensions["小阴小阳"] = small_body_score
         score_details.append(f"小阴小阳: {small_body_ratio:.0%} → {small_body_score:.1f}分")
 
-        # 突破5日线加分（10分）：右侧确认是核心买点，权重提高
+        # 突破5日线加分（25分）：右侧确认是核心买点，权重提高
+        breakout_score = 0.0
         if ma5_breakout:
-            breakout_score = 25
+            breakout_score = 25.0
             score += breakout_score
             score_details.append(f"突破5日线: 放量{breakout_volume:.1f}倍 → {breakout_score:.1f}分")
         elif fake_breakout:
             score_details.append(f"假突破过滤: 上影线过长，不确认右侧")
+        dimensions["突破5日线"] = breakout_score
+
+        # 评分维度校验
+        score_validation = _validate_limit_up_score(dimensions, score)
 
         # 确定信号类型
         signal_type = "观察"
@@ -585,6 +628,7 @@ class LimitUpPullbackService:
             "signal_type": signal_type,
             "score": round(score, 1),
             "score_details": score_details,
+            "score_validation": score_validation,
             "upside_space": round(upside_space, 2),
             "ma5": round(ma5[current_idx], 2) if ma5[current_idx] else None,
             "ma10": round(ma10[current_idx], 2) if ma10[current_idx] else None,
@@ -1253,6 +1297,7 @@ class LimitUpPullbackService:
             "signal_type": signal_type,
             "score": round(float(score), 1),
             "score_details": score_details,
+            "score_validation": score_validation,
             "upside_space": round(float(upside_space), 2),
             "ma5": round(float(ma5[current_idx]), 2) if not np.isnan(ma5[current_idx]) else None,
             "ma10": round(float(ma10[current_idx]), 2) if not np.isnan(ma10[current_idx]) else None,

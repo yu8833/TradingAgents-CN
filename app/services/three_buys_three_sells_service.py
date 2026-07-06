@@ -38,6 +38,35 @@ from app.utils.technical_indicators import (
 logger = logging.getLogger(__name__)
 
 
+def _validate_score_dimensions(dimensions: Dict[str, int], actual_score: int,
+                                  bonus: int = 0, service_name: str = "") -> Dict[str, Any]:
+    """
+    评分维度加总校验。
+    确保各维度满分之和为100，实际得分在[0,100]之间。
+    """
+    total_max = sum(dimensions.values())
+    result = {
+        "passed": True,
+        "errors": [],
+        "warnings": [],
+        "dimensions": dimensions,
+        "total_max": total_max,
+        "actual_score": actual_score,
+        "bonus": bonus,
+    }
+    if total_max != 100:
+        result["passed"] = False
+        result["errors"].append(f"维度满分总和不等于100: {total_max}")
+    if actual_score < 0 or actual_score > 100:
+        result["passed"] = False
+        result["errors"].append(f"实际得分越界: {actual_score} (应为0~100)")
+    if bonus != 0 and abs(bonus) > 30:
+        result["warnings"].append(f"加分项异常: {bonus} (正常范围±30)")
+    if not result["passed"]:
+        logger.warning(f"[{service_name}] 评分校验失败: {result['errors']}")
+    return result
+
+
 def _to_native(value: Any) -> Any:
     """将 numpy 标量类型转换为 Python 原生类型"""
     if isinstance(value, (np.integer,)):
@@ -245,10 +274,32 @@ class ThreeBuysThreeSellsService:
             ma5, ma8, ma13, ma55, ma60, ma65
         )
 
-        stock_type = classify_stock_type(market_cap, industry)
+        stock_type = classify_stock_type(market_cap, industry, stock_name)
         s1_threshold = get_s1_threshold(stock_type)
 
         date_to_idx = {d: i for i, d in enumerate(dates)}
+
+        # 向量化预计算：所有日期的GMMA强多状态、个股趋势、过热指标
+        # GMMA强多: 快组多头(ma5>ma8>ma13) + 慢组多头(ma55>ma60>ma65) + 快组在慢组之上(ma13>ma55)
+        gmma_strong_bull_arr = (
+            (ma5[65:] > ma8[65:]) & (ma8[65:] > ma13[65:]) &
+            (ma55[65:] > ma60[65:]) & (ma60[65:] > ma65[65:]) &
+            (ma13[65:] > ma55[65:])
+        )
+        gmma_strong_bull = np.zeros(n, dtype=bool)
+        gmma_strong_bull[65:] = gmma_strong_bull_arr
+
+        # 个股趋势: up/down/neutral 预计算
+        above_ma60 = closes > ma60
+        ma20_above_ma60 = ma20 > ma60
+        slope_up = ma60_slope > 0
+        stock_trend_arr = np.full(n, "neutral", dtype=object)
+        stock_trend_arr[60:] = np.where(
+            (above_ma60[60:] & ma20_above_ma60[60:] & slope_up[60:]), "up",
+            np.where(
+                (~above_ma60[60:] & ~ma20_above_ma60[60:] & ~slope_up[60:]), "down", "neutral"
+            )
+        )
 
         return {
             "n": n,
@@ -278,7 +329,9 @@ class ThreeBuysThreeSellsService:
             "s1_threshold": s1_threshold,
             "market_cap": market_cap,
             "industry": industry,
-            "date_to_idx": date_to_idx
+            "date_to_idx": date_to_idx,
+            "gmma_strong_bull": gmma_strong_bull,
+            "stock_trend": stock_trend_arr,
         }
 
     # ===== 信号检测方法 =====
@@ -807,7 +860,7 @@ class ThreeBuysThreeSellsService:
         signal_type: str,
         market_trend: str,
         dg_info: Optional[dict]
-    ) -> Tuple[int, List[str]]:
+    ) -> Tuple[int, List[str], Dict[str, Any]]:
         """信号强度评分（100 分制）
 
         维度: 成交量 / K线涨幅 / 均线形态 / 大盘配合 / MACD
@@ -815,27 +868,34 @@ class ThreeBuysThreeSellsService:
         """
         score = 0
         details = []
+        dimensions: Dict[str, int] = {}
 
         # 成交量（20分）
         vr = ind["volume_ratio"][idx]
         if vr >= 2.0:
             score += 20
+            dimensions["成交量"] = 20
             details.append(f"成交量强(量比{vr:.1f})")
         elif vr >= 1.5:
             score += 10
+            dimensions["成交量"] = 10
             details.append(f"成交量达标(量比{vr:.1f})")
         else:
+            dimensions["成交量"] = 0
             details.append(f"成交量不足(量比{vr:.1f})")
 
         # K线涨幅（20分）
         body_pct = (ind["closes"][idx] - ind["opens"][idx]) / ind["opens"][idx] * 100 if ind["opens"][idx] > 0 else 0
         if body_pct >= 7:
             score += 20
+            dimensions["K线涨幅"] = 20
             details.append(f"大阳线(实体{body_pct:.1f}%)")
         elif body_pct >= 5:
             score += 10
+            dimensions["K线涨幅"] = 10
             details.append(f"中阳线(实体{body_pct:.1f}%)")
         else:
+            dimensions["K线涨幅"] = 0
             details.append(f"涨幅不足(实体{body_pct:.1f}%)")
 
         # 均线形态（20分）
@@ -843,9 +903,11 @@ class ThreeBuysThreeSellsService:
             sc = ind["short_convergence"][idx]
             if sc < 2.0:
                 score += 20
+                dimensions["均线形态"] = 20
                 details.append("短期均线粘合")
             else:
                 score += 10
+                dimensions["均线形态"] = 10
                 details.append("均线未完全粘合")
         else:
             # 多头排列检查
@@ -854,21 +916,27 @@ class ThreeBuysThreeSellsService:
             ma60 = ind["ma60"][idx]
             if ma5 > ma13 > ma60:
                 score += 20
+                dimensions["均线形态"] = 20
                 details.append("均线多头排列")
             elif ma5 > ma60:
                 score += 10
+                dimensions["均线形态"] = 10
                 details.append("短期均线在中期均线上方")
             else:
+                dimensions["均线形态"] = 0
                 details.append("均线形态偏弱")
 
         # 大盘配合（20分）
         if market_trend == "up":
             score += 20
+            dimensions["大盘配合"] = 20
             details.append("大盘上升趋势")
         elif market_trend == "neutral":
             score += 10
+            dimensions["大盘配合"] = 10
             details.append("大盘震荡")
         else:
+            dimensions["大盘配合"] = 0
             details.append("大盘下降趋势")
 
         # MACD（20分）
@@ -878,29 +946,43 @@ class ThreeBuysThreeSellsService:
         if hist > 0 and dif > dea:
             if hist > 0 and idx > 0 and ind["macd_hist"][idx - 1] <= 0:
                 score += 20
+                dimensions["MACD"] = 20
                 details.append("MACD金叉/柱转正")
             elif dif > dea:
                 score += 10
+                dimensions["MACD"] = 10
                 details.append("MACD DIF>DEA")
         else:
+            dimensions["MACD"] = 0
             details.append("MACD偏弱")
 
         # ΔG 加分
+        bonus = 0
         if dg_info and dg_info.get("available"):
             q = dg_info.get("quadrant", "")
             if q == "double_click":
-                score = min(100, score + 10)
+                bonus = 10
+                score = min(100, score + bonus)
                 details.append(f"ΔG 戴维斯双击")
             elif q == "reversal":
                 details.append(f"ΔG 困境反转")
             elif q == "peaking":
-                score = max(0, score - 10)
+                bonus = -10
+                score = max(0, score + bonus)
                 details.append(f"ΔG 景气见顶(减分)")
             elif q == "double_kill":
-                score = max(0, score - 30)
+                bonus = -30
+                score = max(0, score + bonus)
                 details.append(f"ΔG 戴维斯双杀(大减分)")
 
-        return min(100, score), details
+        final_score = min(100, score)
+
+        # 评分维度校验
+        validation = _validate_score_dimensions(
+            dimensions, final_score, bonus=bonus, service_name="three_buys_three_sells"
+        )
+
+        return final_score, details, validation
 
     # ===== 扫描 =====
 
@@ -973,14 +1055,14 @@ class ThreeBuysThreeSellsService:
                 # 检测所有信号
                 signals = []
                 # GMMA强多状态过滤：B2/B3/B2G需要强多状态确认，B1是左侧抄底不需要
-                gmma_strong_bull = self._check_gmma_strong_bull(ind, last_idx)
                 enable_gmma = params.get("enable_gmma_filter", True)
+                gmma_strong_bull = bool(ind["gmma_strong_bull"][last_idx])
 
                 # 过热过滤：过热状态下不新建仓
                 overheated = self._check_overheat(ind, last_idx, params)
 
                 # 个股趋势 + 大盘仓位矩阵
-                stock_trend = self._judge_stock_trend(ind, last_idx)
+                stock_trend = str(ind["stock_trend"][last_idx])
 
                 # B2/B3是突破信号，不打仓位折扣；B1按大盘趋势调节
                 b1_multiplier = self._get_b1_position_multiplier(market_trend, stock_trend, params)
@@ -1036,7 +1118,7 @@ class ThreeBuysThreeSellsService:
                 score_details = []
                 for sig in signals:
                     if sig["type"] in ("B1", "B2", "B3", "B2G"):
-                        score, score_details = self._calc_signal_score(
+                        score, score_details, _ = self._calc_signal_score(
                             ind, last_idx, sig["type"], market_trend, dg_info
                         )
                         primary_signal = sig
@@ -1071,7 +1153,7 @@ class ThreeBuysThreeSellsService:
                     "ma60_direction": ma60_dir,
                     "ma60_slope": round(float(ma60_slope), 2),
                     "stock_type": ind.get("stock_type", "normal"),
-                    "stock_type_label": {"normal": "普通股", "tech_leader": "科技龙头", "leader": "龙头股"}.get(ind.get("stock_type", "normal"), "普通股"),
+                    "stock_type_label": {"normal": "普通股", "tech_leader": "科技龙头", "leader": "龙头股", "st": "ST股票"}.get(ind.get("stock_type", "normal"), "普通股"),
                     "signals": signals,
                     "primary_signal_type": primary_signal["type"] if primary_signal else "",
                     "primary_signal_label": primary_signal["type_label"] if primary_signal else "",
@@ -1347,15 +1429,15 @@ class ThreeBuysThreeSellsService:
                 if idx < 60:
                     continue
 
-                # GMMA强多状态过滤
-                gmma_strong_bull = self._check_gmma_strong_bull(ind, idx)
+                # GMMA强多状态过滤（使用预计算数组）
                 enable_gmma = params.get("enable_gmma_filter", True)
+                gmma_strong_bull = bool(ind["gmma_strong_bull"][idx])
 
                 # 过热过滤
                 overheated = self._check_overheat(ind, idx, params)
 
-                # 个股趋势 + 大盘仓位矩阵
-                stock_trend = self._judge_stock_trend(ind, idx)
+                # 个股趋势 + 大盘仓位矩阵（使用预计算数组）
+                stock_trend = str(ind["stock_trend"][idx])
                 market_trend = market_trend_map.get(td, "neutral")
 
                 # B2/B3是突破信号，本身就是强趋势确认，下降市中数量自然减少，不打仓位折扣
@@ -1385,7 +1467,7 @@ class ThreeBuysThreeSellsService:
                     sig = check_fn()
                     if sig:
                         sig_type = sig["type"]
-                        score, details = self._calc_signal_score(
+                        score, details, score_validation = self._calc_signal_score(
                             ind, idx, sig_type, market_trend, dg_info
                         )
                         if score >= params["min_score"]:
@@ -1406,6 +1488,7 @@ class ThreeBuysThreeSellsService:
                                 "price": ind["closes"][idx],
                                 "score": score,
                                 "score_details": details,
+                                "score_validation": score_validation,
                                 "position_pct": adj_pos_pct,
                                 "idx": idx,
                                 "ind": ind

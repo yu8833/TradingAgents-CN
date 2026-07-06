@@ -141,14 +141,20 @@ const currentIndustry = computed<Industry | undefined>(() =>
   industries.value.find(i => i.key === currentKey.value)
 )
 
-const currentItems = computed<RadarItem[]>(() => {
-  if (!currentIndustry.value) return []
-  return [...currentIndustry.value.items].sort((a, b) => {
+const currentItems = ref<RadarItem[]>([])
+
+watch([currentKey, radarData], ([key]) => {
+  const industry = industries.value.find(i => i.key === key)
+  if (!industry) {
+    currentItems.value = []
+    return
+  }
+  currentItems.value = [...industry.items].sort((a, b) => {
     const ta = a.ts ?? new Date(a.time).getTime()
     const tb = b.ts ?? new Date(b.time).getTime()
     return (tb || 0) - (ta || 0)
   })
-})
+}, { immediate: true })
 
 // 今日要点总结
 type SummaryState = 'idle' | 'loading' | 'done'
@@ -223,8 +229,12 @@ const distillAll = async () => {
   distillAllLoading.value = true
   distillAllDone.value = 0
   distillAllTotal.value = targets.length
-  try {
-    for (const ind of targets) {
+
+  const semaphore = new Semaphore(3)
+
+  const tasks = targets.map(async (ind) => {
+    await semaphore.acquire()
+    try {
       let text = ''
       try {
         await vibeApi.chatStream(
@@ -243,11 +253,46 @@ const distillAll = async () => {
       } catch (e) {
         // 单个赛道失败继续下一个
       }
+    } finally {
       distillAllDone.value++
+      semaphore.release()
     }
+  })
+
+  try {
+    await Promise.all(tasks)
     ElMessage.success(`已提炼 ${distillAllDone.value} 个赛道并存入研究记录`)
   } finally {
     distillAllLoading.value = false
+  }
+}
+
+class Semaphore {
+  private count: number
+  private queue: (() => void)[] = []
+
+  constructor(initial: number) {
+    this.count = initial
+  }
+
+  async acquire(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.count > 0) {
+        this.count--
+        resolve()
+      } else {
+        this.queue.push(resolve)
+      }
+    })
+  }
+
+  release(): void {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift()
+      if (next) next()
+    } else {
+      this.count++
+    }
   }
 }
 

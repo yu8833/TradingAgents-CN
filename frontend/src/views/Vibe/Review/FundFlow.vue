@@ -77,15 +77,15 @@
           <el-table-column label="今日净流入(亿)" width="150" align="right">
             <template #default="{ row }">
               <span :class="colorClass(row.net)" class="net-cell">
-                {{ sign(row.net) }}{{ Math.abs(row.net / 1e8).toFixed(2) }}
+                {{ sign(row.net) }}{{ Math.abs(row.net).toFixed(2) }}
               </span>
             </template>
           </el-table-column>
           <el-table-column label="流入(亿)" width="110" align="right">
-            <template #default="{ row }">{{ (row.inflow / 1e8).toFixed(2) }}</template>
+            <template #default="{ row }">{{ (row.inflow || 0).toFixed(2) }}</template>
           </el-table-column>
           <el-table-column label="流出(亿)" width="110" align="right">
-            <template #default="{ row }">{{ (row.outflow / 1e8).toFixed(2) }}</template>
+            <template #default="{ row }">{{ (row.outflow || 0).toFixed(2) }}</template>
           </el-table-column>
           <el-table-column label="家数" width="90" align="right" prop="firms" />
         </el-table>
@@ -113,7 +113,7 @@
               <span class="pc" :class="colorClass(s.pct)">
                 {{ sign(s.pct) }}{{ Math.abs(s.pct).toFixed(2) }}%
               </span>
-              <span class="nt up">+{{ (s.net / 1e8).toFixed(2) }}亿</span>
+              <span class="nt up">+{{ (s.net || 0).toFixed(2) }}亿</span>
             </div>
             <div v-if="!inflowTop.length" class="empty">暂无数据</div>
           </div>
@@ -132,7 +132,7 @@
               <span class="pc" :class="colorClass(s.pct)">
                 {{ sign(s.pct) }}{{ Math.abs(s.pct).toFixed(2) }}%
               </span>
-              <span class="nt down">{{ (s.net / 1e8).toFixed(2) }}亿</span>
+              <span class="nt down">{{ (s.net || 0).toFixed(2) }}亿</span>
             </div>
             <div v-if="!outflowTop.length" class="empty">暂无数据</div>
           </div>

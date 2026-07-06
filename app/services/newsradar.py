@@ -5,6 +5,8 @@
 
 AI「今日要点」不在此模块——复用 Vibe-Research 的可插拔 AI 层（前端调 /api/chat，
 把某赛道资讯打包给用户自己的模型提炼）。本模块只出客观资讯。
+
+缓存策略：Redis + 本地文件二级缓存，TTL 5分钟（news级）。
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
+
+from app.services.cache_layer import cached as cache_layer_cached
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SOURCES_FILE = os.path.join(HERE, "news_sources.json")
@@ -176,3 +180,15 @@ def get_radar(force: bool = False) -> dict:
         return fetch_radar()
     except Exception:
         return skeleton()
+
+
+async def get_radar_cached(force: bool = False) -> dict:
+    """带Redis缓存的资讯雷达读取，优先Redis，兜底本地文件。"""
+    if force:
+        return fetch_radar()
+    return await cache_layer_cached(
+        "vibe:news_radar",
+        fetch_radar,
+        category="news",
+        valid=lambda v: bool(v.get("industries"))
+    )

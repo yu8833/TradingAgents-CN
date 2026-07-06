@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   TrendCharts,
@@ -279,6 +279,7 @@ function getSellReasonTag(reason: string): string {
 }
 
 function getStockTypeTag(type: string): string {
+  if (type === 'st') return 'danger'
   if (type.includes('底部') || type.includes('反转')) return 'success'
   if (type.includes('突破') || type.includes('启动')) return 'warning'
   if (type.includes('回踩') || type.includes('趋势')) return 'primary'
@@ -354,9 +355,30 @@ function formatMoney(val: number): string {
   return val.toFixed(2)
 }
 
+const windowHeight = ref(window.innerHeight)
+
+function handleResize() {
+  windowHeight.value = window.innerHeight
+}
+
+const tableHeight = computed(() => {
+  // 表格高度 = 视口高度 - 顶部空间（页眉+标题+参数区）
+  const headerOffset = 380
+  return Math.max(400, windowHeight.value - headerOffset)
+})
+
+const backtestTableHeight = computed(() => {
+  return Math.min(500, Math.max(300, windowHeight.value - 500))
+})
+
 onMounted(() => {
   loadScanResult()
   loadBacktestResult()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 
@@ -534,6 +556,8 @@ onMounted(() => {
             v-loading="loading"
             element-loading-text="扫描中..."
             stripe
+            :height="tableHeight"
+            row-key="code"
             style="width: 100%"
           >
             <el-table-column prop="code" label="代码" width="80" fixed="left">
@@ -1012,7 +1036,7 @@ onMounted(() => {
                 <span>盈利最多 Top 20</span>
               </div>
             </template>
-            <el-table :data="backtestResult.top_trades" stripe style="width: 100%" max-height="400">
+            <el-table :data="backtestResult.top_trades" stripe style="width: 100%" :height="backtestTableHeight" row-key="buy_date+code">
               <el-table-column prop="code" label="代码" width="80" />
               <el-table-column prop="name" label="名称" width="100" />
               <el-table-column prop="buy_date" label="买入日期" width="120" />
@@ -1052,7 +1076,7 @@ onMounted(() => {
                 <span>亏损最多 Top 20</span>
               </div>
             </template>
-            <el-table :data="backtestResult.worst_trades" stripe style="width: 100%" max-height="400">
+            <el-table :data="backtestResult.worst_trades" stripe style="width: 100%" :height="backtestTableHeight" row-key="buy_date+code">
               <el-table-column prop="code" label="代码" width="80" />
               <el-table-column prop="name" label="名称" width="100" />
               <el-table-column prop="buy_date" label="买入日期" width="120" />

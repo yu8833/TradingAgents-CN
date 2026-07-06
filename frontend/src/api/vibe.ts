@@ -1,6 +1,64 @@
 import { ApiClient } from './request'
 
 // ---------------------------------------------------------------------------
+// API 缓存（保证数据及时的前提下减少重复请求）
+// ---------------------------------------------------------------------------
+
+interface CacheEntry {
+  data: any
+  expire: number
+}
+
+const apiCache = new Map<string, CacheEntry>()
+const MAX_CACHE_SIZE = 100
+
+function getCacheKey(url: string, params?: Record<string, any>): string {
+  if (!params) return url
+  const sortedParams = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&')
+  return `${url}?${sortedParams}`
+}
+
+async function cachedGet<T>(
+  url: string,
+  params?: Record<string, any>,
+  ttl: number = 60000
+): Promise<T> {
+  const key = getCacheKey(url, params)
+  const hit = apiCache.get(key)
+  
+  if (hit && hit.expire > Date.now()) {
+    return hit.data as T
+  }
+  
+  const result = params
+    ? await ApiClient.get<T>(url, params)
+    : await ApiClient.get<T>(url)
+  
+  apiCache.set(key, { data: result, expire: Date.now() + ttl })
+  
+  if (apiCache.size > MAX_CACHE_SIZE) {
+    const oldestKey = Array.from(apiCache.keys()).sort(
+      (a, b) => apiCache.get(a)!.expire - apiCache.get(b)!.expire
+    )[0]
+    apiCache.delete(oldestKey)
+  }
+  
+  return result
+}
+
+function clearCache(pattern?: string) {
+  if (!pattern) {
+    apiCache.clear()
+    return
+  }
+  for (const key of apiCache.keys()) {
+    if (key.includes(pattern)) {
+      apiCache.delete(key)
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 类型定义
 // ---------------------------------------------------------------------------
 
@@ -184,31 +242,32 @@ const MAX_WATCHLIST = 20
 export const vibeApi = {
   // 复盘模块
   async getIndices() {
-    return ApiClient.get<IndexQuote[]>('/api/vibe/indices')
+    return cachedGet<IndexQuote[]>('/api/vibe/indices', undefined, 30000)
   },
 
   async getGlobalIndices() {
-    return ApiClient.get<GlobalIndex[]>('/api/vibe/global-indices')
+    return cachedGet<GlobalIndex[]>('/api/vibe/global-indices', undefined, 600000)
   },
 
   async getMarketOverview() {
-    return ApiClient.get<MarketOverview>('/api/vibe/market/overview')
+    return cachedGet<MarketOverview>('/api/vibe/market/overview', undefined, 180000)
   },
 
   async getEmotion() {
-    return ApiClient.get<ShortTermEmotion>('/api/vibe/market/emotion')
+    return cachedGet<ShortTermEmotion>('/api/vibe/market/emotion', undefined, 180000)
   },
 
   async getTurnoverTop() {
-    return ApiClient.get<TurnoverTop>('/api/vibe/market/turnover-top')
+    return cachedGet<TurnoverTop>('/api/vibe/market/turnover-top', undefined, 180000)
   },
 
   // 资讯模块
   async getRadar() {
-    return ApiClient.get<RadarData>('/api/vibe/radar')
+    return cachedGet<RadarData>('/api/vibe/radar', undefined, 3600000)
   },
 
   async refreshRadar() {
+    clearCache('/api/vibe/radar')
     return ApiClient.post<RadarData>('/api/vibe/radar/refresh')
   },
 
@@ -220,15 +279,67 @@ export const vibeApi = {
     return ApiClient.get<NewsItem[]>(`/api/vibe/news?code=${code}&limit=${limit}`)
   },
 
+  async getNewsBatch(codes: string[], limit = 10) {
+    if (codes.length === 0) return { success: true, data: [] as (NewsItem & { stock_codes: string[] })[], message: '' }
+    const key = getCacheKey('/api/vibe/news/batch', { codes: codes.join(','), limit })
+    const cached = apiCache.get(key)
+    // 如果有缓存，使用 since 参数增量更新
+    let since = ''
+    if (cached && cached.data?.data?.length > 0) {
+      const items = cached.data.data as (NewsItem & { stock_codes: string[] })[]
+      since = items[0]?.发布时间 || ''
+    }
+    const result = since
+      ? await ApiClient.get<(NewsItem & { stock_codes: string[] })[]>(
+          `/api/vibe/news/batch?codes=${codes.join(',')}&limit=${limit}&since=${encodeURIComponent(since)}`
+        )
+      : await ApiClient.get<(NewsItem & { stock_codes: string[] })[]>(
+          `/api/vibe/news/batch?codes=${codes.join(',')}&limit=${limit}`
+        )
+    // 合并增量数据到缓存
+    if (cached && result.data && result.data.length > 0) {
+      const existing = cached.data.data as (NewsItem & { stock_codes: string[] })[]
+      const merged = [...result.data, ...existing]
+      // 去重
+      const seen = new Map<string, NewsItem & { stock_codes: string[] }>()
+      for (const item of merged) {
+        const title = item['新闻标题']
+        if (!seen.has(title)) {
+          seen.set(title, item)
+        }
+      }
+      const deduped = Array.from(seen.values())
+      deduped.sort((a, b) => (b.发布时间 || '').localeCompare(a.发布时间 || ''))
+      cached.data.data = deduped
+      cached.expire = Date.now() + 300000
+      return cached.data
+    }
+    apiCache.set(key, { data: result, expire: Date.now() + 300000 })
+    return result
+  },
+
+  async getAnnouncementsBatch(codes: string[], limit = 10) {
+    if (codes.length === 0) return { success: true, data: [] as (Announcement & { stock_code: string })[], message: '' }
+    return cachedGet<(Announcement & { stock_code: string })[]>(
+      '/api/vibe/announcements/batch',
+      { codes: codes.join(','), limit },
+      300000
+    )
+  },
+
   // 板块模块
   async getSectors() {
-    return ApiClient.get<SectorsData>('/api/vibe/sectors')
+    return cachedGet<SectorsData>('/api/vibe/sectors', undefined, 3600000)
   },
 
   // 批量行情
   async getQuotes(codes: string[]) {
     if (codes.length === 0) return { success: true, data: [] as StockQuote[], message: '' }
-    return ApiClient.get<StockQuote[]>(`/api/vibe/quotes?codes=${codes.join(',')}`)
+    return cachedGet<StockQuote[]>(
+      '/api/vibe/quotes',
+      { codes: codes.join(',') },
+      30000
+    )
   },
 
   // AI 对话（流式 NDJSON）
@@ -240,41 +351,48 @@ export const vibeApi = {
     signal?: AbortSignal
   ): Promise<void> {
     const token = localStorage.getItem('token') || ''
-    const resp = await fetch('/api/vibe/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ messages, context }),
-      signal,
-    })
+    const controller = new AbortController()
+    const combinedSignal = signal || controller.signal
 
-    if (!resp.ok) {
-      throw new Error(`请求失败: ${resp.status}`)
-    }
+    try {
+      const resp = await fetch('/api/vibe/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ messages, context }),
+        signal: combinedSignal,
+      })
 
-    const reader = resp.body!.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
+      if (!resp.ok) {
+        throw new Error(`请求失败: ${resp.status}`)
+      }
 
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop() ?? ''
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-        try {
-          const ev = JSON.parse(trimmed)
-          if (ev.type === 'delta') onDelta(ev.text)
-          else if (ev.type === 'error' && onError) onError(ev.message)
-        } catch {
-          // ignore parse errors
+      const reader = resp.body!.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+          try {
+            const ev = JSON.parse(trimmed)
+            if (ev.type === 'delta') onDelta(ev.text)
+            else if (ev.type === 'error' && onError) onError(ev.message)
+          } catch {
+            // ignore parse errors
+          }
         }
       }
+    } finally {
+      controller.abort()
     }
   },
 

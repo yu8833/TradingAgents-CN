@@ -1,33 +1,20 @@
 """市场总览数据层 —— 市场情绪 + 板块资金流（板块/大盘级公开数据，不涉个股推荐）。
 
-省流量：全站共享一份缓存（TTL 默认 5 分钟），多个用户/多次打开只抓一次；
-盘中 5 分钟刷新足够，非交易时段数据本就不变。数据源全免费、无 key。
+省流量：全站共享一份缓存（Redis + 内存二级缓存），多个用户/多次打开只抓一次；
+盘中分级TTL：大盘/板块 3分钟，实时行情 30秒，新闻 5分钟；
+非交易时段自动延长TTL，减少数据源压力。数据源全免费、无 key。
 """
 
 from __future__ import annotations
 
-import time
 from collections import Counter
 from datetime import datetime, timezone, timedelta
 
 from app.services import vibe_astock as astock
 from app.services import vibe_gstock as gstock
+from app.services.cache_layer import cached
 
 BEIJING = timezone(timedelta(hours=8))
-_CACHE: dict = {}
-_TTL = 300  # 5 分钟；全站共享，省数据源压力
-
-
-def _cached(key: str, fn, valid=bool):
-    """TTL 缓存。数据源故障的空结果不缓存（valid 判否），下次请求直接重试。"""
-    now = time.time()
-    hit = _CACHE.get(key)
-    if hit and now - hit[0] < _TTL:
-        return hit[1]
-    val = fn()
-    if valid(val):
-        _CACHE[key] = (now, val)
-    return val
 
 
 def _num(v) -> int:
@@ -89,15 +76,19 @@ def _sectors() -> list[dict]:
     return out
 
 
-def get_overview() -> dict:
-    """市场情绪 + 板块资金（含缓存）。资金轮动由前端从 sectors 头尾取。"""
+async def get_overview() -> dict:
+    """市场情绪 + 板块资金（Redis缓存，大盘/板块级 TTL）。资金轮动由前端从 sectors 头尾取。"""
     def build():
         return {
             "sentiment": _sentiment(),
             "sectors": _sectors(),
             "updated": datetime.now(BEIJING).strftime("%Y-%m-%d %H:%M"),
         }
-    return _cached("overview", build, valid=lambda v: bool(v.get("sentiment") or v.get("sectors")))
+    return await cached(
+        "vibe:market_overview", build,
+        category="market",
+        valid=lambda v: bool(v.get("sentiment") or v.get("sectors"))
+    )
 
 
 def _emotion() -> dict:
@@ -166,21 +157,25 @@ def _emotion() -> dict:
     }
 
 
-def get_short_term_emotion() -> dict:
-    """短线情绪（含缓存，5 分钟）。"""
-    return _cached("emotion", _emotion)
+async def get_short_term_emotion() -> dict:
+    """短线情绪（Redis缓存，market级TTL）。"""
+    return await cached("vibe:short_term_emotion", _emotion, category="market")
 
 
-def get_turnover_top() -> dict:
-    """全市场成交额榜 Top20（客观公开榜单，含缓存 5 分钟）。"""
+async def get_turnover_top() -> dict:
+    """全市场成交额榜 Top20（客观公开榜单，Redis缓存 market 级TTL）。"""
     def build():
         return {
             "stocks": astock.market_turnover_rank(20),
             "updated": datetime.now(BEIJING).strftime("%Y-%m-%d %H:%M"),
         }
-    return _cached("turnover_top", build, valid=lambda v: bool(v.get("stocks")))
+    return await cached(
+        "vibe:turnover_top", build,
+        category="market",
+        valid=lambda v: bool(v.get("stocks"))
+    )
 
 
-def get_global_indices() -> list[dict]:
-    """全球指数快照（美股 / 港股，含缓存 5 分钟）。空结果不缓存。"""
-    return _cached("global_indices", gstock.global_indices, valid=bool)
+async def get_global_indices() -> list[dict]:
+    """全球指数快照（美股 / 港股，Redis缓存 news 级TTL）。空结果不缓存。"""
+    return await cached("vibe:global_indices", gstock.global_indices, category="news", valid=bool)

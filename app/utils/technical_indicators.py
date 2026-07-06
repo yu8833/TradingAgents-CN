@@ -328,25 +328,31 @@ def calc_strong_bull_duration_np(
 
 
 def classify_stock_type(
-    market_cap: float, industry: str = "") -> str:
-    """判断股票类型（用于 S1 乖离率阈值）
+    market_cap: float, industry: str = "", name: str = "") -> str:
+    """判断股票类型（用于 S1 乖离率阈值和风险预警）
 
     高辨识度龙头: 行业绝对龙头，市值 >= 2000 亿科技股或 >= 5000 亿任何行业
     科技龙头: 科技行业且市值 > 500 亿
+    ST股票: 名称包含 ST、*ST、SST、S*ST
     普通股: 其余
 
     Args:
         market_cap: 总市值（亿元）
         industry: 行业名称
+        name: 股票名称
 
     Returns:
-        'leader' | 'tech_leader' | 'normal'
+        'leader' | 'tech_leader' | 'st' | 'normal'
     """
     tech_industries = [
         "半导体", "芯片", "电子", "计算机", "软件", "互联网",
         "通信", "5G", "人工智能", "AI", "新能源", "光伏", "锂电",
         "生物医药", "创新药", "医疗"
     ]
+
+    name_upper = (name or "").upper()
+    if "ST" in name_upper:
+        return "st"
 
     is_tech = any(t in (industry or "") for t in tech_industries)
 
@@ -363,7 +369,7 @@ def get_s1_threshold(stock_type: str) -> float:
     """根据股票类型获取 S1 乖离率阈值（百分比）
 
     Args:
-        stock_type: 'normal' | 'tech_leader' | 'leader'
+        stock_type: 'normal' | 'tech_leader' | 'leader' | 'st'
 
     Returns:
         S1 BIAS 阈值（%），如 30.0 表示 +30%
@@ -371,7 +377,8 @@ def get_s1_threshold(stock_type: str) -> float:
     thresholds = {
         "normal": 30.0,
         "tech_leader": 65.0,
-        "leader": 100.0
+        "leader": 100.0,
+        "st": 20.0
     }
     return thresholds.get(stock_type, 30.0)
 

@@ -32,6 +32,107 @@ def get_prefix(code: str) -> str:
     return "sz"
 
 
+def _get_limit_pct(code: str) -> float:
+    """根据代码返回涨跌停限制百分比。"""
+    if code.startswith(("300", "301", "688", "689")):
+        return 20.0
+    if code.startswith(("8", "43", "83", "87", "92")):
+        return 30.0
+    return 10.0
+
+
+def _validate_quote(code: str, q: dict) -> dict:
+    """
+    校验行情数据合理性。
+    返回带有 _validation 字段的 quote，_validation.passed=False 表示数据异常。
+    """
+    errors = []
+    warnings = []
+    limit_pct = _get_limit_pct(code)
+
+    price = q.get("price", 0)
+    last_close = q.get("last_close", 0)
+    open_price = q.get("open", 0)
+    high = q.get("high", 0)
+    low = q.get("low", 0)
+    change_pct = q.get("change_pct", 0)
+    amount_wan = q.get("amount_wan", 0)
+
+    # 1. 价格必须大于 0
+    if price <= 0:
+        errors.append(f"价格异常: {price}")
+
+    # 2. 涨跌幅校验
+    if last_close > 0:
+        calc_change_pct = round((price - last_close) / last_close * 100, 2)
+        if abs(calc_change_pct - change_pct) > 0.5:
+            warnings.append(f"涨跌幅不一致: 接口={change_pct}%, 计算={calc_change_pct}%")
+        if abs(change_pct) > limit_pct + 0.5:
+            errors.append(f"涨跌幅超限: {change_pct}% (限制±{limit_pct}%)")
+
+    # 3. 开盘价在涨跌停范围内
+    if last_close > 0 and open_price > 0:
+        up_limit = round(last_close * (1 + limit_pct / 100), 2)
+        down_limit = round(last_close * (1 - limit_pct / 100), 2)
+        if open_price > up_limit + 0.01 or open_price < down_limit - 0.01:
+            errors.append(f"开盘价超出涨跌停: {open_price} (范围{down_limit}~{up_limit})")
+
+    # 4. 最高价 >= 最低价
+    if high > 0 and low > 0 and high < low:
+        errors.append(f"最高价低于最低价: high={high}, low={low}")
+
+    # 5. 成交量不能为负
+    if amount_wan < 0:
+        errors.append(f"成交额为负: {amount_wan}")
+
+    # 5.1 量比异常检测
+    volume_ratio = q.get("volume_ratio", 0)
+    if volume_ratio < 0:
+        errors.append(f"量比为负: {volume_ratio}")
+    elif volume_ratio > 30:
+        warnings.append(f"量比过高: {volume_ratio}")
+    elif volume_ratio > 0 and volume_ratio < 0.05:
+        warnings.append(f"量比过低: {volume_ratio}")
+
+    # 5.2 成交额与价格的一致性校验
+    volume = q.get("volume", 0)
+    if price > 0 and volume > 0:
+        expected_amount_wan = (price * volume) / 10000
+        if amount_wan > 0:
+            ratio = expected_amount_wan / amount_wan if amount_wan != 0 else 0
+            if ratio > 2 or ratio < 0.5:
+                warnings.append(f"成交额与价格成交量不一致: 计算={expected_amount_wan:.2f}万, 实际={amount_wan:.2f}万")
+
+    # 5.3 换手率与流通盘的合理性
+    if turnover > 0:
+        float_shares = q.get("float_shares", 0)
+        if float_shares > 0 and volume > 0:
+            calc_turnover = (volume / float_shares) * 100
+            if abs(calc_turnover - turnover) > 5:
+                warnings.append(f"换手率与流通盘不一致: 计算={calc_turnover:.2f}%, 接口={turnover}%")
+
+    # 6. 换手率合理性 (0~100%)
+    turnover = q.get("turnover_pct", 0)
+    if turnover < 0 or turnover > 100:
+        warnings.append(f"换手率异常: {turnover}%")
+
+    # 7. PE/PB 极值检测
+    pe = q.get("pe_ttm", 0)
+    pb = q.get("pb", 0)
+    if pe < 0 or pe > 5000:
+        warnings.append(f"PE异常: {pe}")
+    if pb < 0 or pb > 100:
+        warnings.append(f"PB异常: {pb}")
+
+    q["_validation"] = {
+        "passed": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+        "limit_pct": limit_pct,
+    }
+    return q
+
+
 class DependencyMissing(RuntimeError):
     """惰性依赖未安装时抛出，前端据此提示 pip install。"""
 
@@ -64,8 +165,11 @@ def _parse_gtimg(data: str) -> dict[str, dict]:
             except (ValueError, IndexError):
                 return 0.0
 
-        result[code] = {
-            "name": vals[1],
+        name = vals[1]
+        is_st = name.startswith("ST") or name.startswith("*ST") or name.startswith("S")
+        quote = {
+            "name": name,
+            "is_st": is_st,
             "price": num(3),
             "last_close": num(4),
             "open": num(5),
@@ -85,6 +189,7 @@ def _parse_gtimg(data: str) -> dict[str, dict]:
             "vol_ratio": num(49),
             "pe_static": num(52),
         }
+        result[code] = _validate_quote(code, quote)
     return result
 
 
@@ -200,6 +305,25 @@ def profit_forecast(code: str) -> list[dict]:
     return df.to_dict("records") if df is not None and not df.empty else []
 
 
+def _deduplicate_news(news_list: list[dict]) -> list[dict]:
+    """新闻去重：基于标题哈希，保留最早发布的一条。"""
+    seen = {}
+    for item in news_list:
+        title = item.get("新闻标题", "").strip()
+        if not title:
+            continue
+        # 使用标题作为唯一键
+        if title not in seen:
+            seen[title] = item
+        else:
+            # 已存在相同标题，保留发布时间更早的
+            existing_time = seen[title].get("发布时间", "")
+            current_time = item.get("发布时间", "")
+            if current_time and current_time < existing_time:
+                seen[title] = item
+    return list(seen.values())
+
+
 def stock_news(code: str, limit: int = 20) -> list[dict]:
     """个股新闻（东财搜索接口，需 curl_cffi 绕过 TLS 指纹识别）。
 
@@ -214,7 +338,8 @@ def stock_news(code: str, limit: int = 20) -> list[dict]:
         # 回退到 akshare（可能数据不完整）
         ak = _akshare()
         df = ak.stock_news_em(symbol=code)
-        return df.head(limit).to_dict("records") if df is not None and not df.empty else []
+        out = df.head(limit).to_dict("records") if df is not None and not df.empty else []
+        return _deduplicate_news(out)[:limit]
 
     inner_param = {
         "uid": "",
@@ -258,9 +383,10 @@ def stock_news(code: str, limit: int = 20) -> list[dict]:
             "新闻链接": f"http://finance.eastmoney.com/a/{a.get('code', '')}.html",
             "新闻内容": re.sub(r"<[^>]+>", "", a.get("content", ""))[:200],
         })
-    # 按时间倒序
+    # 去重 + 按时间倒序
+    out = _deduplicate_news(out)
     out.sort(key=lambda x: x.get("发布时间", ""), reverse=True)
-    return out
+    return out[:limit]
 
 
 def individual_info(code: str) -> dict:

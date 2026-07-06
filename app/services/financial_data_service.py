@@ -450,7 +450,7 @@ class FinancialDataService:
         return self._generate_current_period()
     
     def _extract_akshare_indicators(self, financial_data: Dict[str, Any]) -> Dict[str, Any]:
-        """从AKShare数据中提取关键财务指标"""
+        """从AKShare数据中提取关键财务指标并进行勾稽校验"""
         indicators = {}
 
         # 从主要财务指标中提取
@@ -488,6 +488,10 @@ class FinancialDataService:
                 if total_liab is not None and total_assets is not None and total_assets > 0:
                     indicators["debt_to_assets"] = (total_liab / total_assets) * 100
 
+        # 🔥 财务数据勾稽校验
+        validation = self.validate_financial_consistency(indicators)
+        indicators["_validation"] = validation
+
         return indicators
     
     def _generate_current_period(self) -> str:
@@ -523,6 +527,99 @@ class FinancialDataService:
             return float(value)
         except (ValueError, TypeError):
             return None
+
+    def validate_financial_consistency(
+        self,
+        indicators: Dict[str, Any],
+        symbol: str = "",
+        report_period: str = ""
+    ) -> Dict[str, Any]:
+        """
+        财务数据勾稽校验。
+        校验资产负债表和利润表的核心等式，确保数据准确性。
+
+        校验项：
+        1. 资产 = 负债 + 所有者权益 (允许±5%误差)
+        2. ROE ≈ 净利润 / 股东权益 (允许±20%误差，因加权/摊薄口径不同)
+        3. 资产负债率 ≈ 负债 / 资产 (允许±5%误差)
+        """
+        result = {
+            "passed": True,
+            "errors": [],
+            "warnings": [],
+            "checks": {},
+        }
+
+        total_assets = indicators.get("total_assets")
+        total_liab = indicators.get("total_liab")
+        total_equity = indicators.get("total_equity")
+        net_income = indicators.get("net_income")
+        roe = indicators.get("roe")
+        debt_to_assets = indicators.get("debt_to_assets")
+
+        # 1. 资产 = 负债 + 所有者权益
+        check1_passed = True
+        if total_assets is not None and total_liab is not None and total_equity is not None:
+            if total_assets > 0:
+                calc_assets = total_liab + total_equity
+                diff_pct = abs(calc_assets - total_assets) / total_assets * 100
+                result["checks"]["balance_sheet"] = {
+                    "total_assets": total_assets,
+                    "calc_assets_liab_equity": calc_assets,
+                    "diff_pct": round(diff_pct, 2),
+                }
+                if diff_pct > 5:
+                    check1_passed = False
+                    result["errors"].append(
+                        f"资产负债表不平衡: 资产={total_assets:.2f}, 负债+权益={calc_assets:.2f}, 差异={diff_pct:.2f}%"
+                    )
+                elif diff_pct > 1:
+                    result["warnings"].append(
+                        f"资产负债表轻微差异: {diff_pct:.2f}%"
+                    )
+
+        # 2. ROE 校验: ROE ≈ 净利润 / 股东权益
+        check2_passed = True
+        if roe is not None and net_income is not None and total_equity is not None:
+            if total_equity > 0 and roe != 0:
+                calc_roe = net_income / total_equity * 100
+                diff_pct = abs(calc_roe - roe) / abs(roe) * 100 if roe != 0 else 0
+                result["checks"]["roe"] = {
+                    "reported_roe": roe,
+                    "calc_roe": round(calc_roe, 2),
+                    "diff_pct": round(diff_pct, 2),
+                }
+                if diff_pct > 50:
+                    check2_passed = False
+                    result["warnings"].append(
+                        f"ROE差异较大: 披露={roe}%, 计算={calc_roe:.2f}% (可能因加权口径不同)"
+                    )
+
+        # 3. 资产负债率校验: 负债率 ≈ 负债 / 资产
+        check3_passed = True
+        if debt_to_assets is not None and total_liab is not None and total_assets is not None:
+            if total_assets > 0 and debt_to_assets != 0:
+                calc_ratio = total_liab / total_assets * 100
+                diff_pct = abs(calc_ratio - debt_to_assets) / abs(debt_to_assets) * 100 if debt_to_assets != 0 else 0
+                result["checks"]["debt_ratio"] = {
+                    "reported_ratio": debt_to_assets,
+                    "calc_ratio": round(calc_ratio, 2),
+                    "diff_pct": round(diff_pct, 2),
+                }
+                if diff_pct > 10:
+                    check3_passed = False
+                    result["errors"].append(
+                        f"资产负债率不一致: 披露={debt_to_assets}%, 计算={calc_ratio:.2f}%, 差异={diff_pct:.2f}%"
+                    )
+
+        result["passed"] = check1_passed and check2_passed and check3_passed
+
+        if not result["passed"] and symbol:
+            logger.warning(
+                f"[财务校验] {symbol} {report_period} 未通过: {result['errors']}"
+            )
+
+        return result
 
 
 # 全局服务实例

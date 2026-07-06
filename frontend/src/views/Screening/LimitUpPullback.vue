@@ -231,6 +231,8 @@
             v-loading="loading"
             element-loading-text="扫描中..."
             stripe
+            :height="tableHeight"
+            row-key="code"
             style="width: 100%"
           >
             <el-table-column prop="code" label="代码" width="80" fixed="left">
@@ -838,7 +840,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -1174,9 +1176,29 @@ const getScoreColor = (score: number) => {
   return '#909399'
 }
 
+const windowHeight = ref(window.innerHeight)
+
+function handleResize() {
+  windowHeight.value = window.innerHeight
+}
+
+const tableHeight = computed(() => {
+  const headerOffset = 420
+  return Math.max(400, windowHeight.value - headerOffset)
+})
+
+const backtestTableHeight = computed(() => {
+  return Math.min(500, Math.max(300, windowHeight.value - 500))
+})
+
 onMounted(() => {
   loadScanResult()
   loadBacktestResult()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 

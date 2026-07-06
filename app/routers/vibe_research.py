@@ -12,7 +12,7 @@ import os
 import asyncio
 
 from app.core.response import ok
-from app.services.newsradar import get_radar, fetch_radar
+from app.services.newsradar import get_radar_cached, fetch_radar
 from app.services.market_overview import (
     get_overview, get_short_term_emotion, get_turnover_top, get_global_indices
 )
@@ -39,9 +39,9 @@ async def indices():
 
 @router.get("/global-indices")
 async def global_indices():
-    """全球指数快照（美股/港股），缓存5分钟"""
+    """全球指数快照（美股/港股），分级TTL缓存"""
     try:
-        data = get_global_indices()
+        data = await get_global_indices()
         return ok(data)
     except Exception as e:
         logger.error(f"全球指数异常: {e}")
@@ -50,9 +50,9 @@ async def global_indices():
 
 @router.get("/market/overview")
 async def market_overview():
-    """市场情绪 + 板块资金流（含缓存5分钟）"""
+    """市场情绪 + 板块资金流（Redis分级TTL缓存）"""
     try:
-        data = get_overview()
+        data = await get_overview()
         return ok(data)
     except Exception as e:
         logger.error(f"市场总览异常: {e}")
@@ -61,9 +61,9 @@ async def market_overview():
 
 @router.get("/market/emotion")
 async def market_emotion():
-    """短线情绪（连板梯队/封板率/炸板率/晋级率），缓存5分钟"""
+    """短线情绪（连板梯队/封板率/炸板率/晋级率），分级TTL缓存"""
     try:
-        data = get_short_term_emotion()
+        data = await get_short_term_emotion()
         return ok(data)
     except Exception as e:
         logger.error(f"短线情绪异常: {e}")
@@ -72,9 +72,9 @@ async def market_emotion():
 
 @router.get("/market/turnover-top")
 async def market_turnover_top():
-    """全市场成交额Top20，缓存5分钟"""
+    """全市场成交额Top20，分级TTL缓存"""
     try:
-        data = get_turnover_top()
+        data = await get_turnover_top()
         return ok(data)
     except Exception as e:
         logger.error(f"成交额榜异常: {e}")
@@ -92,9 +92,10 @@ async def quotes(codes: str):
         # 转为前端友好的数组格式
         out = []
         for code, q in data.items():
-            out.append({
+            item = {
                 "code": code,
                 "name": q.get("name", ""),
+                "is_st": q.get("is_st", False),
                 "price": q.get("price"),
                 "change_pct": q.get("change_pct"),
                 "change_amt": q.get("change_amt"),
@@ -104,7 +105,17 @@ async def quotes(codes: str):
                 "float_mcap_yi": q.get("float_mcap_yi"),
                 "amount_wan": q.get("amount_wan"),
                 "turnover_pct": q.get("turnover_pct"),
-            })
+            }
+            # 将数据校验结果返回给前端
+            validation = q.get("_validation")
+            if validation:
+                item["_validation"] = validation
+            # ST股票强制风险提示
+            if q.get("is_st"):
+                if not validation:
+                    item["_validation"] = {"passed": True, "errors": [], "warnings": []}
+                item["_validation"]["warnings"].append("⚠️ ST股票：存在退市风险，投资需谨慎")
+            out.append(item)
         return ok(out)
     except Exception as e:
         logger.error(f"批量行情异常: {e}")
@@ -117,9 +128,9 @@ async def quotes(codes: str):
 
 @router.get("/radar")
 async def radar():
-    """资讯雷达：12赛道公开RSS资讯（读缓存）"""
+    """资讯雷达：12赛道公开RSS资讯（Redis分级缓存）"""
     try:
-        data = get_radar(force=False)
+        data = await get_radar_cached(force=False)
         return ok(data)
     except Exception as e:
         logger.error(f"资讯雷达异常: {e}")
@@ -148,15 +159,74 @@ async def announcements(code: str, limit: int = 15):
         return ok([])
 
 
+@router.get("/announcements/batch")
+async def announcements_batch(codes: str, limit: int = 10):
+    """批量获取多只股票公告（逗号分隔代码）"""
+    code_list = [c.strip() for c in codes.split(",") if c.strip()]
+    if not code_list:
+        return ok([])
+    
+    results = []
+    for code in code_list[:20]:
+        try:
+            anns = astock.announcements(code, limit)
+            for item in anns:
+                item["stock_code"] = code
+                results.append(item)
+        except Exception as e:
+            logger.warning(f"获取股票 {code} 公告失败: {e}")
+    
+    results.sort(key=lambda x: x.get("date", ""), reverse=True)
+    return ok(results[:limit * 3])
+
+
 @router.get("/news")
-async def stock_news(code: str, limit: int = 20):
-    """个股新闻（东财）"""
+async def stock_news(code: str, limit: int = 20, since: str = ""):
+    """个股新闻（东财），支持 since 参数增量更新"""
     try:
         data = astock.stock_news(code, limit)
+        if since:
+            data = [item for item in data if item.get("发布时间", "") > since]
         return ok(data)
     except Exception as e:
         logger.error(f"个股新闻异常: {e}")
         return ok([])
+
+
+@router.get("/news/batch")
+async def news_batch(codes: str, limit: int = 10, since: str = ""):
+    """批量获取多只股票新闻（逗号分隔代码），自动去重，支持 since 增量更新"""
+    code_list = [c.strip() for c in codes.split(",") if c.strip()]
+    if not code_list:
+        return ok([])
+
+    # 使用标题去重，同一新闻关联多只股票时合并股票代码
+    seen = {}
+    for code in code_list[:20]:
+        try:
+            news = astock.stock_news(code, limit)
+            for item in news:
+                # since 过滤：只保留发布时间 > since 的新闻
+                if since and item.get("发布时间", "") <= since:
+                    continue
+                title = item.get("新闻标题", "").strip()
+                if not title:
+                    continue
+                if title not in seen:
+                    item["stock_codes"] = [code]
+                    seen[title] = item
+                else:
+                    if code not in seen[title]["stock_codes"]:
+                        seen[title]["stock_codes"].append(code)
+                    # 保留更早的发布时间
+                    if item.get("发布时间", "") < seen[title].get("发布时间", ""):
+                        seen[title]["发布时间"] = item["发布时间"]
+        except Exception as e:
+            logger.warning(f"获取股票 {code} 新闻失败: {e}")
+
+    results = list(seen.values())
+    results.sort(key=lambda x: x.get("发布时间", ""), reverse=True)
+    return ok(results[:limit * 3])
 
 
 # ---------------------------------------------------------------------------

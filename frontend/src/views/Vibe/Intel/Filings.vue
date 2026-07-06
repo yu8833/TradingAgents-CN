@@ -117,7 +117,6 @@ const loadFavorites = async () => {
         name: f.stock_name || ''
       }))
       .filter((s: TrackedStock) => s.code)
-    // 去重，保留已有的手动添加项
     const existCodes = new Set(trackedStocks.value.map(s => s.code))
     for (const s of mapped) {
       if (!existCodes.has(s.code)) {
@@ -125,7 +124,6 @@ const loadFavorites = async () => {
       }
     }
   } catch (e: any) {
-    // 静默失败，用户可手动添加
     console.error('加载自选股失败', e)
   }
 }
@@ -156,24 +154,14 @@ const loadAnnouncements = async () => {
     return
   }
   loading.value = true
-  const all: MergedAnnouncement[] = []
   try {
-    await Promise.all(
-      trackedStocks.value.map(async (s) => {
-        try {
-          const res = await vibeApi.getAnnouncements(s.code)
-          const items = res.data || []
-          for (const it of items) {
-            all.push({ ...it, stockName: s.name || s.code, stockCode: s.code })
-          }
-        } catch (e) {
-          // 单个股票失败不影响整体
-        }
-      })
-    )
-    // 按日期倒序
-    all.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-    announcements.value = all.slice(0, 60)
+    const codes = trackedStocks.value.map(s => s.code)
+    const res = await vibeApi.getAnnouncementsBatch(codes, 10)
+    const items = res.data || []
+    announcements.value = items.map(it => ({
+      ...it,
+      stockName: trackedStocks.value.find(s => s.code === it.stock_code)?.name || it.stock_code
+    })).slice(0, 60)
   } finally {
     loading.value = false
   }
