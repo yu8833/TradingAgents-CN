@@ -201,10 +201,66 @@ def profit_forecast(code: str) -> list[dict]:
 
 
 def stock_news(code: str, limit: int = 20) -> list[dict]:
-    """个股新闻（东财）。"""
-    ak = _akshare()
-    df = ak.stock_news_em(symbol=code)
-    return df.head(limit).to_dict("records") if df is not None and not df.empty else []
+    """个股新闻（东财搜索接口，需 curl_cffi 绕过 TLS 指纹识别）。
+
+    akshare 的 stock_news_em 底层也调此接口，但 pageSize 写死 10 且用 requests
+    会被 TLS 指纹拦截返回空数据。这里用 curl_cffi 模拟 Chrome 获取完整 100 条。
+    """
+    import json as _json
+
+    try:
+        from curl_cffi import requests as cf_requests
+    except ImportError:
+        # 回退到 akshare（可能数据不完整）
+        ak = _akshare()
+        df = ak.stock_news_em(symbol=code)
+        return df.head(limit).to_dict("records") if df is not None and not df.empty else []
+
+    inner_param = {
+        "uid": "",
+        "keyword": code,
+        "type": ["cmsArticleWebOld"],
+        "client": "web",
+        "clientType": "web",
+        "clientVersion": "curr",
+        "param": {
+            "cmsArticleWebOld": {
+                "searchScope": "default",
+                "sort": "default",
+                "pageIndex": 1,
+                "pageSize": min(limit, 100),
+                "preTag": "",
+                "postTag": "",
+            }
+        },
+    }
+    r = cf_requests.get(
+        "https://search-api-web.eastmoney.com/search/jsonp",
+        params={"cb": "cb", "param": _json.dumps(inner_param, ensure_ascii=False)},
+        headers={
+            "User-Agent": UA,
+            "Referer": f"https://so.eastmoney.com/news/s?keyword={code}",
+        },
+        impersonate="chrome",
+        timeout=15,
+    )
+    text = r.text.strip()
+    json_str = text[text.index("(") + 1 : text.rindex(")")]
+    d = _json.loads(json_str)
+    articles = d.get("result", {}).get("cmsArticleWebOld", []) or []
+
+    out = []
+    for a in articles[:limit]:
+        out.append({
+            "新闻标题": re.sub(r"<[^>]+>", "", a.get("title", "")),
+            "发布时间": a.get("date", ""),
+            "文章来源": a.get("mediaName", ""),
+            "新闻链接": f"http://finance.eastmoney.com/a/{a.get('code', '')}.html",
+            "新闻内容": re.sub(r"<[^>]+>", "", a.get("content", ""))[:200],
+        })
+    # 按时间倒序
+    out.sort(key=lambda x: x.get("发布时间", ""), reverse=True)
+    return out
 
 
 def individual_info(code: str) -> dict:
