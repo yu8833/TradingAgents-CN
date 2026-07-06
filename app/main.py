@@ -761,8 +761,9 @@ app.include_router(historical_data.router, tags=["historical-data"])
 app.include_router(multi_period_sync.router, tags=["multi-period-sync"])
 app.include_router(financial_data.router, tags=["financial-data"])
 app.include_router(news_data.router, tags=["news-data"])
-app.include_router(social_media.router, tags=["social-media"])
-app.include_router(internal_messages.router, tags=["internal-messages"])
+# 已弃用：前端未使用社交媒体和内部消息接口
+# app.include_router(social_media.router, tags=["social-media"])
+# app.include_router(internal_messages.router, tags=["internal-messages"])
 app.include_router(vibe_router.router, tags=["vibe-research"])
 
 

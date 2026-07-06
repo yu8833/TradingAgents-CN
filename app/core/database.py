@@ -450,8 +450,8 @@ async def create_database_indexes(db):
         if await _safe_create_index(system_configs, [("created_at", -1)]):
             index_count += 1
 
-        # usage_records 的索引（使用记录）
-        usage_records = db["usage_records"]
+        # usage_records 的索引（使用记录）— 实际集合名为 token_usage
+        usage_records = db["token_usage"]
         if await _safe_create_index(usage_records, [("user_id", 1), ("timestamp", -1)]):
             index_count += 1
         if await _safe_create_index(usage_records, [("provider", 1), ("timestamp", -1)]):
@@ -486,16 +486,23 @@ async def create_database_indexes(db):
         if await _safe_create_index(users, [("email", 1)], unique=True, sparse=True):
             index_count += 1
 
-        # favorites 的索引（自选股）
-        favorites = db["favorites"]
-        if await _safe_create_index(favorites, [("user_id", 1), ("symbol", 1)], unique=True):
+        # favorites 的索引（自选股）— 实际集合名为 user_favorites
+        favorites = db["user_favorites"]
+        if await _safe_create_index(favorites, [("user_id", 1), ("stock_code", 1)], unique=True):
             index_count += 1
         if await _safe_create_index(favorites, [("user_id", 1), ("created_at", -1)]):
             index_count += 1
 
-        # tags 的索引（标签）
-        tags = db["tags"]
+        # tags 的索引（标签）— 实际集合名为 user_tags
+        tags = db["user_tags"]
         if await _safe_create_index(tags, [("user_id", 1), ("name", 1)], unique=True):
+            index_count += 1
+
+        # research_notes 的索引（研究笔记）— 之前缺失
+        research_notes = db["research_notes"]
+        if await _safe_create_index(research_notes, [("user_id", 1), ("created_at", -1)]):
+            index_count += 1
+        if await _safe_create_index(research_notes, [("user_id", 1), ("kind", 1)]):
             index_count += 1
 
         logger.info(f"✅ 数据库索引创建完成（新增 {index_count} 个索引）")

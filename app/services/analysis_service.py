@@ -42,6 +42,70 @@ from app.models.config import UsageRecord
 import logging
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# 公共工具函数（消除 analysis_service 内部的重复代码）
+# ---------------------------------------------------------------------------
+
+_SUPPORTED_ANALYSTS = {"market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"}
+_ALL_ANALYSTS = ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
+
+
+def _fill_analysts(raw_analysts: Optional[List[str]]) -> List[str]:
+    """补全全部7个分析师（确保所有维度都有报告）"""
+    filtered = []
+    for a in (raw_analysts or list(_SUPPORTED_ANALYSTS)):
+        if a in _SUPPORTED_ANALYSTS and a not in filtered:
+            filtered.append(a)
+    for analyst in _ALL_ANALYSTS:
+        if analyst not in filtered:
+            filtered.append(analyst)
+    return filtered
+
+
+def _read_model_configs_from_mongo(quick_model: str, deep_model: str) -> tuple:
+    """从 MongoDB 读取快速模型和深度模型的配置参数
+
+    Returns:
+        (quick_model_config, deep_model_config) 各为 dict 或 None
+    """
+    try:
+        from pymongo import MongoClient
+        from app.core.config import settings
+
+        client = MongoClient(settings.MONGO_URI)
+        db = client[settings.MONGO_DB]
+        collection = db.system_configs
+        doc = collection.find_one({"is_active": True}, sort=[("version", -1)])
+
+        if not doc or "llm_configs" not in doc:
+            logger.warning("⚠️ MongoDB 中没有找到系统配置，将使用默认参数")
+            return None, None
+
+        llm_configs = doc["llm_configs"]
+        logger.info(f"✅ 从 MongoDB 读取到 {len(llm_configs)} 个模型配置")
+
+        quick_cfg = None
+        deep_cfg = None
+        for llm_config in llm_configs:
+            cfg = {
+                "max_tokens": llm_config.get("max_tokens", 4000),
+                "temperature": llm_config.get("temperature", 0.7),
+                "timeout": llm_config.get("timeout", 180),
+                "retry_times": llm_config.get("retry_times", 3),
+                "api_base": llm_config.get("api_base"),
+            }
+            if llm_config.get("model_name") == quick_model:
+                quick_cfg = cfg
+                logger.info(f"✅ 读取快速模型配置: {quick_model} -> {cfg}")
+            if llm_config.get("model_name") == deep_model:
+                deep_cfg = cfg
+                logger.info(f"✅ 读取深度模型配置: {deep_model} -> {cfg}")
+
+        return quick_cfg, deep_cfg
+    except Exception as e:
+        logger.warning(f"⚠️ 从 MongoDB 读取模型配置失败: {e}，将使用默认参数")
+        return None, None
+
 
 class AnalysisService:
     """股票分析服务类"""
@@ -175,17 +239,9 @@ class AnalysisService:
             # 参数配置
             progress_tracker.update_progress("⚙️ 配置分析参数")
 
-            # 🧹 强制补全全部7个分析师（确保所有维度都有报告）
-            supported_analysts = {"market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"}
-            raw_analysts = task.parameters.selected_analysts or list(supported_analysts)
-            filtered_analysts = []
-            for a in raw_analysts:
-                if a in supported_analysts and a not in filtered_analysts:
-                    filtered_analysts.append(a)
-            all_analysts = ["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
-            for analyst in all_analysts:
-                if analyst not in filtered_analysts:
-                    filtered_analysts.append(analyst)
+            # 🧹 补全全部7个分析师（确保所有维度都有报告）
+            raw_analysts = task.parameters.selected_analysts
+            filtered_analysts = _fill_analysts(raw_analysts)
             logger.info(f"📊 [分析师] 原始: {raw_analysts}")
             logger.info(f"📊 [分析师] 补全后: {filtered_analysts}")
 

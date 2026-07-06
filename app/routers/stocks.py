@@ -243,6 +243,28 @@ async def get_quote(
         # 非强制刷新，从缓存读取
         q = await db["market_quotes"].find_one({"code": code6}, {"_id": 0})
 
+    # 🔥 回退：如果 MongoDB 无行情数据，从统一行情服务获取实时数据
+    if not q:
+        try:
+            from app.services.unified_quotes import get_single_quote
+            uq = await asyncio.to_thread(get_single_quote, code6)
+            if uq:
+                logger.info(f"🔄 MongoDB无行情，从统一行情服务获取 {code6}: price={uq.get('price')}")
+                q = {
+                    "code": code6,
+                    "close": uq.get("price"),
+                    "pct_chg": uq.get("change_pct"),
+                    "amount": uq.get("amount_wan") * 10000 if uq.get("amount_wan") else None,
+                    "open": uq.get("open"),
+                    "high": uq.get("high"),
+                    "low": uq.get("low"),
+                    "pre_close": uq.get("last_close"),
+                    "trade_date": datetime.now().strftime("%Y-%m-%d"),
+                    "updated_at": datetime.now(),
+                }
+        except Exception as e:
+            logger.warning(f"⚠️ 统一行情服务回退失败: {e}")
+
     # 🔥 调试日志：查看查询结果
     logger.info(f"🔍 查询 market_quotes: code={code6}")
     if q:
