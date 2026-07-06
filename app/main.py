@@ -70,6 +70,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.services.quotes_ingestion_service import QuotesIngestionService
 from app.routers import paper as paper_router
 from app.routers import quick_analysis
+from app.routers import vibe_research as vibe_router
 
 
 def get_version() -> str:
@@ -527,29 +528,46 @@ async def lifespan(app: FastAPI):
         else:
             logger.info(f"🔍 BaoStock状态检查已配置: {settings.BAOSTOCK_STATUS_CHECK_CRON}")
 
-        # 新闻数据同步任务配置（使用AKShare同步所有股票新闻）
+        # 新闻数据同步任务配置
         logger.info("🔄 配置新闻数据同步任务...")
 
         from app.worker.akshare_sync_service import get_akshare_sync_service
+        from app.worker.news_data_sync_service import get_news_data_sync_service
 
         async def run_news_sync():
-            """运行新闻同步任务 - 使用AKShare同步自选股新闻"""
+            """运行新闻同步任务 - 同步自选股新闻和市场新闻"""
             try:
-                logger.info("📰 开始新闻数据同步（AKShare - 仅自选股）...")
+                logger.info("📰 开始新闻数据同步（自选股 + 市场新闻）...")
+                
+                # 1. 同步自选股新闻
                 service = await get_akshare_sync_service()
                 result = await service.sync_news_data(
-                    symbols=None,  # None + favorites_only=True 表示只同步自选股
+                    symbols=None,
                     max_news_per_stock=settings.NEWS_SYNC_MAX_PER_SOURCE,
-                    favorites_only=True  # 只同步自选股
+                    favorites_only=True
                 )
                 logger.info(
-                    f"✅ 新闻同步完成: "
-                    f"处理{result['total_processed']}只自选股, "
+                    f"✅ 自选股新闻同步完成: "
+                    f"处理{result['total_processed']}只, "
                     f"成功{result['success_count']}只, "
                     f"失败{result['error_count']}只, "
-                    f"新闻总数{result['news_count']}条, "
-                    f"耗时{(datetime.utcnow() - result['start_time']).total_seconds():.2f}秒"
+                    f"新闻总数{result['news_count']}条"
                 )
+                
+                # 2. 同步市场新闻
+                sync_service = await get_news_data_sync_service()
+                market_result = await sync_service.sync_market_news(
+                    data_sources=["akshare", "tushare", "realtime"],
+                    hours_back=24,
+                    max_news_per_source=settings.NEWS_SYNC_MAX_PER_SOURCE
+                )
+                logger.info(
+                    f"✅ 市场新闻同步完成: "
+                    f"成功保存{market_result.successful_saves}条, "
+                    f"失败{market_result.failed_saves}条, "
+                    f"去重跳过{market_result.duplicate_skipped}条"
+                )
+                
             except Exception as e:
                 logger.error(f"❌ 新闻同步失败: {e}", exc_info=True)
 
@@ -562,13 +580,13 @@ async def lifespan(app: FastAPI):
             run_news_sync,
             CronTrigger.from_crontab(settings.NEWS_SYNC_CRON, timezone=settings.TIMEZONE),
             id="news_sync",
-            name="新闻数据同步（AKShare - 仅自选股）"
+            name="新闻数据同步（自选股 + 市场新闻）"
         )
         if not settings.NEWS_SYNC_ENABLED:
             scheduler.pause_job("news_sync")
             logger.info(f"⏸️ 新闻数据同步已添加但暂停: {settings.NEWS_SYNC_CRON}")
         else:
-            logger.info(f"📰 新闻数据同步已配置（仅自选股）: {settings.NEWS_SYNC_CRON}")
+            logger.info(f"📰 新闻数据同步已配置（自选股 + 市场新闻）: {settings.NEWS_SYNC_CRON}")
 
         scheduler.start()
 
@@ -731,6 +749,7 @@ app.include_router(financial_data.router, tags=["financial-data"])
 app.include_router(news_data.router, tags=["news-data"])
 app.include_router(social_media.router, tags=["social-media"])
 app.include_router(internal_messages.router, tags=["internal-messages"])
+app.include_router(vibe_router.router, tags=["vibe-research"])
 
 
 @app.get("/")
