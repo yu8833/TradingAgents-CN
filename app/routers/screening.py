@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from app.routers.auth_db import get_current_user
 
-from app.services.screening_service import ScreeningService, ScreeningParams
 from app.services.enhanced_screening_service import get_enhanced_screening_service
 from app.models.screening import (
     ScreeningCondition, ScreeningRequest as NewScreeningRequest,
@@ -24,7 +23,6 @@ class ScreeningResponse(BaseModel):
     total: int
     items: List[dict]
 
-svc = ScreeningService()
 enhanced_svc = get_enhanced_screening_service()
 
 # 前端字段名 → 数据库字段名 的映射

@@ -2,7 +2,7 @@
 Vibe-Research 融合模块 API 路由
 提供复盘（大盘指数/市场情绪/资金流/短线情绪/成交额榜）、资讯雷达、板块、AI对话等接口
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -24,12 +24,33 @@ router = APIRouter(prefix="/api/vibe", tags=["Vibe-Research"])
 logger = logging.getLogger("webapi")
 
 
+async def get_optional_current_user(authorization: Optional[str] = Header(default=None)) -> dict:
+    """获取当前用户信息（可选）：有token则验证，没有则返回guest用户"""
+    if not authorization:
+        return {"user_id": "guest", "username": "guest", "is_guest": True}
+    
+    try:
+        from app.routers.auth_db import get_current_user
+        user = await get_current_user(authorization)
+        user["is_guest"] = False
+        return user
+    except Exception:
+        return {"user_id": "guest", "username": "guest", "is_guest": True}
+
+
+def _get_user_id(user: dict) -> str:
+    """从用户对象获取用户ID"""
+    if user.get("is_guest"):
+        return "guest"
+    return str(user.get("id") or user.get("user_id") or "guest")
+
+
 # ---------------------------------------------------------------------------
 # 复盘模块
 # ---------------------------------------------------------------------------
 
 @router.get("/indices")
-async def indices():
+async def indices(current_user: dict = Depends(get_optional_current_user)):
     """A股大盘指数实时行情（上证/深证成指/创业板指/沪深300）"""
     try:
         data = astock.index_quote()
@@ -40,7 +61,7 @@ async def indices():
 
 
 @router.get("/global-indices")
-async def global_indices():
+async def global_indices(current_user: dict = Depends(get_optional_current_user)):
     """全球指数快照（美股/港股），分级TTL缓存"""
     try:
         data = await get_global_indices()
@@ -51,7 +72,7 @@ async def global_indices():
 
 
 @router.get("/market/overview")
-async def market_overview():
+async def market_overview(current_user: dict = Depends(get_optional_current_user)):
     """市场情绪 + 板块资金流（Redis分级TTL缓存）"""
     try:
         data = await get_overview()
@@ -62,7 +83,7 @@ async def market_overview():
 
 
 @router.get("/market/emotion")
-async def market_emotion():
+async def market_emotion(current_user: dict = Depends(get_optional_current_user)):
     """短线情绪（连板梯队/封板率/炸板率/晋级率），分级TTL缓存"""
     try:
         data = await get_short_term_emotion()
@@ -73,7 +94,7 @@ async def market_emotion():
 
 
 @router.get("/market/turnover-top")
-async def market_turnover_top():
+async def market_turnover_top(current_user: dict = Depends(get_optional_current_user)):
     """全市场成交额Top20，分级TTL缓存"""
     try:
         data = await get_turnover_top()
@@ -84,7 +105,7 @@ async def market_turnover_top():
 
 
 @router.get("/quotes")
-async def quotes(codes: str):
+async def quotes(codes: str, current_user: dict = Depends(get_optional_current_user)):
     """批量个股实时行情（逗号分隔代码）- 统一行情服务"""
     try:
         code_list = [c.strip() for c in codes.split(",") if c.strip()]
@@ -247,7 +268,7 @@ async def _fetch_and_save_stock_news(code: str, limit: int = 20) -> List[Dict[st
 
 
 @router.get("/radar")
-async def radar():
+async def radar(current_user: dict = Depends(get_optional_current_user)):
     """资讯雷达：12赛道公开RSS资讯（Redis分级缓存）"""
     try:
         data = await get_radar_cached(force=False)
@@ -258,7 +279,7 @@ async def radar():
 
 
 @router.post("/radar/refresh")
-async def radar_refresh():
+async def radar_refresh(current_user: dict = Depends(get_optional_current_user)):
     """强制刷新资讯雷达（抓取全部RSS源）"""
     try:
         data = fetch_radar()
@@ -269,7 +290,7 @@ async def radar_refresh():
 
 
 @router.get("/announcements")
-async def announcements(code: str, limit: int = 15):
+async def announcements(code: str, limit: int = 15, current_user: dict = Depends(get_optional_current_user)):
     """个股近期公告（东财公开接口）"""
     try:
         data = astock.announcements(code, limit)
@@ -280,7 +301,7 @@ async def announcements(code: str, limit: int = 15):
 
 
 @router.get("/announcements/batch")
-async def announcements_batch(codes: str, limit: int = 10):
+async def announcements_batch(codes: str, limit: int = 10, current_user: dict = Depends(get_optional_current_user)):
     """批量获取多只股票公告（逗号分隔代码）"""
     code_list = [c.strip() for c in codes.split(",") if c.strip()]
     if not code_list:
@@ -301,7 +322,7 @@ async def announcements_batch(codes: str, limit: int = 10):
 
 
 @router.get("/news")
-async def stock_news(code: str, limit: int = 20, since: str = ""):
+async def stock_news(code: str, limit: int = 20, since: str = "", current_user: dict = Depends(get_optional_current_user)):
     """个股新闻（优先数据库，无数据时从东财实时获取并存入数据库），支持 since 参数增量更新"""
     try:
         service = await get_news_data_service()
@@ -342,7 +363,7 @@ async def stock_news(code: str, limit: int = 20, since: str = ""):
 
 
 @router.get("/news/batch")
-async def news_batch(codes: str, limit: int = 10, since: str = ""):
+async def news_batch(codes: str, limit: int = 10, since: str = "", current_user: dict = Depends(get_optional_current_user)):
     """批量获取多只股票新闻（优先数据库，无数据时实时获取），自动去重，支持 since 增量更新"""
     code_list = [c.strip() for c in codes.split(",") if c.strip()]
     if not code_list:
@@ -427,7 +448,7 @@ async def news_batch(codes: str, limit: int = 10, since: str = ""):
 # ---------------------------------------------------------------------------
 
 @router.get("/sectors")
-async def sectors():
+async def sectors(current_user: dict = Depends(get_optional_current_user)):
     """板块中心：热门赛道产业链骨架（静态数据）"""
     sectors_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "sectors.json")
     try:
@@ -514,7 +535,7 @@ SYSTEM_PROMPT = (
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, current_user: dict = Depends(get_optional_current_user)):
     """AI 对话（流式 NDJSON）。复用系统已配置的 LLM。"""
     cfg = _get_llm_config()
     if not cfg or not cfg.get("api_key"):
@@ -582,17 +603,12 @@ async def chat(req: ChatRequest):
 # 用户数据模块（研究笔记 + 关注股票）
 # ---------------------------------------------------------------------------
 
-def _get_vibe_user_id(user_id: Optional[str] = None) -> str:
-    """获取Vibe模块用户ID，默认guest用户"""
-    return user_id or "guest"
-
-
 @router.get("/notes")
-async def get_notes(user_id: Optional[str] = None, kind: Optional[str] = None):
+async def get_notes(kind: Optional[str] = None, current_user: dict = Depends(get_optional_current_user)):
     """获取研究笔记列表"""
     try:
         from app.services.research_notes_service import research_notes_service
-        uid = _get_vibe_user_id(user_id)
+        uid = _get_user_id(current_user)
         notes = await research_notes_service.get_user_notes(uid, kind)
         return ok(notes)
     except Exception as e:
@@ -604,15 +620,14 @@ class AddNoteRequest(BaseModel):
     kind: str
     title: str
     content: str
-    user_id: Optional[str] = None
 
 
 @router.post("/notes")
-async def add_note(req: AddNoteRequest):
+async def add_note(req: AddNoteRequest, current_user: dict = Depends(get_optional_current_user)):
     """添加研究笔记"""
     try:
         from app.services.research_notes_service import research_notes_service
-        uid = _get_vibe_user_id(req.user_id)
+        uid = _get_user_id(current_user)
         note = await research_notes_service.add_note(uid, req.kind, req.title, req.content)
         if note:
             return ok(note)
@@ -624,11 +639,11 @@ async def add_note(req: AddNoteRequest):
 
 
 @router.delete("/notes/{note_id}")
-async def delete_note(note_id: str, user_id: Optional[str] = None):
+async def delete_note(note_id: str, current_user: dict = Depends(get_optional_current_user)):
     """删除研究笔记"""
     try:
         from app.services.research_notes_service import research_notes_service
-        uid = _get_vibe_user_id(user_id)
+        uid = _get_user_id(current_user)
         success = await research_notes_service.delete_note(uid, note_id)
         return ok({"success": success})
     except Exception as e:
@@ -637,11 +652,11 @@ async def delete_note(note_id: str, user_id: Optional[str] = None):
 
 
 @router.delete("/notes")
-async def clear_notes(user_id: Optional[str] = None):
+async def clear_notes(current_user: dict = Depends(get_optional_current_user)):
     """清空研究笔记"""
     try:
         from app.services.research_notes_service import research_notes_service
-        uid = _get_vibe_user_id(user_id)
+        uid = _get_user_id(current_user)
         success = await research_notes_service.clear_notes(uid)
         return ok({"success": success})
     except Exception as e:
@@ -650,11 +665,11 @@ async def clear_notes(user_id: Optional[str] = None):
 
 
 @router.get("/watchlist")
-async def get_watchlist(user_id: Optional[str] = None):
+async def get_watchlist(current_user: dict = Depends(get_optional_current_user)):
     """获取关注股票列表（简化版：仅返回股票代码列表，使用FavoritesService）"""
     try:
         from app.services.favorites_service import favorites_service
-        uid = _get_vibe_user_id(user_id)
+        uid = _get_user_id(current_user)
         favorites = await favorites_service.get_user_favorites(uid)
         codes = [fav.get("stock_code", "") for fav in favorites if fav.get("stock_code")]
         return ok(codes)
@@ -666,15 +681,14 @@ async def get_watchlist(user_id: Optional[str] = None):
 class WatchlistRequest(BaseModel):
     code: str
     name: Optional[str] = ""
-    user_id: Optional[str] = None
 
 
 @router.post("/watchlist")
-async def add_to_watchlist(req: WatchlistRequest):
+async def add_to_watchlist(req: WatchlistRequest, current_user: dict = Depends(get_optional_current_user)):
     """添加股票到关注列表"""
     try:
         from app.services.favorites_service import favorites_service
-        uid = _get_vibe_user_id(req.user_id)
+        uid = _get_user_id(current_user)
         success = await favorites_service.add_favorite(
             user_id=uid,
             stock_code=req.code,
@@ -688,11 +702,11 @@ async def add_to_watchlist(req: WatchlistRequest):
 
 
 @router.delete("/watchlist/{code}")
-async def remove_from_watchlist(code: str, user_id: Optional[str] = None):
+async def remove_from_watchlist(code: str, current_user: dict = Depends(get_optional_current_user)):
     """从关注列表移除股票"""
     try:
         from app.services.favorites_service import favorites_service
-        uid = _get_vibe_user_id(user_id)
+        uid = _get_user_id(current_user)
         success = await favorites_service.remove_favorite(uid, code)
         return ok({"success": success})
     except Exception as e:
