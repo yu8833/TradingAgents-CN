@@ -191,6 +191,26 @@ export interface RadarData {
   }
 }
 
+export type BottleneckLevel = 'high' | 'mid' | 'low'
+
+export interface SectorLink {
+  name: string
+  role: string
+  focus: string
+  bottleneck: BottleneckLevel
+}
+
+export interface SectorLayer {
+  name: string
+  desc: string
+  nodes: SectorLink[]
+}
+
+export interface BottleneckDimension {
+  dimension: string
+  items: string[]
+}
+
 export interface SectorNode {
   key: string
   label: string
@@ -198,6 +218,10 @@ export interface SectorNode {
   hot: boolean
   verified: boolean
   nodes: string[]
+  // 扩展字段（仅 verified=true 的板块使用）
+  summary?: string
+  layers?: SectorLayer[]
+  bottlenecks?: BottleneckDimension[]
 }
 
 export interface SectorsData {
@@ -356,6 +380,7 @@ export const vibeApi = {
     const combinedSignal = signal || controller.signal
 
     try {
+      console.log('[chatStream] sending request, token exists:', !!token)
       const resp = await fetch('/api/vibe/chat', {
         method: 'POST',
         headers: {
@@ -366,13 +391,21 @@ export const vibeApi = {
         signal: combinedSignal,
       })
 
+      console.log('[chatStream] response status:', resp.status, resp.ok)
       if (!resp.ok) {
+        const errText = await resp.text()
+        console.error('[chatStream] error response:', errText.substring(0, 200))
         throw new Error(`请求失败: ${resp.status}`)
       }
 
-      const reader = resp.body!.getReader()
+      const reader = resp.body?.getReader()
+      if (!reader) {
+        console.error('[chatStream] resp.body is null, cannot read stream')
+        throw new Error('无法读取流式响应')
+      }
       const decoder = new TextDecoder()
       let buf = ''
+      let deltaCount = 0
 
       for (;;) {
         const { done, value } = await reader.read()
@@ -385,13 +418,21 @@ export const vibeApi = {
           if (!trimmed) continue
           try {
             const ev = JSON.parse(trimmed)
-            if (ev.type === 'delta') onDelta(ev.text)
+            if (ev.type === 'delta') {
+              onDelta(ev.text)
+              deltaCount++
+            }
             else if (ev.type === 'error' && onError) onError(ev.message)
+            else if (ev.type === 'done') console.log('[chatStream] stream done event')
           } catch {
             // ignore parse errors
           }
         }
       }
+      console.log('[chatStream] reading complete, total deltas:', deltaCount)
+    } catch (e: any) {
+      console.error('[chatStream] caught error:', e?.message || e)
+      throw e
     } finally {
       controller.abort()
     }
