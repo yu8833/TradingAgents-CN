@@ -68,19 +68,32 @@ def _memory_set(key: str, value: Any, ttl: int = 60):
     _memory_cache[key] = (time.time() + ttl, value)
 
 
-def _redis_available() -> bool:
-    """检查Redis是否可用。"""
+async def _ensure_redis_available() -> bool:
+    """确保Redis可用，如果不可用则尝试重新初始化。"""
     try:
-        from app.core.database import redis_client
-        return redis_client is not None
-    except Exception:
+        from app.core.database import redis_client, db_manager
+        if redis_client is not None and db_manager._redis_healthy:
+            try:
+                await redis_client.ping()
+                return True
+            except Exception:
+                pass
+        
+        await db_manager.init_redis()
+        from app.core.database import init_database
+        await init_database()
+        return True
+    except Exception as e:
+        import logging
+        logger = logging.getLogger("webapi")
+        logger.warning(f"Redis重新初始化失败: {e}")
         return False
 
 
 async def get_cache(key: str) -> Optional[Any]:
     """从缓存获取数据（优先Redis，兜底内存）。"""
     # 1. 尝试Redis
-    if _redis_available():
+    if await _ensure_redis_available():
         try:
             from app.core.database import redis_client
             raw = await redis_client.get(key)
@@ -99,7 +112,7 @@ async def set_cache(key: str, value: Any, ttl: Optional[int] = None, category: s
         ttl = get_ttl(category)
 
     # 1. 写Redis
-    if _redis_available():
+    if await _ensure_redis_available():
         try:
             from app.core.database import redis_client
             await redis_client.setex(key, ttl, json.dumps(value, ensure_ascii=False))

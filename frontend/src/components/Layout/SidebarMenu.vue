@@ -56,29 +56,10 @@
       <el-menu-item index="/vibe/review/emotion">短线情绪</el-menu-item>
     </el-sub-menu>
 
-    <el-sub-menu index="/vibe-intel">
-      <template #title>
-        <el-icon><DataLine /></el-icon>
-        <span>资讯</span>
-      </template>
-      <el-menu-item index="/vibe/intel/radar">赛道资讯</el-menu-item>
-      <el-menu-item index="/vibe/intel/filings">个股公告</el-menu-item>
-      <el-menu-item index="/vibe/intel/news">个股新闻</el-menu-item>
-    </el-sub-menu>
-
-    <el-sub-menu index="/vibe-sectors">
-      <template #title>
-        <el-icon><Histogram /></el-icon>
-        <span>板块</span>
-      </template>
-      <el-menu-item index="/vibe/sectors">全部板块</el-menu-item>
-      <el-menu-item index="/vibe/sectors/humanoid">人形机器人</el-menu-item>
-      <el-menu-item index="/vibe/sectors/ai-computing">AI 算力</el-menu-item>
-      <el-menu-item index="/vibe/sectors/hbm">HBM</el-menu-item>
-      <el-menu-item index="/vibe/sectors/cpo">光互联</el-menu-item>
-      <el-menu-item index="/vibe/sectors/business-space">商业航天</el-menu-item>
-      <el-menu-item index="/vibe/sectors/ai-pharma">生物医药</el-menu-item>
-    </el-sub-menu>
+    <el-menu-item index="/vibe/intel/radar">
+      <el-icon><DataLine /></el-icon>
+      <template #title>资讯</template>
+    </el-menu-item>
 
     <el-sub-menu index="/vibe-notes">
       <template #title>
@@ -152,7 +133,6 @@ import {
   CreditCard,
   DataAnalysis,
   DataLine,
-  Histogram,
   EditPen
 } from '@element-plus/icons-vue'
 

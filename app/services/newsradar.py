@@ -64,7 +64,7 @@ def _fetch_source(src: dict, per: int, cutoff, redline: list[str]):
             "User-Agent": UA,
             "Accept": "application/rss+xml,application/atom+xml,application/xml,text/xml,*/*",
         })
-        with urllib.request.urlopen(req, timeout=14) as r:
+        with urllib.request.urlopen(req, timeout=3) as r:
             raw = r.read()
         root = ET.fromstring(raw)
         out = []
@@ -86,7 +86,7 @@ def _fetch_source(src: dict, per: int, cutoff, redline: list[str]):
             if not d["title"]:
                 continue
             blob = (d["title"] + " " + d["summary"]).lower()
-            if any(k in blob for k in redline):  # 合规红线过滤
+            if any(k in blob for k in redline):
                 continue
             dt = _parse_dt(rawtime)
             if dt is not None:
@@ -121,8 +121,30 @@ def fetch_radar() -> dict:
         for s in pool:
             tasks.append((i, s))
 
-    with ThreadPoolExecutor(max_workers=40) as ex:
-        results = list(ex.map(lambda t: (t[0], _fetch_source(t[1], per, cutoff, redline)), tasks))
+    import concurrent.futures
+    import time
+    max_workers = min(20, len(tasks))
+    overall_timeout = 15
+    start_time = time.time()
+
+    results = []
+    ex = ThreadPoolExecutor(max_workers=max_workers)
+    try:
+        future_to_task = {ex.submit(lambda t, ps=per, cf=cutoff, rl=redline: (t[0], _fetch_source(t[1], ps, cf, rl)), task): task for task in tasks}
+        
+        remaining = list(future_to_task.keys())
+        while remaining and (time.time() - start_time) < overall_timeout:
+            try:
+                done, remaining = concurrent.futures.wait(remaining, timeout=1, return_when=concurrent.futures.FIRST_COMPLETED)
+                for future in done:
+                    try:
+                        results.append(future.result())
+                    except Exception:
+                        continue
+            except Exception:
+                break
+    finally:
+        ex.shutdown(wait=False)
 
     failed = 0
     for idx, items in results:
@@ -143,7 +165,7 @@ def fetch_radar() -> dict:
     tmp = CACHE_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
-    os.replace(tmp, CACHE_FILE)  # 原子改名，防两次并发刷新交错写坏缓存
+    os.replace(tmp, CACHE_FILE)
     return data
 
 
