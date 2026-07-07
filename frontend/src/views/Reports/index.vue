@@ -4,7 +4,7 @@
     <div class="page-header">
       <h1 class="page-title">
         <el-icon><Document /></el-icon>
-        分析报告
+        历史报告
       </h1>
       <p class="page-description">
         查看和管理股票分析报告，支持多种格式导出

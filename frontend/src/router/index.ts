@@ -56,7 +56,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/layouts/BasicLayout.vue'),
     redirect: '/analysis/single',
     meta: {
-      title: '股票分析',
+      title: '分析',
       icon: 'TrendCharts',
       requiresAuth: true
     },
@@ -67,7 +67,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Analysis/SingleAnalysis.vue'),
         meta: {
           title: '单股分析',
-          parentTitle: '股票分析',
+          parentTitle: '分析',
           requiresAuth: true
         }
       },
@@ -77,7 +77,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Analysis/BatchAnalysis.vue'),
         meta: {
           title: '批量分析',
-          parentTitle: '股票分析',
+          parentTitle: '分析',
           requiresAuth: true
         }
       },
@@ -196,52 +196,12 @@ const routes: RouteRecordRaw[] = [
         name: 'IntelRadar',
         component: () => import('@/views/Vibe/Intel/Radar.vue'),
         meta: {
-          title: '赛道资讯',
-          parentTitle: '资讯',
+          title: '资讯',
           requiresAuth: true
         }
       },
-      {
-        path: 'intel/filings',
-        name: 'IntelFilings',
-        component: () => import('@/views/Vibe/Intel/Filings.vue'),
-        meta: {
-          title: '个股公告',
-          parentTitle: '资讯',
-          requiresAuth: true
-        }
-      },
-      {
-        path: 'intel/news',
-        name: 'IntelNews',
-        component: () => import('@/views/Vibe/Intel/News.vue'),
-        meta: {
-          title: '个股新闻',
-          parentTitle: '资讯',
-          requiresAuth: true
-        }
-      },
-      {
-        path: 'sectors',
-        name: 'Sectors',
-        component: () => import('@/views/Vibe/Sectors/index.vue'),
-        meta: {
-          title: '全部板块',
-          parentTitle: '板块',
-          requiresAuth: true
-        }
-      },
-      {
-        path: 'sectors/:key',
-        name: 'SectorDetail',
-        component: () => import('@/views/Vibe/Sectors/Detail.vue'),
-        meta: {
-          title: '板块详情',
-          parentTitle: '板块',
-          hideInMenu: true,
-          requiresAuth: true
-        }
-      },
+      
+
       {
         path: 'notes',
         name: 'Notes',
@@ -361,7 +321,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Reports/index.vue'),
         meta: {
           title: '历史报告',
-          parentTitle: '报告',
+          parentTitle: '分析',
           requiresAuth: true
         }
       },
@@ -371,7 +331,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Reports/ReportDetail.vue'),
         meta: {
           title: '报告详情',
-          parentTitle: '报告',
+          parentTitle: '分析',
           requiresAuth: true
         }
       },
