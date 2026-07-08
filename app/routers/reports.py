@@ -468,7 +468,7 @@ def extract_structured_fields(reports: Dict[str, Any]) -> Dict[str, Any]:
     # 从优先级最高的模块开始提取，找到第一个非空的评级
     text_rating = None
     for module_text in _priority_texts():
-        val = _match_rating(module_text, ["操作建议", "评级", "投资建议", "建议", "行动评级"])
+        val = _match_rating(module_text, ["决策", "操作建议", "评级", "投资建议", "建议", "行动评级"])
         if val:
             text_rating = _normalize_rating(val)
             break
@@ -1547,7 +1547,7 @@ async def get_reports_list(
                 for key in ["final_trade_decision", "trader_investment_plan", "research_team_decision"]:
                     text = reports_dict.get(key, "")
                     if text:
-                        rating = _match_rating(text, ["操作建议", "评级", "投资建议"])
+                        rating = _match_rating(text, ["决策", "操作建议", "评级", "投资建议"])
                         if rating:
                             action = _normalize_rating(rating)
                             break
