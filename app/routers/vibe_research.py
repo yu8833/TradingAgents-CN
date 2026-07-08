@@ -274,8 +274,16 @@ async def radar(current_user: dict = Depends(get_optional_current_user)):
         data = await get_radar_cached(force=False)
         return ok(data)
     except Exception as e:
-        logger.error(f"资讯雷达异常: {e}")
-        raise HTTPException(500, f"资讯雷达异常: {e}")
+        logger.warning(f"资讯雷达缓存读取异常，降级到本地缓存: {e}")
+        # 降级：尝试本地文件缓存，再降级到骨架
+        try:
+            from app.services.newsradar import load_cache, skeleton
+            cached = load_cache()
+            if cached:
+                return ok(cached)
+        except Exception:
+            pass
+        return ok(skeleton())
 
 
 @router.post("/radar/refresh")
@@ -285,8 +293,15 @@ async def radar_refresh(current_user: dict = Depends(get_optional_current_user))
         data = fetch_radar()
         return ok(data)
     except Exception as e:
-        logger.error(f"资讯雷达刷新异常: {e}")
-        raise HTTPException(500, f"资讯雷达刷新异常: {e}")
+        logger.warning(f"资讯雷达刷新异常，降级到本地缓存: {e}")
+        try:
+            from app.services.newsradar import load_cache, skeleton
+            cached = load_cache()
+            if cached:
+                return ok(cached)
+        except Exception:
+            pass
+        return ok(skeleton())
 
 
 @router.get("/announcements")

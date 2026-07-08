@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { notificationsApi, type NotificationItem } from '@/api/notifications'
 import { useAuthStore } from '@/stores/auth'
 
@@ -9,33 +9,33 @@ export const useNotificationStore = defineStore('notifications', () => {
   const loading = ref(false)
   const drawerVisible = ref(false)
 
-  // 🔥 WebSocket 连接状态
   const ws = ref<WebSocket | null>(null)
   const wsConnected = ref(false)
   let wsReconnectTimer: any = null
   let wsReconnectAttempts = 0
-  const maxReconnectAttempts = 10  // 增加重连次数
+  const maxReconnectAttempts = 10
+  const minReconnectDelay = 1000
+  const maxReconnectDelay = 30000
 
-  // 连接状态
   const connected = computed(() => wsConnected.value)
-
   const hasUnread = computed(() => unreadCount.value > 0)
 
   async function refreshUnreadCount() {
     try {
       const res = await notificationsApi.getUnreadCount()
       unreadCount.value = res?.data?.count ?? 0
-    } catch {
-      // noop
+    } catch (e) {
+      console.error('[Notifications] 获取未读数失败:', e)
     }
   }
 
   async function loadList(status: 'unread' | 'all' = 'all') {
     loading.value = true
     try {
-      const res = await notificationsApi.getList({ status, page: 1, page_size: 20 })
+      const res = await notificationsApi.getList({ status, page: 1, page_size: 50 })
       items.value = res?.data?.items ?? []
-    } catch {
+    } catch (e) {
+      console.error('[Notifications] 加载通知列表失败:', e)
       items.value = []
     } finally {
       loading.value = false
@@ -43,54 +43,83 @@ export const useNotificationStore = defineStore('notifications', () => {
   }
 
   async function markRead(id: string) {
-    await notificationsApi.markRead(id)
-    const idx = items.value.findIndex(x => x.id === id)
-    if (idx !== -1) items.value[idx].status = 'read'
-    if (unreadCount.value > 0) unreadCount.value -= 1
+    try {
+      await notificationsApi.markRead(id)
+      const idx = items.value.findIndex(x => x.id === id)
+      if (idx !== -1) {
+        items.value[idx].status = 'read'
+      }
+      if (unreadCount.value > 0) {
+        unreadCount.value -= 1
+      }
+    } catch (e) {
+      console.error('[Notifications] 标记已读失败:', e)
+    }
   }
 
   async function markAllRead() {
-    await notificationsApi.markAllRead()
-    items.value = items.value.map(x => ({ ...x, status: 'read' }))
-    unreadCount.value = 0
+    try {
+      await notificationsApi.markAllRead()
+      items.value = items.value.map(x => ({ ...x, status: 'read' }))
+      unreadCount.value = 0
+    } catch (e) {
+      console.error('[Notifications] 全部标记已读失败:', e)
+    }
   }
 
   function addNotification(n: Omit<NotificationItem, 'id' | 'status' | 'created_at'> & { id?: string; created_at?: string; status?: 'unread' | 'read' }) {
     const id = n.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const created_at = n.created_at || new Date().toISOString()
-    const item: NotificationItem = {
-      id,
-      title: n.title,
-      content: n.content,
-      type: n.type,
-      status: n.status ?? 'unread',
-      created_at,
-      link: n.link,
-      source: n.source
+    
+    const existingIdx = items.value.findIndex(x => x.id === id)
+    if (existingIdx !== -1) {
+      items.value[existingIdx] = {
+        ...items.value[existingIdx],
+        title: n.title,
+        content: n.content,
+        status: n.status ?? 'unread',
+        created_at
+      }
+    } else {
+      const item: NotificationItem = {
+        id,
+        title: n.title,
+        content: n.content,
+        type: n.type,
+        status: n.status ?? 'unread',
+        created_at,
+        link: n.link,
+        source: n.source
+      }
+      items.value.unshift(item)
     }
-    items.value.unshift(item)
-    if (item.status === 'unread') unreadCount.value += 1
+    
+    if (n.status !== 'read') {
+      refreshUnreadCount()
+    }
   }
 
-  // 🔥 连接 WebSocket（优先）
   function connectWebSocket() {
     try {
-      // 若已存在连接，先关闭
       if (ws.value) {
-        try { ws.value.close() } catch {}
+        try {
+          ws.value.close(1000, 'Reconnecting')
+        } catch {}
         ws.value = null
       }
-      if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null }
+      if (wsReconnectTimer) {
+        clearTimeout(wsReconnectTimer)
+        wsReconnectTimer = null
+      }
 
       const authStore = useAuthStore()
       const token = authStore.token || localStorage.getItem('auth-token') || ''
       if (!token) {
         console.warn('[WS] 未找到 token，无法连接 WebSocket')
+        scheduleReconnect()
         return
       }
 
-      // WebSocket 连接地址
-      // 🔥 统一使用当前访问的服务器地址（开发环境通过 Vite 代理，生产环境通过 Nginx 代理）
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const host = window.location.host
       const wsUrl = `${wsProtocol}//${host}/api/ws/notifications?token=${encodeURIComponent(token)}`
@@ -111,17 +140,8 @@ export const useNotificationStore = defineStore('notifications', () => {
         wsConnected.value = false
         ws.value = null
 
-        // 自动重连
-        if (wsReconnectAttempts < maxReconnectAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000)
-          console.log(`[WS] ${delay}ms 后重连 (尝试 ${wsReconnectAttempts + 1}/${maxReconnectAttempts})`)
-
-          wsReconnectTimer = setTimeout(() => {
-            wsReconnectAttempts++
-            connectWebSocket()
-          }, delay)
-        } else {
-          console.error('[WS] 达到最大重连次数，停止重连')
+        if (event.code !== 1000) {
+          scheduleReconnect()
         }
       }
 
@@ -141,10 +161,28 @@ export const useNotificationStore = defineStore('notifications', () => {
     } catch (error) {
       console.error('[WS] 连接失败:', error)
       wsConnected.value = false
+      scheduleReconnect()
     }
   }
 
-  // 处理 WebSocket 消息
+  function scheduleReconnect() {
+    if (wsReconnectAttempts >= maxReconnectAttempts) {
+      console.error('[WS] 达到最大重连次数，停止重连')
+      return
+    }
+
+    const delay = Math.min(
+      minReconnectDelay * Math.pow(2, wsReconnectAttempts),
+      maxReconnectDelay
+    )
+    console.log(`[WS] ${delay}ms 后重连 (尝试 ${wsReconnectAttempts + 1}/${maxReconnectAttempts})`)
+
+    wsReconnectTimer = setTimeout(() => {
+      wsReconnectAttempts++
+      connectWebSocket()
+    }, delay)
+  }
+
   function handleWebSocketMessage(message: any) {
     console.log('[WS] 收到消息:', message)
 
@@ -154,7 +192,6 @@ export const useNotificationStore = defineStore('notifications', () => {
         break
 
       case 'notification':
-        // 处理通知
         if (message.data && message.data.title && message.data.type) {
           addNotification({
             id: message.data.id,
@@ -170,7 +207,6 @@ export const useNotificationStore = defineStore('notifications', () => {
         break
 
       case 'heartbeat':
-        // 心跳消息，无需处理
         break
 
       default:
@@ -178,7 +214,6 @@ export const useNotificationStore = defineStore('notifications', () => {
     }
   }
 
-  // 断开 WebSocket
   function disconnectWebSocket() {
     if (wsReconnectTimer) {
       clearTimeout(wsReconnectTimer)
@@ -186,7 +221,9 @@ export const useNotificationStore = defineStore('notifications', () => {
     }
 
     if (ws.value) {
-      try { ws.value.close() } catch {}
+      try {
+        ws.value.close(1000, 'User disconnected')
+      } catch {}
       ws.value = null
     }
 
@@ -194,13 +231,11 @@ export const useNotificationStore = defineStore('notifications', () => {
     wsReconnectAttempts = 0
   }
 
-  // 🔥 连接 WebSocket
   function connect() {
     console.log('[Notifications] 开始连接...')
     connectWebSocket()
   }
 
-  // 🔥 断开 WebSocket
   function disconnect() {
     console.log('[Notifications] 断开连接...')
     disconnectWebSocket()
@@ -208,7 +243,16 @@ export const useNotificationStore = defineStore('notifications', () => {
 
   function setDrawerVisible(v: boolean) {
     drawerVisible.value = v
+    if (v) {
+      loadList('all')
+    }
   }
+
+  watch(() => useAuthStore().token, (newToken, oldToken) => {
+    if (newToken && newToken !== oldToken) {
+      connectWebSocket()
+    }
+  })
 
   return {
     items,

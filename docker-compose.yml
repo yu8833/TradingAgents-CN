@@ -55,8 +55,8 @@ services:
       - tradingagents-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 30s
-      timeout: 10s
+      interval: 60s
+      timeout: 60s
       retries: 3
       start_period: 60s
     restart: unless-stopped

@@ -141,10 +141,22 @@ def _emotion() -> dict:
     # 晋级率＝今日 2 板+（＝昨涨停今又停）÷ 昨日涨停家数
     promotion_rate = round(len(lianban) / yzt_count, 3) if yzt_count else None
 
+    # 补充真实涨停/跌停数据（来自乐谷，与大盘总览一致）
+    zt_real, dt_real = 0, 0
+    try:
+        df = astock._akshare().stock_market_activity_legu()
+        d = {row["item"]: row["value"] for _, row in df.iterrows()}
+        zt_real = _num(d.get("真实涨停"))
+        dt_real = _num(d.get("真实跌停"))
+    except Exception:
+        pass
+
     return {
         "date": f"{resolved[:4]}-{resolved[4:6]}-{resolved[6:]}",
         "zt_count": zt_count,
         "dt_count": len(dt),
+        "zt_real": zt_real,
+        "dt_real": dt_real,
         "zb_count": zb_count,
         "max_boards": max(boards) if boards else 0,
         "lianban_count": len(lianban),

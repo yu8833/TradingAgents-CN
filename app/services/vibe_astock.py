@@ -421,8 +421,11 @@ def announcements(code: str, limit: int = 15) -> list[dict]:
     for a in lst:
         cols = [c.get("column_name") for c in (a.get("columns") or []) if c.get("column_name")]
         art = a.get("art_code", "")
+        publish_time = a.get("publish_time", "")
+        notice_date = a.get("notice_date", "")
+        date_str = publish_time[:10] if publish_time else (notice_date[:10] if notice_date else "")
         out.append({
-            "date": (a.get("notice_date", "") or "")[:10],
+            "date": date_str,
             "title": a.get("title", ""),
             "type": cols[0] if cols else "",
             "url": f"https://data.eastmoney.com/notices/detail/{code}/{art}.html" if art else "",

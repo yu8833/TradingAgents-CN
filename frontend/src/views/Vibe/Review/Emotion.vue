@@ -23,16 +23,18 @@
           </span>
           <span v-if="emotion.date" class="block-hint">数据日期：{{ emotion.date }}</span>
         </div>
-        <div class="grid grid-4">
+        <div class="grid grid-6">
           <el-card shadow="never" class="count-card">
             <div class="cnt-label">涨停</div>
             <div class="cnt-num up">{{ emotion.zt_count }}</div>
             <div class="cnt-sub">家</div>
+            <div class="cnt-real" v-if="emotion.zt_real > 0">真实 {{ emotion.zt_real }}</div>
           </el-card>
           <el-card shadow="never" class="count-card">
             <div class="cnt-label">跌停</div>
             <div class="cnt-num down">{{ emotion.dt_count }}</div>
             <div class="cnt-sub">家</div>
+            <div class="cnt-real" v-if="emotion.dt_real > 0">真实 {{ emotion.dt_real }}</div>
           </el-card>
           <el-card shadow="never" class="count-card">
             <div class="cnt-label">最高连板</div>
@@ -42,6 +44,16 @@
           <el-card shadow="never" class="count-card">
             <div class="cnt-label">连板（2板+）</div>
             <div class="cnt-num">{{ emotion.lianban_count }}</div>
+            <div class="cnt-sub">家</div>
+          </el-card>
+          <el-card shadow="never" class="count-card">
+            <div class="cnt-label">炸板</div>
+            <div class="cnt-num neutral">{{ emotion.zb_count }}</div>
+            <div class="cnt-sub">家</div>
+          </el-card>
+          <el-card shadow="never" class="count-card">
+            <div class="cnt-label">昨涨停</div>
+            <div class="cnt-num">{{ emotion.yzt_count }}</div>
             <div class="cnt-sub">家</div>
           </el-card>
         </div>
@@ -266,6 +278,10 @@ onMounted(() => {
   grid-template-columns: repeat(4, 1fr);
 }
 
+.grid-6 {
+  grid-template-columns: repeat(6, 1fr);
+}
+
 .count-card {
   border-radius: 8px;
   text-align: center;
@@ -291,6 +307,13 @@ onMounted(() => {
 .cnt-sub {
   font-size: 12px;
   color: var(--el-text-color-placeholder);
+}
+
+.cnt-real {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  margin-top: 4px;
+  opacity: 0.8;
 }
 
 .ratio-card {

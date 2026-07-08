@@ -950,17 +950,51 @@ async def get_news(code: str, days: int = 30, limit: int = 50, include_announcem
                 if isinstance(publish_time, datetime):
                     publish_time = publish_time.isoformat()
 
+                # 🔥 根据实际类型设置 type（公告 vs 新闻）
+                news_type = news.get("type", "news")
+                if news_type == "announcement":
+                    item_type = "announcement"
+                elif "notice" in str(news.get("title", "")).lower() or "公告" in str(news.get("title", "")):
+                    item_type = "announcement"
+                else:
+                    item_type = "news"
+
                 items.append({
                     "title": news.get("title", ""),
                     "source": news.get("source", ""),
                     "time": publish_time,
                     "url": news.get("url", ""),
-                    "type": "news",
+                    "type": item_type,
                     "content": news.get("content", ""),
                     "summary": news.get("summary", "")
                 })
 
             logger.info(f"✅ 转换完成: {len(items)} 条新闻")
+
+            # 🔥 补充公告数据（从东财实时获取，与 filings 页面一致）
+            if include_announcements:
+                try:
+                    logger.info(f"📡 步骤5: 获取公告数据...")
+                    from app.services.vibe_astock import announcements
+                    anns = announcements(normalized_code, limit)
+                    for ann in anns:
+                        items.append({
+                            "title": ann.get("title", ""),
+                            "source": ann.get("source", "") or "东方财富",
+                            "time": ann.get("date", ""),
+                            "url": ann.get("url", ""),
+                            "type": "announcement",
+                            "content": "",
+                            "summary": ""
+                        })
+                    logger.info(f"📡 获取公告完成: {len(anns)} 条公告")
+                except Exception as e:
+                    logger.error(f"❌ 获取公告失败: {e}")
+
+            # 按时间排序（最新在前），同时间的公告优先显示
+            items.sort(key=lambda x: (x.get("time", ""), x.get("type") != "announcement"), reverse=True)
+            # 截断到 limit 限制
+            items = items[:limit]
 
             data = {
                 "code": normalized_code,

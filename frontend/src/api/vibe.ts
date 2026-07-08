@@ -122,6 +122,8 @@ export interface ShortTermEmotion {
   date: string
   zt_count: number
   dt_count: number
+  zt_real: number
+  dt_real: number
   zb_count: number
   max_boards: number
   lianban_count: number
