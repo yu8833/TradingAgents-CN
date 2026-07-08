@@ -2012,10 +2012,11 @@ class SimpleAnalysisService:
         status: Optional[str] = None,
         limit: int = 20,
         offset: int = 0
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """获取所有任务列表（不限用户）
         - 合并内存和 MongoDB 数据
         - 按开始时间倒序排列
+        - 返回包含 total、tasks、stats 的字典
         """
         try:
             task_status = None
@@ -2038,7 +2039,7 @@ class SimpleAnalysisService:
             logger.info(f"📋 [Tasks] 准备从内存读取所有任务: status={status}, limit={limit}, offset={offset}")
             tasks_in_mem = await self.memory_manager.list_all_tasks(
                 status=task_status,
-                limit=limit * 2,
+                limit=10000,
                 offset=0
             )
             logger.info(f"📋 [Tasks] 内存返回数量: {len(tasks_in_mem)}")
@@ -2051,10 +2052,8 @@ class SimpleAnalysisService:
             if task_status:
                 query["status"] = task_status.value
 
-            count = await collection.count_documents(query)
-            logger.info(f"📋 [Tasks] MongoDB 任务总数: {count}")
-
-            cursor = collection.find(query).sort("start_time", -1).limit(limit * 2)
+            # 读取全部用于计算总数和统计
+            cursor = collection.find(query).sort("start_time", -1)
             tasks_from_db = []
             async for doc in cursor:
                 doc.pop("_id", None)
@@ -2081,16 +2080,44 @@ class SimpleAnalysisService:
             merged_tasks = list(task_dict.values())
             merged_tasks.sort(key=lambda x: x.get('start_time', ''), reverse=True)
 
+            # 计算总数
+            total = len(merged_tasks)
+
             # 分页
             results = merged_tasks[offset:offset + limit]
 
             # 为结果补齐股票名称
             results = await self._enrich_stock_names(results)
-            logger.info(f"📋 [Tasks] 合并后返回数量: {len(results)} (内存: {len(tasks_in_mem)}, MongoDB: {count})")
-            return results
+
+            # 计算统计数据（基于全部合并后的数据）
+            completed_count = sum(1 for t in merged_tasks if t.get('status') == 'completed')
+            failed_count = sum(1 for t in merged_tasks if t.get('status') == 'failed')
+            unique_stocks = len(set(
+                t.get('stock_code') or t.get('symbol') or t.get('stock_symbol')
+                for t in merged_tasks
+                if t.get('stock_code') or t.get('symbol') or t.get('stock_symbol')
+            ))
+
+            stats = {
+                "total": total,
+                "completed": completed_count,
+                "failed": failed_count,
+                "unique_stocks": unique_stocks
+            }
+
+            logger.info(f"📋 [Tasks] 合并后总数: {total}, 返回数量: {len(results)}, 统计: {stats}")
+            return {
+                "tasks": results,
+                "total": total,
+                "stats": stats
+            }
         except Exception as outer_e:
             logger.error(f"❌ list_all_tasks 外层异常: {outer_e}", exc_info=True)
-            return []
+            return {
+                "tasks": [],
+                "total": 0,
+                "stats": {"total": 0, "completed": 0, "failed": 0, "unique_stocks": 0}
+            }
 
     async def list_user_tasks(
         self,
@@ -2098,10 +2125,11 @@ class SimpleAnalysisService:
         status: Optional[str] = None,
         limit: int = 20,
         offset: int = 0
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """获取用户任务列表
         - 对于 processing 状态：优先从内存读取（实时进度）
         - 对于 completed/failed/all 状态：合并内存和 MongoDB 数据
+        - 返回包含 total、tasks、stats 的字典
         """
         try:
             task_status = None
@@ -2127,8 +2155,8 @@ class SimpleAnalysisService:
             tasks_in_mem = await self.memory_manager.list_user_tasks(
                 user_id=user_id,
                 status=task_status,
-                limit=limit * 2,  # 多读一些，后面合并去重
-                offset=0  # 内存中的任务不多，全部读取
+                limit=10000,
+                offset=0
             )
             logger.info(f"📋 [Tasks] 内存返回数量: {len(tasks_in_mem)}")
 
@@ -2179,8 +2207,8 @@ class SimpleAnalysisService:
                     logger.info(f"📋 [Tasks] 添加状态过滤: {task_status.value}")
 
                 logger.info(f"📋 [Tasks] MongoDB 查询条件: {query}")
-                # 读取更多数据用于合并
-                cursor = db.analysis_tasks.find(query).sort("created_at", -1).limit(limit * 2)
+                # 读取全部用于计算总数和统计
+                cursor = db.analysis_tasks.find(query).sort("created_at", -1)
                 async for doc in cursor:
                     count += 1
                     # 兼容 user_id 或 user 字段
@@ -2262,6 +2290,9 @@ class SimpleAnalysisService:
             merged_tasks = list(task_dict.values())
             merged_tasks.sort(key=lambda x: x.get('start_time', ''), reverse=True)
 
+            # 计算总数
+            total = len(merged_tasks)
+
             # 分页
             results = merged_tasks[offset:offset + limit]
 
@@ -2287,11 +2318,36 @@ class SimpleAnalysisService:
 
             # 为结果补齐股票名称
             results = await self._enrich_stock_names(results)
-            logger.info(f"📋 [Tasks] 合并后返回数量: {len(results)} (内存: {len(tasks_in_mem)}, MongoDB: {count})")
-            return results
+
+            # 计算统计数据（基于全部合并后的数据）
+            completed_count = sum(1 for t in merged_tasks if t.get('status') == 'completed')
+            failed_count = sum(1 for t in merged_tasks if t.get('status') == 'failed')
+            unique_stocks = len(set(
+                t.get('stock_code') or t.get('symbol') or t.get('stock_symbol')
+                for t in merged_tasks
+                if t.get('stock_code') or t.get('symbol') or t.get('stock_symbol')
+            ))
+
+            stats = {
+                "total": total,
+                "completed": completed_count,
+                "failed": failed_count,
+                "unique_stocks": unique_stocks
+            }
+
+            logger.info(f"📋 [Tasks] 合并后总数: {total}, 返回数量: {len(results)}, 统计: {stats}")
+            return {
+                "tasks": results,
+                "total": total,
+                "stats": stats
+            }
         except Exception as outer_e:
             logger.error(f"❌ list_user_tasks 外层异常: {outer_e}", exc_info=True)
-            return []
+            return {
+                "tasks": [],
+                "total": 0,
+                "stats": {"total": 0, "completed": 0, "failed": 0, "unique_stocks": 0}
+            }
 
     async def cleanup_zombie_tasks(self, max_running_hours: int = 2) -> Dict[str, Any]:
         """清理僵尸任务（长时间处于 processing/running 状态的任务）

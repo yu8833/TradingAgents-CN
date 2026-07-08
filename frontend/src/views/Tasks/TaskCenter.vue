@@ -282,9 +282,35 @@ const loadList = async () => {
         const body2 = (res2 as any)?.data?.data || {}
         tasks = body2.tasks || []
         total.value = body2.total ?? tasks.length
+        // 优先使用后端返回的统计数据
+        if (body2.stats) {
+          stats.value = {
+            total: body2.stats.total ?? 0,
+            completed: body2.stats.completed ?? 0,
+            failed: body2.stats.failed ?? 0,
+            uniqueStocks: body2.stats.unique_stocks ?? 0
+          }
+        } else {
+          stats.value = { total: tasks.length, completed: 0, failed: 0, uniqueStocks: 0 }
+        }
       } catch {}
     } else {
       total.value = body.total ?? tasks.length
+      // 优先使用后端返回的统计数据
+      if (body.stats) {
+        stats.value = {
+          total: body.stats.total ?? 0,
+          completed: body.stats.completed ?? 0,
+          failed: body.stats.failed ?? 0,
+          uniqueStocks: body.stats.unique_stocks ?? 0
+        }
+      } else {
+        // 兜底：基于当前页计算（不推荐）
+        const completed = tasks.filter((x:any) => x.status === 'completed').length
+        const failed = tasks.filter((x:any) => x.status === 'failed').length
+        const uniqueStocks = new Set(tasks.map((x:any) => x.stock_code || x.stock_symbol)).size
+        stats.value = { total: total.value, completed, failed, uniqueStocks }
+      }
     }
 
     list.value = tasks
@@ -295,12 +321,6 @@ const loadList = async () => {
         connectTaskWebSocket(task.task_id)
       }
     })
-
-    // 统计
-    const completed = tasks.filter((x:any) => x.status === 'completed').length
-    const failed = tasks.filter((x:any) => x.status === 'failed').length
-    const uniqueStocks = new Set(tasks.map((x:any) => x.stock_code || x.stock_symbol)).size
-    stats.value = { total: tasks.length, completed, failed, uniqueStocks }
   } catch (e:any) {
     ElMessage.error(e?.message || '加载失败')
   } finally {

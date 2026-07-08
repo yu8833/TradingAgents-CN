@@ -496,8 +496,14 @@ const loadRecentAnalyses = async () => {
     const tasks = body.tasks || []
 
     recentAnalyses.value = tasks
-    userStats.value.totalAnalyses = body.total ?? tasks.length
-    userStats.value.successfulAnalyses = tasks.filter((item: any) => item.status === 'completed').length
+    // 优先使用后端返回的统计数据
+    if (body.stats) {
+      userStats.value.totalAnalyses = body.stats.total ?? tasks.length
+      userStats.value.successfulAnalyses = body.stats.completed ?? 0
+    } else {
+      userStats.value.totalAnalyses = body.total ?? tasks.length
+      userStats.value.successfulAnalyses = tasks.filter((item: any) => item.status === 'completed').length
+    }
   } catch (error) {
     console.error('加载最近分析失败:', error)
     recentAnalyses.value = []

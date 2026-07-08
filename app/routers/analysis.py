@@ -774,7 +774,7 @@ async def list_all_tasks(
     try:
         logger.info(f"📋 查询所有任务列表")
 
-        tasks = await get_simple_analysis_service().list_all_tasks(
+        result = await get_simple_analysis_service().list_all_tasks(
             status=status,
             limit=limit,
             offset=offset
@@ -783,8 +783,9 @@ async def list_all_tasks(
         return {
             "success": True,
             "data": {
-                "tasks": tasks,
-                "total": len(tasks),
+                "tasks": result.get("tasks", []),
+                "total": result.get("total", 0),
+                "stats": result.get("stats", {}),
                 "limit": limit,
                 "offset": offset
             },
@@ -806,7 +807,7 @@ async def list_user_tasks(
     try:
         logger.info(f"📋 查询用户任务列表: {user['id']}")
 
-        tasks = await get_simple_analysis_service().list_user_tasks(
+        result = await get_simple_analysis_service().list_user_tasks(
             user_id=user["id"],
             status=status,
             limit=limit,
@@ -816,8 +817,9 @@ async def list_user_tasks(
         return {
             "success": True,
             "data": {
-                "tasks": tasks,
-                "total": len(tasks),
+                "tasks": result.get("tasks", []),
+                "total": result.get("total", 0),
+                "stats": result.get("stats", {}),
                 "limit": limit,
                 "offset": offset
             },
@@ -1055,13 +1057,14 @@ async def get_user_analysis_history(
 ):
     """获取用户分析历史（支持基础筛选与分页）"""
     try:
-        # 先获取用户任务列表（内存优先，MongoDB兜底）
-        raw_tasks = await get_simple_analysis_service().list_user_tasks(
+        # 先获取用户所有任务（内存优先，MongoDB兜底），不做分页
+        all_result = await get_simple_analysis_service().list_user_tasks(
             user_id=user["id"],
             status=status,
-            limit=page_size,
-            offset=(page - 1) * page_size
+            limit=10000,
+            offset=0
         )
+        raw_tasks = all_result.get("tasks", [])
 
         # 进行基础筛选
         from datetime import datetime
@@ -1105,11 +1108,35 @@ async def get_user_analysis_history(
                 continue
             filtered.append(x)
 
+        # 计算筛选后的总数
+        total = len(filtered)
+
+        # 分页
+        offset = (page - 1) * page_size
+        paged_tasks = filtered[offset:offset + page_size]
+
+        # 计算统计数据（基于筛选后的数据）
+        completed_count = sum(1 for t in filtered if t.get('status') == 'completed')
+        failed_count = sum(1 for t in filtered if t.get('status') == 'failed')
+        unique_stocks = len(set(
+            t.get('stock_code') or t.get('symbol') or t.get('stock_symbol')
+            for t in filtered
+            if t.get('stock_code') or t.get('symbol') or t.get('stock_symbol')
+        ))
+
+        stats = {
+            "total": total,
+            "completed": completed_count,
+            "failed": failed_count,
+            "unique_stocks": unique_stocks
+        }
+
         return {
             "success": True,
             "data": {
-                "tasks": filtered,
-                "total": len(filtered),
+                "tasks": paged_tasks,
+                "total": total,
+                "stats": stats,
                 "page": page,
                 "page_size": page_size
             },
