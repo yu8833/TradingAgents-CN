@@ -6,7 +6,7 @@
         <div class="hero-text">
           <h1 class="hero-title">
             股票分析系统
-            <span class="version-badge">v1.0.1</span>
+            <span class="version-badge">{{ systemVersion }}</span>
           </h1>
           <p class="hero-subtitle">
             现代化的多智能体股票分析学习平台
@@ -323,7 +323,7 @@
       <div class="version-info">
         <div class="version-card">
           <div class="version-main">
-            <div class="version-number">v1.0.1</div>
+            <div class="version-number">{{ systemVersion }}</div>
             <div class="version-status">稳定版</div>
           </div>
           <div class="version-details">
@@ -337,7 +337,7 @@
             </div>
             <div class="version-item">
               <span class="label">API版本</span>
-              <span class="value">v1.0.1</span>
+              <span class="value">{{ apiVersion }}</span>
             </div>
           </div>
         </div>
@@ -376,8 +376,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAppStore } from '@/stores/app'
 import {
   TrendCharts,
   Search,
@@ -392,7 +393,26 @@ import {
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const appStore = useAppStore()
 const buildTime = ref(new Date().toLocaleString('zh-CN'))
+
+// 版本信息
+const systemVersion = ref('v1.0.1')
+const apiVersion = ref('v1.0.1')
+
+// 从 appStore 获取版本信息
+onMounted(async () => {
+  try {
+    await appStore.fetchApiVersion()
+    if (appStore.apiVersion && appStore.apiVersion !== 'unknown') {
+      const v = appStore.apiVersion.startsWith('v') ? appStore.apiVersion : `v${appStore.apiVersion}`
+      systemVersion.value = v
+      apiVersion.value = v
+    }
+  } catch (e) {
+    // 如果获取失败，使用默认值
+  }
+})
 
 const goToAnalysis = () => {
   router.push('/analysis/single')

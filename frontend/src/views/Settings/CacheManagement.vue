@@ -375,16 +375,16 @@ const deleteCacheItem = async (item: any) => {
       { type: 'warning' }
     )
     
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await cacheApi.deleteCacheItem(item.type, item.symbol)
     
     ElMessage.success('缓存项已删除')
     await loadCacheDetails()
     await refreshStats()
     
-  } catch (error) {
+  } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error('删除缓存项失败')
+      console.error('删除缓存项失败:', error)
+      ElMessage.error(error.message || '删除缓存项失败')
     }
   }
 }

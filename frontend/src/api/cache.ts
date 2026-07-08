@@ -103,3 +103,15 @@ export function getCacheBackendInfo() {
   })
 }
 
+/**
+ * 删除单个缓存项
+ * @param cacheType 缓存类型 (stock/news/analysis)
+ * @param symbol 股票代码
+ */
+export function deleteCacheItem(cacheType: string, symbol: string) {
+  return request({
+    url: `/api/cache/item/${cacheType}/${symbol}`,
+    method: 'delete'
+  })
+}
+

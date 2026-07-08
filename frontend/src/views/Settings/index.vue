@@ -62,6 +62,10 @@
 
             <!-- 系统管理菜单 -->
             <template v-else-if="currentSection === 'admin'">
+              <el-menu-item index="users">
+                <el-icon><User /></el-icon>
+                <span>用户管理</span>
+              </el-menu-item>
               <el-menu-item index="database">
                 <el-icon><Monitor /></el-icon>
                 <span>数据库管理</span>
@@ -70,9 +74,17 @@
                 <el-icon><Document /></el-icon>
                 <span>操作日志</span>
               </el-menu-item>
+              <el-menu-item index="system-logs">
+                <el-icon><Document /></el-icon>
+                <span>系统日志</span>
+              </el-menu-item>
               <el-menu-item index="sync">
                 <el-icon><Refresh /></el-icon>
                 <span>多数据源同步</span>
+              </el-menu-item>
+              <el-menu-item index="scheduler">
+                <el-icon><DataAnalysis /></el-icon>
+                <span>定时任务</span>
               </el-menu-item>
             </template>
           </el-menu>
@@ -350,6 +362,26 @@
           </div>
         </el-card>
 
+        <!-- 系统日志 -->
+        <el-card v-show="activeTab === 'system-logs'" class="settings-content" shadow="never">
+          <template #header>
+            <h3>系统日志</h3>
+          </template>
+
+          <div class="system-logs-content">
+            <el-alert
+              title="系统日志"
+              type="info"
+              description="查看和管理系统运行日志文件"
+              :closable="false"
+              style="margin-bottom: 20px;"
+            />
+            <el-button type="primary" @click="goToSystemLogs">
+              查看系统日志
+            </el-button>
+          </div>
+        </el-card>
+
         <!-- 多数据源同步 -->
         <el-card v-show="activeTab === 'sync'" class="settings-content" shadow="never">
           <template #header>
@@ -366,6 +398,46 @@
             />
             <el-button type="primary" @click="goToMultiSourceSync">
               进入同步管理
+            </el-button>
+          </div>
+        </el-card>
+
+        <!-- 定时任务 -->
+        <el-card v-show="activeTab === 'scheduler'" class="settings-content" shadow="never">
+          <template #header>
+            <h3>定时任务</h3>
+          </template>
+
+          <div class="scheduler-content">
+            <el-alert
+              title="定时任务"
+              type="info"
+              description="管理系统中的定时任务，包括暂停、恢复和手动触发"
+              :closable="false"
+              style="margin-bottom: 20px;"
+            />
+            <el-button type="primary" @click="goToSchedulerManagement">
+              进入定时任务管理
+            </el-button>
+          </div>
+        </el-card>
+
+        <!-- 用户管理 -->
+        <el-card v-show="activeTab === 'users'" class="settings-content" shadow="never">
+          <template #header>
+            <h3>用户管理</h3>
+          </template>
+
+          <div class="users-content">
+            <el-alert
+              title="用户管理"
+              type="info"
+              description="管理系统用户、权限和配额"
+              :closable="false"
+              style="margin-bottom: 20px;"
+            />
+            <el-button type="primary" @click="goToUserManagement">
+              进入用户管理
             </el-button>
           </div>
         </el-card>
@@ -725,6 +797,18 @@ const goToOperationLogs = () => {
 
 const goToMultiSourceSync = () => {
   router.push('/settings/sync')
+}
+
+const goToSystemLogs = () => {
+  router.push('/settings/system-logs')
+}
+
+const goToSchedulerManagement = () => {
+  router.push('/settings/scheduler')
+}
+
+const goToUserManagement = () => {
+  router.push('/settings/users')
 }
 
 // 修改密码相关
