@@ -1245,6 +1245,8 @@ def _match_rating(text: str, aliases: List[str]) -> Optional[str]:
             r"\s*\*?\s*[:：]\s*([^\n，。；,;（(]{0,60})",
             r"(?:^|\n)\s*【" + re.escape(alias) + r"】\s*([^\n，。；,;（(]{0,60})",
             r"(?:^|\n)\s*\*\*" + re.escape(alias) + r"\*\*\s*[:：]\s*([^\n，。；,;（(]{0,60})",
+            # 🔥 新增：**决策**：**卖出 (利用反弹减仓)** 格式（两个独立的**块，支持括号和空格）
+            r"(?:^|\n)\s*\*\*" + re.escape(alias) + r"\*\*\s*[:：]\s*\*\*\s*([^\*]{1,60})\s*\*\*",
         ]
         for pattern in patterns:
             try:
@@ -1539,9 +1541,9 @@ async def get_reports_list(
             action = ""
             reports_dict = doc.get("reports", {}) if isinstance(doc.get("reports"), dict) else {}
             _decision = doc.get("decision") or doc.get("detailed_analysis") or doc.get("final_decision") or doc.get("state") or {}
-            if isinstance(_decision, dict) and _decision:
-                action = _normalize_rating(_decision.get("action", ""))
-            if not action and reports_dict:
+            
+            # 🔥 优先从报告文本提取（final_trade_decision 最权威），再回退到 decision 对象
+            if reports_dict:
                 for key in ["final_trade_decision", "trader_investment_plan", "research_team_decision"]:
                     text = reports_dict.get(key, "")
                     if text:
@@ -1549,6 +1551,9 @@ async def get_reports_list(
                         if rating:
                             action = _normalize_rating(rating)
                             break
+            # 如果报告文本中未提取到，再从 decision 对象提取
+            if not action and isinstance(_decision, dict) and _decision:
+                action = _normalize_rating(_decision.get("action", ""))
 
             # 置信度：直接从数据库字段获取，转换为百分比（0-100）
             confidence_score = doc.get("confidence_score", 0.0)
@@ -1679,9 +1684,10 @@ async def get_report_detail(
             report["reports"] = _cleaned_reports
             # 🔥 从 markdown 子报告中抽取结构化字段（核心洞察、策略点位等）
             _extracted = extract_structured_fields(_combined_for_extract)
-            # 已有字段保留优先级，仅在缺失时覆盖
+            # 🔥 关键修复：提取出的结构化字段（尤其是 action/评级/操作建议）始终覆盖已有值
+            # 因为报告文本中的决策是最权威的，数据库顶层的字段可能是旧的或错误的
             for _k, _v in _extracted.items():
-                if _v is not None and (not report.get(_k)):
+                if _v is not None:
                     report[_k] = _v
 
             # 🔥 计算置信度详情（多维度评分依据）
@@ -1746,8 +1752,10 @@ async def get_report_detail(
             report["reports"] = _cleaned_reports
             # 🔥 从 markdown 子报告中抽取结构化字段（核心洞察、策略点位、止盈止损等）
             _extracted = extract_structured_fields(_combined_for_extract)
+            # 🔥 关键修复：提取出的结构化字段（尤其是 action/评级/操作建议）始终覆盖已有值
+            # 因为报告文本中的决策是最权威的，数据库顶层的字段可能是旧的或错误的
             for _k, _v in _extracted.items():
-                if _v is not None and (not report.get(_k)):
+                if _v is not None:
                     report[_k] = _v
 
             # 🔥 计算置信度详情（多维度评分依据）
